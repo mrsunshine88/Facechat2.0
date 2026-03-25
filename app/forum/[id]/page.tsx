@@ -299,11 +299,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                           })()
                         ) : post.content}
                       </div>
-                    ) : (
-                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic', opacity: 0.3, textAlign: 'center' }}>
-                         (Innehåll matchar trådens titel - dolt för att undvika redundans)
-                      </div>
-                    )}
+                    ) : null}
                   </div>
                 </div>
               </div>
