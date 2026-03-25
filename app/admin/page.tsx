@@ -1923,7 +1923,6 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
 
   async function fetchBlocks(query?: string) {
     setLoading(true);
-    // Vi hämtar blockeringar med tydlig koppling till profiltabellens kolumner
     let q = supabase
       .from('user_blocks')
       .select(`
@@ -1935,8 +1934,23 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
       `)
       .order('created_at', { ascending: false });
 
-    if (query && query.trim().length > 0) {
-      q = q.ilike('blocked.username', `%${query.trim()}%`);
+    if (query && query.trim().length > 1) {
+      const term = query.trim();
+      // För att söka effektivt i båda riktningar utan join-limitations
+      const { data: matchedProfiles } = await supabase
+        .from('profiles')
+        .select('id')
+        .ilike('username', `%${term}%`);
+      
+      const matchedIds = matchedProfiles?.map((p: any) => p.id) || [];
+      if (matchedIds.length > 0) {
+        // Vi söker efter rader där antingen blockeraren eller den blockade matchar ID:t
+        q = q.or(`blocker_id.in.(${matchedIds.map((id: string) => `"${id}"`).join(',')}),blocked_id.in.(${matchedIds.map((id: string) => `"${id}"`).join(',')})`);
+      } else {
+        setBlocks([]);
+        setLoading(false);
+        return;
+      }
     }
 
     const { data } = await q.limit(100);
