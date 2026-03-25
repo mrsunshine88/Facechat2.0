@@ -359,6 +359,7 @@ function MittKrypinContent() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_1=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `action_user_id=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         // Profiluppdateringar för den som visas
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${profileToView.id}` }, (payload: any) => {
            setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
@@ -435,15 +436,22 @@ function MittKrypinContent() {
     }
 
     if (targetId === viewerId) {
-       const { data: pendingData } = await supabase.from('friendships').select('user_id_1, user_id_2, action_user_id').or(`user_id_1.eq.${targetId},user_id_2.eq.${targetId}`).eq('status', 'pending');
+       const { data: pendingData } = await supabase.from('friendships').select('user_id_1, user_id_2, action_user_id, status').or(`user_id_1.eq.${targetId},user_id_2.eq.${targetId}`).eq('status', 'pending');
        if (pendingData) {
-         const reqIds = pendingData.filter(f => f.action_user_id !== targetId).map(f => f.action_user_id);
+         // Filter out requests that are NO LONGER pending (status should be checked)
+         // and only show those where the OTHER person is the action_user.
+         const reqIds = pendingData
+           .filter(f => f.status === 'pending' && f.action_user_id !== targetId)
+           .map(f => f.action_user_id);
+           
          if (reqIds.length > 0) {
             const { data: reqProfs } = await supabase.from('profiles').select('id, username, avatar_url').in('id', reqIds);
             if (reqProfs) setPendingRequests(reqProfs);
          } else {
             setPendingRequests([]);
          }
+       } else {
+          setPendingRequests([]);
        }
        setHasSentRequest(false);
     } else {
@@ -695,12 +703,13 @@ function MittKrypinContent() {
       
       if (error) throw error;
 
+      // IMMEDIATE UI CLEANUP - Remove the friend from pending list manually
       setPendingRequests(prev => prev.filter(req => req.id !== friendId));
       
       // SQL TRIGGER SKÖTER NOTISEN NU!
       
       setCustomAlert("Vänförfrågan accepterad!");
-      fetchFriends(currentUser.id, viewerUser.id);
+      await fetchFriends(currentUser.id, viewerUser.id);
     } catch (err) {
       console.error("Error accepting friend request:", err);
     } finally {
@@ -725,7 +734,7 @@ function MittKrypinContent() {
       if (error) throw error;
       
       setCustomAlert("Vänförfrågan borttagen.");
-      fetchFriends(currentUser.id, viewerUser.id);
+      await fetchFriends(currentUser.id, viewerUser.id);
     } catch (err) {
       console.error("Error denying friend request:", err);
       fetchFriends(currentUser.id, viewerUser.id);

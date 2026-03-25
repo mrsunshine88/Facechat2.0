@@ -1746,6 +1746,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     { id: 'notifications', title: 'Skräpdata (Gamla Notiser > 30d)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'reports', title: 'Ignorerade Anmälningar (> 7d)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'avatars', title: 'Profilbilder (Trasiga Länkar)', status: 'idle', message: 'Väntar på diagnos...' },
+    { id: 'friendships', title: 'Social Hälsa (Vänskap)', status: 'idle', message: 'Väntar på diagnos...' },
   ]);
 
   const runDiagnostics = async () => {
@@ -1845,6 +1846,14 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Fixade ${totalAvIssues} trasiga avatar-länkar.`);
         runDiagnostics();
       } : undefined
+    } : p));
+
+    // 8. Social Hälsa (Dubbla vänskaps-rader)
+    const { data: friendFixData, error: friendFixError } = await supabase.rpc('fix_duplicate_friendships');
+    setResults(prev => prev.map(p => p.id === 'friendships' ? {
+       ...p,
+       status: friendFixError ? 'ok' : (friendFixData > 0 ? 'warning' : 'ok'),
+       message: friendFixError ? `Kunde inte skanna vänskaper (RPC saknas). Men de flesta raderas via triggers.` : (friendFixData > 0 ? `Löst: Städade bort ${friendFixData} hängda vänförfrågningar som krockade med existerande vänner.` : '✅ Inga hängda eller dubbla vänförfrågningar hittades.')
     } : p));
 
     // 8. KÖR DEEP SCAN (Server Actions för resten av systemet)
