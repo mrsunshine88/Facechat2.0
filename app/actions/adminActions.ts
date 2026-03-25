@@ -57,6 +57,15 @@ export async function adminDeleteContent(table: string, id: string, requestingUs
 export async function adminResolveReport(reportId: string, status: string, requestingUserId: string) {
   try {
     await verifyAdminPermission(requestingUserId, 'perm_content');
+    const { data: profile } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', requestingUserId).single();
+    const isRoot = profile?.auth_email === 'apersson508@gmail.com';
+
+    // Kolla om anmälningen rör admin själv (jäv)
+    const { data: report } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).single();
+    if (report && report.reported_user_id === requestingUserId && !isRoot) {
+      throw new Error('Jäv: Du kan inte hantera anmälningar som rör dig själv.');
+    }
+
     const { error } = await supabaseAdmin.from('reports').update({ status }).eq('id', reportId);
     if (error) throw error;
     return { success: true };

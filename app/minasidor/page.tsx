@@ -138,7 +138,24 @@ export default function MinaSidor() {
         const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
         if (data) setMyTickets(data);
       };
+      
       fetchMyTickets();
+
+      // Realtime listener for my tickets
+      const channel = supabase.channel(`user-support-${currentUser.id}`)
+        .on('postgres_changes', { 
+           event: '*', 
+           schema: 'public', 
+           table: 'support_tickets', 
+           filter: `user_id=eq.${currentUser.id}` 
+        }, () => {
+           fetchMyTickets();
+        })
+        .subscribe();
+
+      return () => {
+        supabase.removeChannel(channel);
+      };
     }
   }, [currentUser?.id, supabase]);
 

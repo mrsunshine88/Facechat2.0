@@ -34,6 +34,7 @@ export default function Forumet() {
     fetchThreads();
     const sub = supabase.channel('real-forum')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => fetchThreads())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => fetchThreads())
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };

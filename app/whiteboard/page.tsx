@@ -5,6 +5,28 @@ import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, Alert
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
+const WhiteboardSkeleton = () => (
+   <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+      {[1, 2, 3].map(i => (
+         <div key={i} className="card skeleton-pulse" style={{ border: '1px solid var(--border-color)', borderRadius: '12px', minHeight: '200px', display: 'flex', flexDirection: 'column', padding: '1.5rem', gap: '1rem' }}>
+            <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
+               <div className="skeleton-pulse" style={{ width: '48px', height: '48px', borderRadius: '50%' }}></div>
+               <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  <div className="skeleton-pulse" style={{ width: '120px', height: '20px' }}></div>
+                  <div className="skeleton-pulse" style={{ width: '80px', height: '15px' }}></div>
+               </div>
+            </div>
+            <div className="skeleton-pulse" style={{ width: '100%', height: '80px', borderRadius: '8px' }}></div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+               <div className="skeleton-pulse" style={{ width: '60px', height: '20px' }}></div>
+               <div className="skeleton-pulse" style={{ width: '60px', height: '20px' }}></div>
+               <div className="skeleton-pulse" style={{ width: '60px', height: '20px' }}></div>
+            </div>
+         </div>
+      ))}
+   </div>
+);
+
 export default function Whiteboard() {
   const router = useRouter()
   const [posts, setPosts] = useState<any[]>([])
@@ -303,7 +325,48 @@ export default function Whiteboard() {
       item_id: reportTarget.id,
       reason: finalReason
     });
-    alert('Din anmälan har skickats till våra moderatorer. Tack!');
+
+    // Notifiera alla administratörer om den nya anmälan!
+    try {
+      const { data: admins } = await supabase.from('profiles').select('id')
+        .or('is_admin.eq.true,perm_content.eq.true');
+      
+      if (admins && admins.length > 0) {
+        // Filtrera bort den person som blir anmäld om den är admin (jäv), 
+        // men låt apersson508@gmail.com alltid få notiser.
+        const filteredAdmins = admins.filter(admin => 
+          admin.id !== reportTarget.reportedUserId || currentUser.auth_email === 'apersson508@gmail.com'
+        );
+
+        if (filteredAdmins.length > 0) {
+          const adminNotifs = filteredAdmins.map(admin => ({
+            receiver_id: admin.id,
+            actor_id: currentUser.id,
+            type: 'report',
+            content: 'har skickat in en ny anmälan.',
+            link: '/admin?tab=reports'
+          }));
+
+          await supabase.from('notifications').insert(adminNotifs);
+
+          // Skicka även push-notiser till admins
+          filteredAdmins.forEach(admin => {
+            fetch('/api/send-push', {
+              method: 'POST', body: JSON.stringify({
+                userId: admin.id,
+                title: 'Ny anmälan inkommen!',
+                message: `${currentUser.username} har gjort en anmälan på Whiteboard.`,
+                url: '/admin?tab=reports'
+              }), headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Misslyckades att notifiera admins från Whiteboard:", notifErr);
+    }
+
+    alert('Din anmälan har skickat till våra moderatorer. Tack!');
     setShowReportModal(false);
     setReportReason('');
     setReportCategory('Spam');
@@ -337,7 +400,7 @@ export default function Whiteboard() {
 
       {/* Flöde */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        {loading && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Bygger ditt unika flöde...</p>}
+        {loading && <WhiteboardSkeleton />}
         {!loading && posts.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Inga inlägg hittades i din nätverksson. Bli den första att skriva något!</p>}
         
         {posts.map(post => {

@@ -5,6 +5,27 @@ import { ArrowLeft, Lock, User, Send, MessageSquare, Trash2, AlertTriangle, Edit
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useParams } from 'next/navigation';
 
+const ForumSkeleton = () => (
+  <div style={{ maxWidth: '900px', margin: '0 auto', padding: '2rem' }}>
+    <div className="skeleton-pulse" style={{ width: '100px', height: '20px', marginBottom: '2rem' }}></div>
+    <div className="card" style={{ padding: '2rem', marginBottom: '2rem' }}>
+      <div className="skeleton-pulse" style={{ width: '300px', height: '30px', marginBottom: '1rem' }}></div>
+      <div className="skeleton-pulse" style={{ width: '100%', height: '100px' }}></div>
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
+      {[1,2,3].map(i => (
+        <div key={i} className="card" style={{ padding: '1.5rem' }}>
+           <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+             <div className="skeleton-pulse" style={{ width: '40px', height: '40px', borderRadius: '50%' }}></div>
+             <div className="skeleton-pulse" style={{ width: '120px', height: '20px' }}></div>
+           </div>
+           <div className="skeleton-pulse" style={{ width: '100%', height: '60px' }}></div>
+        </div>
+      ))}
+    </div>
+  </div>
+);
+
 export default function ForumThread() {
   const router = useRouter();
   const params = useParams();
@@ -44,40 +65,45 @@ export default function ForumThread() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'forum_posts' }, () => fetchData())
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'forum_posts', filter: `thread_id=eq.${threadId}` }, () => fetchData())
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'forum_posts', filter: `thread_id=eq.${threadId}` }, () => fetchData())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'forum_threads', filter: `id=eq.${threadId}` }, () => fetchData())
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
   }, [threadId]);
 
   async function fetchData() {
-    const { data: { user } } = await supabase.auth.getUser();
-    let blockedIds: string[] = [];
-    if (user) {
-       const { data: bData } = await supabase.from('user_blocks').select('*')
-           .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-       if (bData) {
-           const ids = bData.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
-           blockedIds = ids;
-           setBlockedUserIds(ids);
-       }
-    }
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const [blocksRes, threadRes, postsRes] = await Promise.all([
+        user ? supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`) : Promise.resolve({ data: [] }),
+        supabase.from('forum_threads').select('*, profiles(username, alias_name, avatar_url)').eq('id', threadId).single(),
+        supabase.from('forum_posts').select('*, profiles(username, alias_name, avatar_url)').eq('thread_id', threadId).order('created_at', { ascending: true })
+      ]);
 
-    const { data: t } = await supabase.from('forum_threads').select('*, profiles(username, alias_name, avatar_url)').eq('id', threadId).single();
-    if(t) {
-       if (blockedIds.includes(t.author_id)) {
+      let blockedIds: string[] = [];
+      if (user && blocksRes.data) {
+        blockedIds = blocksRes.data.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+        setBlockedUserIds(blockedIds);
+      }
+
+      if (threadRes.data) {
+        if (blockedIds.includes(threadRes.data.author_id)) {
           router.push('/forum');
           return;
-       }
-       setThread(t);
-    }
+        }
+        setThread(threadRes.data);
+      }
 
-    const { data: p } = await supabase.from('forum_posts').select('*, profiles(username, alias_name, avatar_url)').eq('thread_id', threadId).order('created_at', { ascending: true });
-    if(p) {
-       const filtered = p.filter((x: any) => !blockedIds.includes(x.author_id));
-       setPosts(filtered);
+      if (postsRes.data) {
+        const filtered = postsRes.data.filter((p: any) => p.author_id && !blockedIds.includes(p.author_id));
+        setPosts(filtered);
+      }
+    } catch (err) {
+      console.error("Forum fetch error:", err);
+    } finally {
+      setLoading(false);
     }
-    
-    setLoading(false);
   }
 
   const handleReply = async (e: React.FormEvent) => {
@@ -156,6 +182,47 @@ export default function ForumThread() {
       item_id: reportTarget.id,
       reason: finalReason
     });
+
+    // Notifiera alla administratörer!
+    try {
+      const { data: admins } = await supabase.from('profiles').select('id')
+        .or('is_admin.eq.true,perm_content.eq.true');
+      
+      if (admins && admins.length > 0) {
+        // Filtrera bort den person som blir anmäld om den är admin (jäv), 
+        // men låt apersson508@gmail.com alltid få notiser.
+        const filteredAdmins = admins.filter(admin => 
+          admin.id !== reportTarget.reportedUserId || currentUser.auth_email === 'apersson508@gmail.com'
+        );
+
+        if (filteredAdmins.length > 0) {
+          const adminNotifs = filteredAdmins.map(admin => ({
+            receiver_id: admin.id,
+            actor_id: currentUser.id,
+            type: 'report',
+            content: 'har skickat in en ny anmälan.',
+            link: '/admin?tab=reports'
+          }));
+
+          await supabase.from('notifications').insert(adminNotifs);
+
+          // Skicka även push-notiser till admins
+          filteredAdmins.forEach(admin => {
+            fetch('/api/send-push', {
+              method: 'POST', body: JSON.stringify({
+                userId: admin.id,
+                title: 'Ny anmälan inkommen!',
+                message: `${currentUser.username} har anmält något i forumet.`,
+                url: '/admin?tab=reports'
+              }), headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Misslyckades att notifiera admins från Forumet:", notifErr);
+    }
+
     alert('Din anmälan har skickats till våra moderatorer. Tack!');
     setShowReportModal(false);
     setReportReason('');
@@ -163,15 +230,9 @@ export default function ForumThread() {
     setReportTarget(null);
   };
 
-  if (loading) return (
-    <div style={{ paddingBottom: '2rem' }}>
-      <div className="skeleton-pulse" style={{ height: '40px', width: '250px', marginBottom: '1.5rem', borderRadius: '8px' }}></div>
-      <div className="card skeleton-pulse" style={{ height: '200px', marginBottom: '1.5rem' }}></div>
-      <div className="card skeleton-pulse" style={{ height: '150px', marginBottom: '1.5rem' }}></div>
-    </div>
-  );
+  if (loading) return <ForumSkeleton />;
 
-  if (!thread) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}>Hittade inte tråden.</div>;
+  if (!thread) return <div style={{ padding: '2rem', textAlign: 'center' }}>Hittade inte tråden...</div>;
 
   return (
     <div style={{ paddingBottom: '2rem' }}>

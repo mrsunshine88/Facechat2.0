@@ -10,8 +10,25 @@ import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomActio
 export const logAdminAction = async (supabase: any, adminId: string, action: string) => {
   try {
     await supabase.from('admin_logs').insert({ admin_id: adminId, action });
-  } catch(e) {}
+  } catch (e) { }
 };
+
+const AdminSkeleton = () => (
+  <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
+      <div className="skeleton-pulse" style={{ width: '200px', height: '40px', borderRadius: '8px' }}></div>
+      <div className="skeleton-pulse" style={{ width: '100px', height: '40px', borderRadius: '8px' }}></div>
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 3fr', gap: '2rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="skeleton-pulse" style={{ width: '100%', height: '50px', borderRadius: '8px' }}></div>
+        ))}
+      </div>
+      <div className="card skeleton-pulse" style={{ width: '100%', height: '600px', borderRadius: '12px' }}></div>
+    </div>
+  </div>
+);
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -38,6 +55,13 @@ export default function AdminPanel() {
         return;
       }
       setUserProfile({ ...profile, auth_email: user.email });
+
+      // Support for direct links to tabs via ?tab=...
+      const params = new URLSearchParams(window.location.search);
+      const tab = params.get('tab');
+      if (tab) {
+        setActiveTab(tab);
+      }
     }
     checkAuth();
   }, [router, supabase]);
@@ -46,7 +70,7 @@ export default function AdminPanel() {
     if (!userProfile) return;
     const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
     const canManageSupport = isRoot || userProfile.perm_support === true;
-    
+
     if (canManageSupport) {
       const fetchUnread = async () => {
         const { count } = await supabase.from('support_tickets')
@@ -55,14 +79,14 @@ export default function AdminPanel() {
           .eq('has_unread_admin', true);
         if (count !== null) setUnreadSupportCount(count);
       };
-      
+
       fetchUnread();
-      
+
       const sub = supabase.channel('admin-support-alerts')
         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => {
           fetchUnread();
         }).subscribe();
-        
+
       return () => { supabase.removeChannel(sub); };
     }
   }, [userProfile, supabase]);
@@ -72,7 +96,7 @@ export default function AdminPanel() {
     if (userProfile) {
       const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
       const canManageContent = isRoot || userProfile.perm_content === true;
-      
+
       if (canManageContent) {
         const fetchReportsCount = async () => {
           const { count } = await supabase.from('reports')
@@ -80,19 +104,19 @@ export default function AdminPanel() {
             .eq('status', 'open');
           if (count !== null) setUnreadReportsCount(count);
         };
-        
+
         fetchReportsCount();
         const sub = supabase.channel('admin-reports-alerts')
           .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => {
             fetchReportsCount();
           }).subscribe();
-        
+
         return () => { supabase.removeChannel(sub); };
       }
     }
   }, [userProfile, supabase]);
 
-  if (!userProfile) return <div style={{ minHeight: '100vh', backgroundColor: 'var(--bg-color)' }}>Laddar Admin...</div>;
+  if (!userProfile) return <AdminSkeleton />;
 
   const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
   const canManageUsers = isRoot || userProfile.perm_users === true;
@@ -106,24 +130,24 @@ export default function AdminPanel() {
   const canManageChat = isRoot || userProfile.perm_chat === true;
 
   const renderContent = () => {
-    switch(activeTab) {
-      case 'dashboard': return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess/>;
-      case 'users': return canManageUsers ? <AdminUsers supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'reports': return canManageContent ? <AdminReports supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'content': return (canManageContent || canManageChat) ? <AdminContent supabase={supabase} currentUser={userProfile} perms={{ content: canManageContent, chat: canManageChat }} /> : <NoAccess/>;
-      case 'rooms': return canManageRooms ? <AdminRooms supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'support': return canManageSupport ? <AdminSupport supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'permissions': return canManageRoles ? <AdminPermissions supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'blocks': return canManageUsers ? <AdminBlocks supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'logs': return canManageLogs ? <AdminLogs supabase={supabase} /> : <NoAccess/>;
-      case 'diagnostics': return canManageDiagnostics ? <AdminDiagnostics supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      default: return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess/>;
+    switch (activeTab) {
+      case 'dashboard': return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess />;
+      case 'users': return canManageUsers ? <AdminUsers supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'reports': return canManageContent ? <AdminReports supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'content': return (canManageContent || canManageChat) ? <AdminContent supabase={supabase} currentUser={userProfile} perms={{ content: canManageContent, chat: canManageChat }} /> : <NoAccess />;
+      case 'rooms': return canManageRooms ? <AdminRooms supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'support': return canManageSupport ? <AdminSupport supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'permissions': return canManageRoles ? <AdminPermissions supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'blocks': return canManageUsers ? <AdminBlocks supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'logs': return canManageLogs ? <AdminLogs supabase={supabase} /> : <NoAccess />;
+      case 'diagnostics': return canManageDiagnostics ? <AdminDiagnostics supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      default: return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess />;
     }
   };
 
   return (
     <div style={{ display: 'flex', width: '100%', minHeight: 'calc(100vh - 74px)', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', fontFamily: 'Inter, sans-serif' }} className="admin-layout">
-      
+
       {/* Sidebar */}
       <div style={{ width: '280px', minHeight: 'calc(100vh - 74px)', height: 'calc(100vh - 74px)', position: 'sticky', top: '74px', backgroundColor: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }} className="admin-sidebar">
         <div style={{ padding: '2rem 1.5rem', borderBottom: '1px solid var(--border-color)' }}>
@@ -133,81 +157,81 @@ export default function AdminPanel() {
           <p style={{ fontSize: '0.75rem', marginTop: '0.75rem', color: 'var(--text-muted)' }}>Inloggad: {userProfile.username}</p>
           {isRoot && <span style={{ display: 'inline-block', marginTop: '0.5rem', backgroundColor: '#7f1d1d', color: '#fca5a5', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>ROOT-BEHÖRIGHET</span>}
         </div>
-        
+
         <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }} className="admin-sidebar-menu">
-          
+
           <div className="hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
             {canManageStats && (
               <button onClick={() => setActiveTab('dashboard')} className={`admin-nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}>
-                 <Activity size={18} /> Dashboard & Statistik
+                <Activity size={18} /> Dashboard & Statistik
               </button>
             )}
-             {canManageUsers && (
+            {canManageUsers && (
               <button onClick={() => setActiveTab('users')} className={`admin-nav-link ${activeTab === 'users' ? 'active' : ''}`}>
-                 <Users size={18} /> Användare
+                <Users size={18} /> Användare
               </button>
             )}
             {canManageUsers && (
               <button onClick={() => setActiveTab('blocks')} className={`admin-nav-link ${activeTab === 'blocks' ? 'active' : ''}`}>
-                 <ShieldAlert size={18} /> Blockeringar
+                <ShieldAlert size={18} /> Blockeringar
               </button>
             )}
             {canManageContent && (
               <button onClick={() => setActiveTab('reports')} className={`admin-nav-link ${activeTab === 'reports' ? 'active' : ''}`} style={{ justifyContent: 'space-between' }}>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                   <AlertTriangle size={18} /> Anmälningar
-                 </div>
-                 {unreadReportsCount > 0 && (
-                   <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
-                     {unreadReportsCount}
-                   </span>
-                 )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <AlertTriangle size={18} /> Anmälningar
+                </div>
+                {unreadReportsCount > 0 && (
+                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
+                    {unreadReportsCount}
+                  </span>
+                )}
               </button>
             )}
             {(canManageContent || canManageChat) && (
               <button onClick={() => setActiveTab('content')} className={`admin-nav-link ${activeTab === 'content' ? 'active' : ''}`}>
-                 <Database size={18} /> Innehåll & Moderering
+                <Database size={18} /> Innehåll & Moderering
               </button>
             )}
             {canManageRooms && (
               <button onClick={() => setActiveTab('rooms')} className={`admin-nav-link ${activeTab === 'rooms' ? 'active' : ''}`}>
-                 <Terminal size={18} /> Hantera Chattrum
+                <Terminal size={18} /> Hantera Chattrum
               </button>
             )}
             {canManageSupport && (
               <button onClick={() => setActiveTab('support')} className={`admin-nav-link ${activeTab === 'support' ? 'active' : ''}`} style={{ justifyContent: 'space-between' }}>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                   <LifeBuoy size={18} /> Supportärenden
-                 </div>
-                 {unreadSupportCount > 0 && (
-                   <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
-                     {unreadSupportCount}
-                   </span>
-                 )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                  <LifeBuoy size={18} /> Supportärenden
+                </div>
+                {unreadSupportCount > 0 && (
+                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
+                    {unreadSupportCount}
+                  </span>
+                )}
               </button>
             )}
             {canManageRoles && (
               <button onClick={() => setActiveTab('permissions')} className={`admin-nav-link ${activeTab === 'permissions' ? 'active' : ''}`}>
-                 <Shield size={18} /> Behörigheter & Roller
+                <Shield size={18} /> Behörigheter & Roller
               </button>
             )}
             {canManageLogs && (
               <button onClick={() => setActiveTab('logs')} className={`admin-nav-link ${activeTab === 'logs' ? 'active' : ''}`}>
-                 <History size={18} /> Loggar
+                <History size={18} /> Loggar
               </button>
             )}
             {canManageDiagnostics && (
               <button onClick={() => setActiveTab('diagnostics')} className={`admin-nav-link ${activeTab === 'diagnostics' ? 'active' : ''}`} style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                 <Wrench size={18} /> Vårdcentralen
+                <Wrench size={18} /> Vårdcentralen
               </button>
             )}
           </div>
 
           <div className="hide-on-desktop" style={{ width: '100%', marginBottom: '1rem' }}>
-            <select 
-              value={activeTab} 
-              onChange={(e) => setActiveTab(e.target.value)} 
-              className="admin-input" 
+            <select
+              value={activeTab}
+              onChange={(e) => setActiveTab(e.target.value)}
+              className="admin-input"
               style={{ width: '100%', padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
             >
               {canManageStats && <option value="dashboard">Dashboard & Statistik</option>}
@@ -222,7 +246,7 @@ export default function AdminPanel() {
               {canManageDiagnostics && <option value="diagnostics">Vårdcentralen</option>}
             </select>
           </div>
-          
+
         </nav>
         <div className="admin-exit-wrapper" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', zIndex: 10, marginTop: 'auto' }}>
           <button onClick={() => router.push('/')} style={{ width: '100%', padding: '0.75rem', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontWeight: '600', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>
@@ -260,12 +284,16 @@ export default function AdminPanel() {
   );
 }
 
+// Skjut upp definitionen eller flytta ner den - men använd function för hoisting om möjligt, 
+// eller bara flytta den ovanför AdminPanel.
+// Jag flyttar den ovanför AdminPanel för säkerhets skull.
+
 const NoAccess = () => (
-   <div style={{ maxWidth: '600px', margin: '10vh auto', textAlign: 'center', padding: '3rem', backgroundColor: 'var(--bg-card)', borderRadius: '12px', border: '1px dashed #ef4444' }}>
-     <ShieldAlert size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
-     <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '0.5rem' }}>Behörighet saknas</h2>
-     <p style={{ color: 'var(--text-muted)' }}>Ditt Adminkonto har inte tillräckliga rättigheter för att komma åt denna sektion. Kontakta Root-Admin för uppgradering.</p>
-   </div>
+  <div style={{ maxWidth: '600px', margin: '10vh auto', textAlign: 'center', padding: '3rem', backgroundColor: 'var(--bg-card)', borderRadius: '12px', border: '1px dashed #ef4444' }}>
+    <ShieldAlert size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
+    <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-main)', marginBottom: '0.5rem' }}>Behörighet saknas</h2>
+    <p style={{ color: 'var(--text-muted)' }}>Ditt Adminkonto har inte tillräckliga rättigheter för att komma åt denna sektion. Kontakta Root-Admin för uppgradering.</p>
+  </div>
 );
 
 // ==========================================================
@@ -277,31 +305,42 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
 
   useEffect(() => {
     async function loadDash() {
-      // Stats
-      const { count: usersCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true });
-      const { count: wbCount } = await supabase.from('whiteboard').select('*', { count: 'exact', head: true });
-      const { count: gbCount } = await supabase.from('guestbook').select('*', { count: 'exact', head: true });
-      
-      let forumCount = 0;
-      const { count: fCount, error } = await supabase.from('forum_posts').select('*', { count: 'exact', head: true });
-      if (!error) forumCount = fCount || 0;
+      // Dash Stats - Parallelliserade för snabbare laddning!
+      try {
+        const [
+          { count: usersCount },
+          { count: wbCount },
+          { count: gbCount },
+          { count: fCount },
+          { count: ticketsCount },
+          { count: bannedCount },
+          { count: reportsCount },
+          { count: userBlocksCount }
+        ] = await Promise.all([
+          supabase.from('profiles').select('*', { count: 'exact', head: true }),
+          supabase.from('whiteboard').select('*', { count: 'exact', head: true }),
+          supabase.from('guestbook').select('*', { count: 'exact', head: true }),
+          supabase.from('forum_posts').select('*', { count: 'exact', head: true }),
+          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+          supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
+          supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+          supabase.from('user_blocks').select('*', { count: 'exact', head: true })
+        ]);
 
-      const { count: ticketsCount } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open');
-      const { count: bannedCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true);
-      const { count: reportsCount } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open');
-      const { count: userBlocksCount } = await supabase.from('user_blocks').select('*', { count: 'exact', head: true });
-      
-      const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const { count: onlineCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_seen', fifteenMinsAgo);
+        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        const { count: onlineCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_seen', fifteenMinsAgo);
 
-      setStats({ 
-        users: usersCount || 0, 
-        posts: userBlocksCount || 0, // Temporärt återanvänd för att slippa ändra typen för mycket
-        tickets: ticketsCount || 0,
-        online: onlineCount || 0,
-        banned: bannedCount || 0,
-        reports: reportsCount || 0
-      });
+        setStats({
+          users: usersCount || 0,
+          posts: userBlocksCount || 0,
+          tickets: ticketsCount || 0,
+          online: onlineCount || 0,
+          banned: bannedCount || 0,
+          reports: reportsCount || 0
+        });
+      } catch (err) {
+        console.error("Dashboard load error:", err);
+      }
 
       // Senaste inloggade
       const { data } = await supabase.from('profiles')
@@ -326,7 +365,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '2rem', color: 'var(--text-main)' }}>Dashboard & Statistik</h2>
-      
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
         <div className="admin-card">
           <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Totalt antal Användare</h3>
@@ -350,10 +389,10 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
         </div>
         <div className="admin-card" style={{ border: '1px solid #10b981', backgroundColor: '#ecfdf5' }}>
           <h3 style={{ fontSize: '1rem', color: '#047857', marginBottom: '0.5rem' }}>Inloggade just nu</h3>
-          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ width: '12px', height: '12px', backgroundColor: '#10b981', borderRadius: '50%', display: 'inline-block', boxShadow: '0 0 8px #10b981' }}/> {stats.online}</p>
+          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><span style={{ width: '12px', height: '12px', backgroundColor: '#10b981', borderRadius: '50%', display: 'inline-block', boxShadow: '0 0 8px #10b981' }} /> {stats.online}</p>
         </div>
       </div>
-      
+
       <div className="admin-card">
         <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
           Senaste Inloggningar (Realtid)
@@ -375,7 +414,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
                   <tr key={idx} style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: user.is_banned ? '#fef2f2' : 'transparent' }}>
                     <td style={{ padding: '0.75rem', fontWeight: '600', color: 'var(--theme-primary)' }}>{user.username}</td>
                     <td style={{ padding: '0.75rem' }}>{dateObj.toLocaleDateString('sv-SE')}</td>
-                    <td style={{ padding: '0.75rem' }}>{dateObj.toLocaleTimeString('sv-SE', {hour: '2-digit', minute: '2-digit'})}</td>
+                    <td style={{ padding: '0.75rem' }}>{dateObj.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</td>
                     <td style={{ padding: '0.75rem' }}>
                       {user.is_banned ? <span style={{ color: '#ef4444', fontWeight: 'bold' }}>BLOCKERAD</span> : <span style={{ color: '#10b981' }}>Aktiv</span>}
                     </td>
@@ -389,18 +428,18 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
         {/* Mobile List View */}
         <div className="hide-on-desktop" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {latestLogins.map((user, idx) => {
-             const dateObj = new Date(user.last_seen || user.created_at);
-             return (
-               <div key={idx} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: user.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                   <strong style={{ color: 'var(--theme-primary)' }}>{user.username}</strong>
-                   <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{dateObj.toLocaleDateString('sv-SE')} {dateObj.toLocaleTimeString('sv-SE', {hour: '2-digit', minute: '2-digit'})}</span>
-                 </div>
-                 <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
-                   {user.is_banned ? <span style={{ color: '#ef4444' }}>BLOCKERAD</span> : <span style={{ color: '#10b981' }}>Aktiv</span>}
-                 </div>
-               </div>
-             )
+            const dateObj = new Date(user.last_seen || user.created_at);
+            return (
+              <div key={idx} style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: user.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                  <strong style={{ color: 'var(--theme-primary)' }}>{user.username}</strong>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{dateObj.toLocaleDateString('sv-SE')} {dateObj.toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
+                </div>
+                <div style={{ fontSize: '0.875rem', fontWeight: 'bold' }}>
+                  {user.is_banned ? <span style={{ color: '#ef4444' }}>BLOCKERAD</span> : <span style={{ color: '#10b981' }}>Aktiv</span>}
+                </div>
+              </div>
+            )
           })}
         </div>
       </div>
@@ -457,7 +496,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
           id: currentUser.id || 'root-fallback',
           username: currentUser.username || 'apersson508',
           is_admin: true,
-          perm_users: true, perm_content: true, perm_rooms: true, 
+          perm_users: true, perm_content: true, perm_rooms: true,
           perm_support: true, perm_logs: true, perm_roles: true, perm_chat: true,
           perm_diagnostics: true, perm_stats: true
         });
@@ -499,34 +538,34 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
           <button onClick={() => { fetchUsers(search); logAdminAction(supabase, currentUser.id, `Tryckte på SÖK-knappen i Användare (sökterm: "${search}")`); }} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 auto' }}><Search size={18} /> Sök</button>
         </div>
       </div>
-      
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {users.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga användare hittades.</p>}
         {users.map(u => (
           <div key={u.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', flexWrap: 'wrap', gap: '1rem', borderLeft: u.is_banned ? '4px solid #ef4444' : '4px solid transparent', backgroundColor: u.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
             <div className="admin-card-content" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden' }}>
-                {u.avatar_url && <img src={u.avatar_url} alt="av" style={{width:'100%', height:'100%', objectFit:'cover'}} />}
+                {u.avatar_url && <img src={u.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
               </div>
               <div>
                 <p style={{ margin: 0, fontWeight: '700', color: 'var(--text-main)' }}>{u.username} {u.is_admin && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginLeft: '0.5rem' }}>(ADMIN)</span>}</p>
                 <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ort: {u.city || 'Ej angiven'} • Gick med {new Date(u.created_at).toLocaleDateString()}</p>
               </div>
             </div>
-            
+
             <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem' }}>
               {u.is_banned ? (
                 <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <PlayCircle size={14}/> Avblocka
+                  <PlayCircle size={14} /> Avblocka
                 </button>
               ) : (
                 <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Ban size={14}/> Blocka
+                  <Ban size={14} /> Blocka
                 </button>
               )}
-              
+
               <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <Trash2 size={14}/> Radera Konto
+                <Trash2 size={14} /> Radera Konto
               </button>
             </div>
           </div>
@@ -558,30 +597,40 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     const { data, error } = await supabase.from('reports')
       .select('*, reporter:reporter_id(username), reported:reported_user_id(username)')
       .order('created_at', { ascending: false });
-    
+
     if (error) console.error("Error fetching reports:", error);
     if (data) {
-       const enriched = await Promise.all(data.map(async (r: any) => {
-         let contentStr = '';
-         let contentLink = '';
-         
-         if (r.item_type === 'whiteboard') {
-            const { data: p } = await supabase.from('whiteboard').select('content').eq('id', r.item_id).single();
-            if (p) { contentStr = p.content; contentLink = '/whiteboard'; }
-         } else if (r.item_type === 'whiteboard_comment') {
-            const { data: c } = await supabase.from('whiteboard_comments').select('content').eq('id', r.item_id).single();
-            if (c) { contentStr = c.content; contentLink = '/whiteboard'; }
-         } else if (r.item_type === 'guestbook') {
-            const { data: g } = await supabase.from('guestbook').select('content').eq('id', r.item_id).single();
-            if (g) { contentStr = g.content; contentLink = `/krypin?u=${r.reported?.username || ''}`; }
-         } else if (r.item_type === 'forum_post') {
-            const { data: f } = await supabase.from('forum_posts').select('content, thread_id').eq('id', r.item_id).single();
-            if (f) { contentStr = f.content; contentLink = `/forum/${f.thread_id}`; }
-         }
-         
-         return { ...r, reported_content: contentStr, reported_link: contentLink };
-       }));
-       setReports(enriched);
+      // --- JÄVSFILTER (ADMIN-SKYDD) ---
+      // Administratörer ska inte se anmälningar mot sig själva.
+      // Endast apersson508@gmail.com kan se allt.
+      const filteredData = data.filter((r: any) =>
+        r.reported_user_id !== currentUser.id || currentUser.auth_email === 'apersson508@gmail.com'
+      );
+
+      const enriched = await Promise.all(filteredData.map(async (r: any) => {
+        let contentStr = '';
+        let contentLink = '';
+
+        if (r.item_type === 'whiteboard') {
+          const { data: p } = await supabase.from('whiteboard').select('content').eq('id', r.item_id).single();
+          if (p) { contentStr = p.content; contentLink = '/whiteboard'; }
+        } else if (r.item_type === 'whiteboard_comment') {
+          const { data: c } = await supabase.from('whiteboard_comments').select('content').eq('id', r.item_id).single();
+          if (c) { contentStr = c.content; contentLink = '/whiteboard'; }
+        } else if (r.item_type === 'guestbook') {
+          const { data: g } = await supabase.from('guestbook').select('content').eq('id', r.item_id).single();
+          if (g) { contentStr = g.content; contentLink = `/krypin?u=${r.reported?.username || ''}`; }
+        } else if (r.item_type === 'forum_post') {
+          const { data: f } = await supabase.from('forum_posts').select('content, thread_id').eq('id', r.item_id).single();
+          if (f) { contentStr = f.content; contentLink = `/forum/${f.thread_id}`; }
+        } else if (r.item_type === 'profile') {
+          contentStr = `Anmälan av profil: ${r.reported?.username || 'Okänd'}`;
+          contentLink = `/krypin?u=${r.reported?.username || ''}`;
+        }
+
+        return { ...r, reported_content: contentStr, reported_link: contentLink };
+      }));
+      setReports(enriched);
     }
   }
 
@@ -592,7 +641,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
       if (report.item_type === 'guestbook') table = 'guestbook';
       if (report.item_type === 'forum_post') table = 'forum_posts';
       if (report.item_type === 'whiteboard_comment') table = 'whiteboard_comments';
-      
+
       if (table) {
         const res = await adminDeleteContent(table, report.item_id, currentUser.id);
         if (res?.error) return alert('Kunde inte radera: ' + res.error);
@@ -605,11 +654,11 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   const handleBanUser = async (report: any) => {
     if (confirm(`Ska användare ${report.reported?.username || 'Okänd'} bannas globalt från sajten?`)) {
-       const res = await toggleBlockUser(report.reported_user_id, currentUser.id, true);
-       if (res?.error) return alert('Behörighet saknas: ' + res.error);
-       await adminResolveReport(report.id, 'resolved', currentUser.id);
-       await logAdminAction(supabase, currentUser.id, `Bannade användare ${report.reported?.username} pga en anmälan.`);
-       fetchReports();
+      const res = await toggleBlockUser(report.reported_user_id, currentUser.id, true);
+      if (res?.error) return alert('Behörighet saknas: ' + res.error);
+      await adminResolveReport(report.id, 'resolved', currentUser.id);
+      await logAdminAction(supabase, currentUser.id, `Bannade användare ${report.reported?.username} pga en anmälan.`);
+      fetchReports();
     }
   };
 
@@ -631,49 +680,53 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Anmälningar <span style={{ fontSize: '1rem', backgroundColor: '#ef4444', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', verticalAlign: 'middle' }}>{reports.filter(r => r.status === 'open').length}</span></h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Granska anmälningar av Whiteboard-inlägg, Gästböcker och Forum.</p>
-      
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {reports.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga anmälningar hittades. Bra jobbat!</p>}
         {reports.map((report: any) => (
           <div key={report.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${report.status === 'open' ? '#ef4444' : '#10b981'}`, padding: '1rem', opacity: report.status !== 'open' ? 0.6 : 1 }}>
             <div className="admin-card-content" style={{ flex: 1, minWidth: '300px' }}>
-              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '0.25rem', textTransform: 'uppercase' }}>{report.item_type}</p>
+              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: report.item_type === 'profile' ? '#3b82f6' : '#b91c1c', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
+                {report.item_type === 'profile' ? '👤 Person-Anmälan' : `📝 Inläggs-Anmälan (${report.item_type})`}
+              </p>
               <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: '600', color: 'var(--text-main)', marginBottom: '0.5rem' }}>{report.reporter?.username} anmäler {report.reported?.username}</p>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}><strong>Orsak/Kategori:</strong> {report.reason}</p>
-              
+
               {report.reported_content && (
-                 <div style={{ backgroundColor: 'var(--bg-color)', padding: '0.75rem', borderRadius: '6px', borderLeft: '3px solid #f59e0b', margin: '0.5rem 0', fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-main)' }}>
-                   "{report.reported_content}"
-                 </div>
+                <div style={{ backgroundColor: 'var(--bg-color)', padding: '0.75rem', borderRadius: '6px', borderLeft: '3px solid #f59e0b', margin: '0.5rem 0', fontSize: '0.85rem', fontStyle: 'italic', color: 'var(--text-main)' }}>
+                  "{report.reported_content}"
+                </div>
               )}
 
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginTop: '0.5rem' }}>
-                 <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(report.created_at).toLocaleString('sv-SE')}</p>
-                 {report.reported_link && (
-                    <button onClick={() => window.open(report.reported_link, '_blank')} style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '4px', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
-                      <Search size={14}/> Granska inlägget
-                    </button>
-                 )}
+                <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>{new Date(report.created_at).toLocaleString('sv-SE')}</p>
+                {report.reported_link && (
+                  <button onClick={() => window.open(report.reported_link, '_blank')} style={{ background: 'transparent', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '0.75rem', cursor: 'pointer', borderRadius: '4px', padding: '0.25rem 0.5rem', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
+                    <Search size={14} /> {report.item_type === 'profile' ? 'Visa Profil' : 'Granska inlägget'}
+                  </button>
+                )}
               </div>
             </div>
-            
+
             {report.status === 'open' ? (
               <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
-                <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
-                  <Trash2 size={16}/> Radera Inlägg
-                </button>
+                {report.item_type !== 'profile' && (
+                  <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
+                    <Trash2 size={16} /> Radera Inlägg
+                  </button>
+                )}
                 <button onClick={() => handleBanUser(report)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
-                  <Ban size={14}/> Banna {report.reported?.username}
+                  <Ban size={14} /> Banna {report.reported?.username}
                 </button>
                 <button onClick={() => handleDismiss(report.id)} style={{ backgroundColor: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   Avvisa
                 </button>
               </div>
             ) : (
-               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                 <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>Hanterad</span>
-                 <button onClick={() => handleDeleteReportEntry(report.id)} style={{ backgroundColor: '#f9fafb', color: '#ef4444', border: '1px solid #e5e7eb', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Radera Ärende</button>
-               </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>Hanterad</span>
+                <button onClick={() => handleDeleteReportEntry(report.id)} style={{ backgroundColor: '#f9fafb', color: '#ef4444', border: '1px solid #e5e7eb', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Radera Ärende</button>
+              </div>
             )}
           </div>
         ))}
@@ -691,7 +744,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [snakeScores, setSnakeScores] = useState<any[]>([]);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
-  
+
   // Sätt start-vyn till första tillgängliga behörighet
   const [view, setView] = useState(perms.content ? 'whiteboard' : 'chat');
   const [selectedArcadeGame, setSelectedArcadeGame] = useState('all');
@@ -710,7 +763,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
       else if (view === 'snake') fetchSnakeScores();
       else if (view === 'chat') fetchChatMessages();
     };
-    
+
     reloadData();
 
     const tableMap: Record<string, string> = {
@@ -724,7 +777,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
     let tablesToWatch = [tableMap[view]];
     if (view === 'whiteboard') tablesToWatch.push('whiteboard_comments');
 
-    const channels = tablesToWatch.map(t => 
+    const channels = tablesToWatch.map(t =>
       supabase.channel(`admin_content_${t}_${currentUser?.id}`)
         .on('postgres_changes', { event: '*', schema: 'public', table: t }, reloadData)
         .subscribe()
@@ -743,7 +796,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
   async function fetchSnakeScores() {
     let query = supabase.from('snake_scores').select('*, profiles(username)').order('score', { ascending: false }).limit(50);
     if (selectedArcadeGame !== 'all') {
-       query = query.eq('game_id', selectedArcadeGame);
+      query = query.eq('game_id', selectedArcadeGame);
     }
     const { data } = await query;
     if (data) setSnakeScores(data);
@@ -757,10 +810,10 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
   async function fetchPosts() {
     const { data: mainPosts } = await supabase.from('whiteboard').select('*, profiles!whiteboard_author_id_fkey(username)').order('created_at', { ascending: false }).limit(20);
     const { data: comments } = await supabase.from('whiteboard_comments').select('*, profiles(username)').order('created_at', { ascending: false }).limit(20);
-    
+
     const mixed = [
-       ...(mainPosts || []).map((p: any) => ({ ...p, is_comment: false })),
-       ...(comments || []).map((c: any) => ({ ...c, is_comment: true }))
+      ...(mainPosts || []).map((p: any) => ({ ...p, is_comment: false })),
+      ...(comments || []).map((c: any) => ({ ...c, is_comment: true }))
     ];
     mixed.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
     setPosts(mixed.slice(0, 30));
@@ -797,7 +850,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Innehåll & Moderering</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Denna vy låter dig hantera raderingar av poster från plattformen.</p>
-      
+
       {/* Skrivbord - Knappar som radbryts snyggt */}
       <div className="hide-on-mobile" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
         {perms.content && (
@@ -812,13 +865,13 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           <button onClick={() => setView('chat')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'chat' ? '#3b82f6' : 'var(--bg-card)', color: view === 'chat' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Chatten</button>
         )}
       </div>
-      
+
       {/* Mobil - Dropdown */}
       <div className="hide-on-desktop" style={{ marginBottom: '1.5rem', width: '100%' }}>
-        <select 
-          value={view} 
-          onChange={(e) => setView(e.target.value)} 
-          className="admin-input" 
+        <select
+          value={view}
+          onChange={(e) => setView(e.target.value)}
+          className="admin-input"
           style={{ width: '100%', padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
         >
           {perms.content && (
@@ -838,7 +891,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           <div key={`${post.is_comment ? 'c' : 'p'}-${post.id}`} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-whiteboard)', padding: '1rem' }}>
             <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                 {post.profiles?.username || 'Okänd'} {post.is_comment ? '(Kommentar)' : '(Huvudinlägg)'} • {new Date(post.created_at).toLocaleString('sv-SE')}
+                {post.profiles?.username || 'Okänd'} {post.is_comment ? '(Kommentar)' : '(Huvudinlägg)'} • {new Date(post.created_at).toLocaleString('sv-SE')}
               </p>
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
             </div>
@@ -873,9 +926,9 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                 <Trash2 size={16} /> Radera inlägg
               </button>
               {post.forum_threads?.id && (
-                 <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden">
-                   <Trash2 size={16} /> Radera Tråd
-                 </button>
+                <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden">
+                  <Trash2 size={16} /> Radera Tråd
+                </button>
               )}
             </div>
           </div>
@@ -894,72 +947,72 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           </div>
         ))}
         {view === 'snake' && (
-           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-             
-             {/* Dropdown för Arcade */}
-             <div className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <label style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>Filtrera topplista på specifikt spel:</label>
-                <select 
-                  value={selectedArcadeGame} 
-                  onChange={(e) => setSelectedArcadeGame(e.target.value)} 
-                  style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
-                >
-                  <option value="all">Alla Spel (Blandat)</option>
-                  <option value="snake">Retro Snake</option>
-                  <option value="racing">Retro Racing</option>
-                  <option value="breakout">Retro Breakout</option>
-                  <option value="invaders">Astro Invaders</option>
-                  <option value="tetris">Retro Tetris</option>
-                </select>
-             </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
-             <div className="admin-card" style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', textAlign: 'center' }}>
-                <h3 style={{ color: '#ef4444', margin: 0 }}>🚨 FARA: Nollställ {selectedArcadeGame === 'all' ? 'Alla Arkad-Topplistor' : `Topplistan för ${selectedArcadeGame.toUpperCase()}`}</h3>
-                <p style={{ color: '#991b1b', margin: 0, fontSize: '0.875rem' }}>Denna knapp raderar ALLA historiska poäng för {selectedArcadeGame === 'all' ? 'SAMTLIGA ARKADSPEL' : selectedArcadeGame.toUpperCase()} från databasen globalt för alla användare. Kan inte ångras!</p>
-                <button 
-                  onClick={async () => {
-                    const confirmMsg = selectedArcadeGame === 'all' 
-                        ? 'ÄR DU HELT SÄKER? Detta kommer radera HELA topplistan permanent för ALLA spel!' 
-                        : `ÄR DU SÄKER? Detta nollställer topplistan för ${selectedArcadeGame.toUpperCase()}!`;
-                    if (confirm(confirmMsg)) {
-                       const res = await adminDeleteSnakeScore(null, currentUser.id, true, selectedArcadeGame);
-                       if (res?.error) alert('Det gick fel: ' + res.error);
-                       else {
-                         alert(`Arkadens topplistor raderades (${selectedArcadeGame})!`);
-                         await logAdminAction(supabase, currentUser.id, `Nollställde Facechat Arcade Leaderboarden (${selectedArcadeGame})!`);
-                         fetchSnakeScores();
-                       }
+            {/* Dropdown för Arcade */}
+            <div className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>Filtrera topplista på specifikt spel:</label>
+              <select
+                value={selectedArcadeGame}
+                onChange={(e) => setSelectedArcadeGame(e.target.value)}
+                style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
+              >
+                <option value="all">Alla Spel (Blandat)</option>
+                <option value="snake">Retro Snake</option>
+                <option value="racing">Retro Racing</option>
+                <option value="breakout">Retro Breakout</option>
+                <option value="invaders">Astro Invaders</option>
+                <option value="tetris">Retro Tetris</option>
+              </select>
+            </div>
+
+            <div className="admin-card" style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', display: 'flex', flexDirection: 'column', gap: '1rem', alignItems: 'center', textAlign: 'center' }}>
+              <h3 style={{ color: '#ef4444', margin: 0 }}>🚨 FARA: Nollställ {selectedArcadeGame === 'all' ? 'Alla Arkad-Topplistor' : `Topplistan för ${selectedArcadeGame.toUpperCase()}`}</h3>
+              <p style={{ color: '#991b1b', margin: 0, fontSize: '0.875rem' }}>Denna knapp raderar ALLA historiska poäng för {selectedArcadeGame === 'all' ? 'SAMTLIGA ARKADSPEL' : selectedArcadeGame.toUpperCase()} från databasen globalt för alla användare. Kan inte ångras!</p>
+              <button
+                onClick={async () => {
+                  const confirmMsg = selectedArcadeGame === 'all'
+                    ? 'ÄR DU HELT SÄKER? Detta kommer radera HELA topplistan permanent för ALLA spel!'
+                    : `ÄR DU SÄKER? Detta nollställer topplistan för ${selectedArcadeGame.toUpperCase()}!`;
+                  if (confirm(confirmMsg)) {
+                    const res = await adminDeleteSnakeScore(null, currentUser.id, true, selectedArcadeGame);
+                    if (res?.error) alert('Det gick fel: ' + res.error);
+                    else {
+                      alert(`Arkadens topplistor raderades (${selectedArcadeGame})!`);
+                      await logAdminAction(supabase, currentUser.id, `Nollställde Facechat Arcade Leaderboarden (${selectedArcadeGame})!`);
+                      fetchSnakeScores();
                     }
-                  }}
-                  style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: '800', border: 'none', padding: '1rem 2rem', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(239, 68, 68, 0.4)' }}
-                >
-                  🗑️ NOLLSTÄLL {selectedArcadeGame === 'all' ? 'ALLA REKORD' : selectedArcadeGame.toUpperCase()} NU
-                </button>
-             </div>
-             
-             {snakeScores.map((score, index) => (
-               <div key={score.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: index === 0 ? '4px solid #fbbf24' : '4px solid #10b981', padding: '1rem' }}>
-                 <div className="admin-card-content">
-                   <h4 style={{ margin: 0, color: 'var(--text-main)' }}>#{index + 1} - {score.profiles?.username || 'Okänd'} <span style={{ color: '#2563eb', fontSize: '0.8rem' }}>({String(score.game_id || 'snake').toUpperCase()})</span></h4>
-                   <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Spelades: {new Date(score.created_at).toLocaleString('sv-SE')}</p>
-                 </div>
-                 <div className="admin-card-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                   <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10b981' }}>{score.score}</span>
-                   <button onClick={async () => {
-                      if (confirm('Radera just detta rekord?')) {
-                        const res = await adminDeleteSnakeScore(score.id, currentUser.id, false);
-                        if (res?.error) return alert('Kunde inte radera: ' + res.error);
-                        await logAdminAction(supabase, currentUser.id, `Raderade ett fusk-rekord (${score.score} poäng) av ${score.profiles?.username || 'Okänd'}`);
-                        fetchSnakeScores();
-                      }
-                   }} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera rekord">
-                     <Trash2 size={20} />
-                   </button>
-                 </div>
-               </div>
-             ))}
-           </div>
-         )}
+                  }
+                }}
+                style={{ backgroundColor: '#ef4444', color: 'white', fontWeight: '800', border: 'none', padding: '1rem 2rem', borderRadius: '8px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(239, 68, 68, 0.4)' }}
+              >
+                🗑️ NOLLSTÄLL {selectedArcadeGame === 'all' ? 'ALLA REKORD' : selectedArcadeGame.toUpperCase()} NU
+              </button>
+            </div>
+
+            {snakeScores.map((score, index) => (
+              <div key={score.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: index === 0 ? '4px solid #fbbf24' : '4px solid #10b981', padding: '1rem' }}>
+                <div className="admin-card-content">
+                  <h4 style={{ margin: 0, color: 'var(--text-main)' }}>#{index + 1} - {score.profiles?.username || 'Okänd'} <span style={{ color: '#2563eb', fontSize: '0.8rem' }}>({String(score.game_id || 'snake').toUpperCase()})</span></h4>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Spelades: {new Date(score.created_at).toLocaleString('sv-SE')}</p>
+                </div>
+                <div className="admin-card-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                  <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10b981' }}>{score.score}</span>
+                  <button onClick={async () => {
+                    if (confirm('Radera just detta rekord?')) {
+                      const res = await adminDeleteSnakeScore(score.id, currentUser.id, false);
+                      if (res?.error) return alert('Kunde inte radera: ' + res.error);
+                      await logAdminAction(supabase, currentUser.id, `Raderade ett fusk-rekord (${score.score} poäng) av ${score.profiles?.username || 'Okänd'}`);
+                      fetchSnakeScores();
+                    }
+                  }} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera rekord">
+                    <Trash2 size={20} />
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -977,7 +1030,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
   useEffect(() => {
     if (room.allowed_users && room.allowed_users.length > 0) {
       supabase.from('profiles').select('id, username').in('id', room.allowed_users).then(({ data }: any) => {
-         if (data) setMembers(data);
+        if (data) setMembers(data);
       });
     } else {
       setMembers([]);
@@ -988,7 +1041,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
     setSearch(val);
     if (val.length < 2) return setResults([]);
     const { data } = await supabase.from('profiles').select('id, username').ilike('username', `%${val}%`).limit(5);
-    if (data) setResults(data.filter((u:any) => !(room.allowed_users || []).includes(u.id)));
+    if (data) setResults(data.filter((u: any) => !(room.allowed_users || []).includes(u.id)));
   };
 
   const handleAdd = async (userId: string, username: string) => {
@@ -1001,7 +1054,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
   };
 
   const handleRemove = async (userId: string, username: string) => {
-    if(!confirm(`Ta bort  från ${room.name}?`)) return;
+    if (!confirm(`Ta bort  från ${room.name}?`)) return;
     const res = await adminRemoveSecretUserFromRoom(room.id, userId, currentUser.id);
     if (res.error) return alert("Fel: " + res.error);
     await logAdminAction(supabase, currentUser.id, `Tog bort  från hemligt rum "${room.name}"`);
@@ -1009,32 +1062,32 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
   };
 
   return (
-     <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
-        <h5 style={{ margin: '0 0 0.5rem 0', color: '#334155', fontSize: '0.875rem' }}>Bjud in till Hemligt Rum</h5>
-        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-          <input type="text" placeholder="Sök användarnamn..." value={search} onChange={e => handleSearch(e.target.value)} className="admin-input" style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: 'white' }} />
-        </div>
-        {results.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', maxHeight: '150px', overflowY: 'auto' }}>
-            {results.map(su => (
-               <div key={su.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                 <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'black' }}>{su.username}</span>
-                 <button onClick={() => handleAdd(su.id, su.username)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Lägg till</button>
-               </div>
-            ))}
-          </div>
-        )}
-        <h6 style={{ margin: '0 0 0.5rem 0', color: '#64748b' }}>Tillagda Medlemmar ({members.length})</h6>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-          {members.map(m => (
-             <span key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', backgroundColor: '#e2e8f0', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 'bold', color: '#334155' }}>
-               {m.username}
-               <button onClick={() => handleRemove(m.id, m.username)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}><Trash2 size={12} /></button>
-             </span>
+    <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
+      <h5 style={{ margin: '0 0 0.5rem 0', color: '#334155', fontSize: '0.875rem' }}>Bjud in till Hemligt Rum</h5>
+      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+        <input type="text" placeholder="Sök användarnamn..." value={search} onChange={e => handleSearch(e.target.value)} className="admin-input" style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: 'white' }} />
+      </div>
+      {results.length > 0 && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', maxHeight: '150px', overflowY: 'auto' }}>
+          {results.map(su => (
+            <div key={su.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+              <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'black' }}>{su.username}</span>
+              <button onClick={() => handleAdd(su.id, su.username)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Lägg till</button>
+            </div>
           ))}
-          {members.length === 0 && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Inga medlemmar ännu.</span>}
         </div>
-     </div>
+      )}
+      <h6 style={{ margin: '0 0 0.5rem 0', color: '#64748b' }}>Tillagda Medlemmar ({members.length})</h6>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+        {members.map(m => (
+          <span key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', backgroundColor: '#e2e8f0', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 'bold', color: '#334155' }}>
+            {m.username}
+            <button onClick={() => handleRemove(m.id, m.username)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}><Trash2 size={12} /></button>
+          </span>
+        ))}
+        {members.length === 0 && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Inga medlemmar ännu.</span>}
+      </div>
+    </div>
   );
 };
 
@@ -1090,7 +1143,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
       fetchRooms();
     }
   };
-  
+
   const handleRemovePassword = async (id: string, name: string) => {
     if (confirm(`Säker på att du vill ta bort lösenordet för "${name}"?`)) {
       const res = await adminRoomAction('update', id, { password: null }, currentUser.id);
@@ -1114,14 +1167,14 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Hantera Chattrum</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Skapa, redigera och ta bort de centrala chattrummen på sajten.</p>
-      
+
       <form onSubmit={(e) => handleAddRoomEvent(e, false)} className="admin-card" style={{ marginBottom: '2rem', backgroundColor: '#f0fdfa', border: '1px solid #99f6e4' }}>
-        <h3 style={{ fontSize: '1rem', color: '#0f766e', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Plus size={18}/> Lägg till nytt Chattrum (Öppet eller Hemligt)</h3>
+        <h3 style={{ fontSize: '1rem', color: '#0f766e', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Plus size={18} /> Lägg till nytt Chattrum (Öppet eller Hemligt)</h3>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', alignItems: 'stretch' }}>
           <input type="text" value={newRoomName} onChange={e => setNewRoomName(e.target.value)} placeholder="T.ex Nattugglan..." className="admin-input" style={{ flex: '1 1 100%', minWidth: '200px', backgroundColor: 'white' }} />
           <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 auto', flexWrap: 'wrap' }}>
             <button type="button" onClick={(e) => handleAddRoomEvent(e, false)} style={{ backgroundColor: '#0d9488', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', border: 'none', cursor: 'pointer', borderRadius: '8px', flex: '1 1 auto', minWidth: '140px' }}>Skapa Rum</button>
-            <button type="button" onClick={(e) => handleAddRoomEvent(e, true)} style={{ backgroundColor: '#312e81', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', border: 'none', cursor: 'pointer', borderRadius: '8px', flex: '1 1 auto', minWidth: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}><EyeOff size={18}/> Skapa Hemligt Rum</button>
+            <button type="button" onClick={(e) => handleAddRoomEvent(e, true)} style={{ backgroundColor: '#312e81', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', border: 'none', cursor: 'pointer', borderRadius: '8px', flex: '1 1 auto', minWidth: '180px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}><EyeOff size={18} /> Skapa Hemligt Rum</button>
           </div>
         </div>
       </form>
@@ -1136,27 +1189,27 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 </h4>
               </div>
             </div>
-            
+
             <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-               <button onClick={() => handleRename(r.id, r.name)} style={{ flex: 1, backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                 <Edit2 size={14} /> Byt Namn
-               </button>
-               {r.is_secret ? (
-                 <button onClick={() => setActiveSecretRoomId(activeSecretRoomId === r.id ? null : r.id)} style={{ flex: 1, backgroundColor: activeSecretRoomId === r.id ? '#e0e7ff' : '#f8fafc', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                   <UserPlus size={14} /> Hantera Medlemmar
-                 </button>
-               ) : r.password ? (
-                 <button onClick={() => handleRemovePassword(r.id, r.name)} style={{ flex: 1, backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                   <Eraser size={14} /> Ta bort Lösenord
-                 </button>
-               ) : (
-                 <button onClick={() => handleSetPassword(r.id)} style={{ flex: 1, backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
-                   <Lock size={14} /> Sätt Lösenord
-                 </button>
-               )}
-               <button onClick={() => handleDeleteRoom(r.id, r.name)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <Trash2 size={14} /> Radera
-               </button>
+              <button onClick={() => handleRename(r.id, r.name)} style={{ flex: 1, backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                <Edit2 size={14} /> Byt Namn
+              </button>
+              {r.is_secret ? (
+                <button onClick={() => setActiveSecretRoomId(activeSecretRoomId === r.id ? null : r.id)} style={{ flex: 1, backgroundColor: activeSecretRoomId === r.id ? '#e0e7ff' : '#f8fafc', color: '#1d4ed8', border: '1px solid #bfdbfe', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                  <UserPlus size={14} /> Hantera Medlemmar
+                </button>
+              ) : r.password ? (
+                <button onClick={() => handleRemovePassword(r.id, r.name)} style={{ flex: 1, backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                  <Eraser size={14} /> Ta bort Lösenord
+                </button>
+              ) : (
+                <button onClick={() => handleSetPassword(r.id)} style={{ flex: 1, backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
+                  <Lock size={14} /> Sätt Lösenord
+                </button>
+              )}
+              <button onClick={() => handleDeleteRoom(r.id, r.name)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Trash2 size={14} /> Radera
+              </button>
             </div>
             {r.is_secret && activeSecretRoomId === r.id && (
               <SecretRoomMembers room={r} supabase={supabase} currentUser={currentUser} onRefresh={fetchRooms} />
@@ -1173,13 +1226,13 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
 // ==========================================================
 // ==========================================================
 const PermissionCard = ({ icon: Icon, title, desc, checked, onChange, disabled, danger }: any) => (
-  <div 
+  <div
     onClick={() => {
       if (!disabled && onChange) onChange();
     }}
     style={{
       display: 'flex', alignItems: 'flex-start', gap: '1rem',
-      padding: '1rem', borderRadius: '12px', 
+      padding: '1rem', borderRadius: '12px',
       border: checked ? `2px solid ${danger ? '#ef4444' : '#10b981'}` : '1px solid var(--border-color)',
       backgroundColor: checked ? (danger ? '#fef2f2' : '#f0fdf4') : 'var(--bg-card)',
       cursor: disabled ? 'not-allowed' : 'pointer',
@@ -1217,7 +1270,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
       const timer = setTimeout(() => {
         searchUsers(search.trim());
         if (search.trim().length > 2) {
-           logAdminAction(supabase, currentUser.id, `Sökte i Behörigheter efter: "${search.trim()}"`);
+          logAdminAction(supabase, currentUser.id, `Sökte i Behörigheter efter: "${search.trim()}"`);
         }
       }, 400);
       return () => clearTimeout(timer);
@@ -1251,7 +1304,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
           id: currentUser.id || 'root-fallback',
           username: currentUser.username || 'apersson508',
           is_admin: true,
-          perm_users: true, perm_content: true, perm_rooms: true, 
+          perm_users: true, perm_content: true, perm_rooms: true,
           perm_support: true, perm_logs: true, perm_roles: true, perm_chat: true,
           perm_diagnostics: true, perm_stats: true
         });
@@ -1283,17 +1336,17 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
     fetchAdmins();
   };
 
-  const handeRemoveAdmin = async (user: any) => {
+  const handleRemoveAdmin = async (user: any) => {
     if (user.id === currentUser.id || user.username?.toLowerCase() === 'apersson508') return alert('Du kan inte ta bort din egen admin-status.');
     if (user.perm_roles && user.is_admin) return alert('Du kan inte ta bort ett Root-konto!');
-    
-    const res = await adminUpdatePermissions(user.id, { 
-      is_admin: false, perm_users: false, perm_content: false, perm_rooms: false, 
+
+    const res = await adminUpdatePermissions(user.id, {
+      is_admin: false, perm_users: false, perm_content: false, perm_rooms: false,
       perm_roles: false, perm_support: false, perm_logs: false, perm_chat: false,
       perm_diagnostics: false, perm_stats: false
     }, currentUser.id);
     if (res?.error) return alert('Fel: ' + res.error);
-    
+
     await logAdminAction(supabase, currentUser.id, `Tog bort Admin-status från ${user.username}`);
     fetchAdmins();
   }
@@ -1301,14 +1354,14 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   const handleTogglePermission = async (user: any, column: string, val: boolean) => {
     // Spara original för att kunna rulla tillbaka vid fel
     const prevState = { ...activeEditAdmin };
-    
+
     // Uppdatera UI omedelbart för snabb känsla
     const updatedUser = { ...user, [column]: val };
     setActiveEditAdmin(updatedUser);
-    
+
     // Skicka till servern
     const res = await adminUpdatePermissions(user.id, { [column]: val }, currentUser.id);
-    
+
     if (res?.error) {
       alert('Kunde inte uppdatera behörighet: ' + res.error);
       setActiveEditAdmin(prevState); // Rulla tillbaka UI
@@ -1323,14 +1376,14 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Behörighet för Ändra Behörigheter</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Här är alla admins uppradade. Du kan även söka fram en användare för att befordra dem.</p>
-      
+
       <div className="admin-card" style={{ marginBottom: '2rem', border: '1px solid #3b82f6', backgroundColor: '#f0f9ff' }}>
         <h3 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', color: '#1e40af' }}>Befordra en Medlem till Admin</h3>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-          <input 
-            type="text" 
-            placeholder="Sök på användarnamn..." 
-            value={search} 
+          <input
+            type="text"
+            placeholder="Sök på användarnamn..."
+            value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="chat-input"
             style={{ flex: '1 1 100%', minWidth: '150px', backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe' }}
@@ -1339,7 +1392,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
             {isLoading ? 'Söker...' : 'Sök Person'}
           </button>
         </div>
-        
+
         {searchResults.length > 0 && (
           <div style={{ marginTop: '1rem', backgroundColor: 'white', borderRadius: '8px', border: '1px solid #bfdbfe', overflow: 'hidden' }}>
             {searchResults.map(user => (
@@ -1356,25 +1409,25 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {admins.map(person => {
-           const isSelf = person.id === currentUser.id;
-           const isRootAccount = person.username?.toLowerCase() === 'apersson508' || (person.is_admin && person.perm_roles);
-           const cannotTouch = isRootAccount || isSelf;
+          const isSelf = person.id === currentUser.id;
+          const isRootAccount = person.username?.toLowerCase() === 'apersson508' || (person.is_admin && person.perm_roles);
+          const cannotTouch = isRootAccount || isSelf;
 
-           return (
+          return (
             <div key={person.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.5rem' }}>
               <div>
                 <h3 style={{ fontSize: '1.25rem', margin: 0, color: 'var(--text-main)' }}>{person.username} {isSelf ? '(Du)' : ''}</h3>
                 <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>{isRootAccount ? 'Root Super-Admin' : 'Administratör'}</p>
               </div>
               <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                <button 
+                <button
                   onClick={() => setActiveEditAdmin(person)}
                   style={{ backgroundColor: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: '600', cursor: 'pointer', flex: '1 1 auto' }}
                 >
                   Ändra Behörigheter
                 </button>
-                <button 
-                  onClick={() => handeRemoveAdmin(person)}
+                <button
+                  onClick={() => handleRemoveAdmin(person)}
                   disabled={cannotTouch}
                   style={{ backgroundColor: cannotTouch ? '#fca5a5' : '#ef4444', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontWeight: '600', cursor: cannotTouch ? 'not-allowed' : 'pointer', opacity: cannotTouch ? 0.7 : 1, flex: '1 1 auto' }}
                   title={cannotTouch ? "Skyddat root-konto" : "Gör till vanlig användare"}
@@ -1383,21 +1436,21 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
                 </button>
               </div>
             </div>
-           )
+          )
         })}
       </div>
 
       {activeEditAdmin && (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '1rem' }} onClick={() => setActiveEditAdmin(null)}>
           <div style={{ backgroundColor: 'var(--bg-card)', padding: '2rem', borderRadius: '16px', width: '100%', maxWidth: '800px', maxHeight: '90vh', overflowY: 'auto', position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-            
+
             <button onClick={() => setActiveEditAdmin(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer', color: 'var(--text-main)' }}>&times;</button>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', color: 'var(--text-main)' }}>Behörigheter för {activeEditAdmin.username}</h2>
-            
+
             {activeEditAdmin.id === currentUser.id || (activeEditAdmin.username?.toLowerCase() === 'apersson508') ? (
-               <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', padding: '1.5rem', borderRadius: '8px', color: '#b91c1c' }}>
-                  Detta konto är ett root-konto och behåller alltid alla underliggande befogenheter. Säkerhetsspärr är aktiv.
-               </div>
+              <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', padding: '1.5rem', borderRadius: '8px', color: '#b91c1c' }}>
+                Detta konto är ett root-konto och behåller alltid alla underliggande befogenheter. Säkerhetsspärr är aktiv.
+              </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
                 <PermissionCard title="Dashboard & Statistik" desc="Åtkomst till statistiska data." icon={Activity} checked={!!activeEditAdmin.perm_stats} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_stats', !activeEditAdmin.perm_stats)} />
@@ -1411,7 +1464,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
                 <PermissionCard title="Super-Admin" desc="Befordra admins & ändra roller." icon={ShieldAlert} checked={!!activeEditAdmin.perm_roles} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_roles', !activeEditAdmin.perm_roles)} danger={true} />
               </div>
             )}
-            
+
           </div>
         </div>
       )}
@@ -1463,7 +1516,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
       if (activeTicketId === id) setActiveTicketId(null);
     }
   };
-  
+
   const handleReply = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!replyText.trim() || !activeTicketId) return;
@@ -1477,13 +1530,13 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     }
 
     const newMsgs = [...currentMsg, { sender: 'admin', text: replyText.trim(), time: new Date().toISOString() }];
-    
-    await supabase.from('support_tickets').update({ 
+
+    await supabase.from('support_tickets').update({
       messages: newMsgs,
       has_unread_user: true,
       has_unread_admin: false
     }).eq('id', activeTicketId);
-    
+
     setReplyText('');
     await logAdminAction(supabase, currentUser.id, `Svarade på supportärende (${activeTicketId})`);
     fetchTickets();
@@ -1502,7 +1555,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Supportärenden</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Klicka på ett ärende för att svara personen direkt i en chatt. Markera som lösta när ni är klara.</p>
-      
+
       {activeTicketId ? (
         <div className="admin-card" style={{ display: 'flex', flexDirection: 'column', height: '600px', padding: 0, overflow: 'hidden' }}>
           {(() => {
@@ -1521,15 +1574,15 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                   </div>
                   <span style={{ backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>{ticket.category}</span>
                 </div>
-                
+
                 <div style={{ flex: 1, overflowY: 'auto', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', backgroundColor: 'var(--bg-color)' }}>
                   {msgs.map((m: any, i: number) => {
                     const isAdminMsg = m.sender === 'admin';
                     return (
                       <div key={i} style={{ alignSelf: isAdminMsg ? 'flex-end' : 'flex-start', maxWidth: '80%', display: 'flex', flexDirection: 'column' }}>
-                        <div style={{ 
-                          padding: '1rem', borderRadius: '12px', 
-                          backgroundColor: isAdminMsg ? 'var(--theme-primary)' : 'var(--bg-card)', 
+                        <div style={{
+                          padding: '1rem', borderRadius: '12px',
+                          backgroundColor: isAdminMsg ? 'var(--theme-primary)' : 'var(--bg-card)',
                           color: isAdminMsg ? 'white' : 'var(--text-main)',
                           border: isAdminMsg ? 'none' : '1px solid var(--border-color)',
                           borderBottomRightRadius: isAdminMsg ? '2px' : '12px',
@@ -1545,12 +1598,12 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                     )
                   })}
                 </div>
-                
+
                 {ticket.status === 'open' ? (
                   <form onSubmit={handleReply} style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', gap: '1rem' }}>
                     <input type="text" value={replyText} onChange={e => setReplyText(e.target.value)} placeholder="Skriv ditt adminsvar..." style={{ flex: 1, padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }} />
                     <button type="submit" style={{ backgroundColor: '#2563eb', color: 'white', fontWeight: '600', padding: '0 1.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Skicka Svar</button>
-                    <button type="button" onClick={(e) => markResolved(ticket.id, e)} style={{ backgroundColor: '#10b981', color: 'white', fontWeight: '600', padding: '0 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={18}/> Lös</button>
+                    <button type="button" onClick={(e) => markResolved(ticket.id, e)} style={{ backgroundColor: '#10b981', color: 'white', fontWeight: '600', padding: '0 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><CheckCircle size={18} /> Lös</button>
                   </form>
                 ) : (
                   <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: '#ecfdf5', color: '#059669', fontWeight: 'bold', borderTop: '1px solid #10b981' }}>Ärendet är stängt pga löst.</div>
@@ -1565,13 +1618,13 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
           {tickets.map(ticket => {
             const isUnread = ticket.has_unread_admin === true;
             return (
-              <div 
-                key={ticket.id} 
+              <div
+                key={ticket.id}
                 onClick={() => { setActiveTicketId(ticket.id); markAsRead(ticket.id); }}
-                className="admin-card admin-responsive-card" 
-                style={{ 
-                  display: 'flex', flexDirection: 'column', gap: '1rem', 
-                  borderLeft: `4px solid ${ticket.category.includes('Bug') ? '#ef4444' : ticket.category.includes('Anm') ? '#f59e0b' : '#3b82f6'}`, 
+                className="admin-card admin-responsive-card"
+                style={{
+                  display: 'flex', flexDirection: 'column', gap: '1rem',
+                  borderLeft: `4px solid ${ticket.category.includes('Bug') ? '#ef4444' : ticket.category.includes('Anm') ? '#f59e0b' : '#3b82f6'}`,
                   opacity: ticket.status === 'closed' ? 0.6 : 1,
                   cursor: 'pointer',
                   backgroundColor: isUnread ? '#fffbeb' : 'var(--bg-card)',
@@ -1590,17 +1643,17 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                   <p style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: '500', margin: '1rem 0 0.5rem 0' }}>"{ticket.description}"</p>
                 </div>
                 <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                   <span style={{ fontSize: '0.875rem', color: '#3b82f6', fontWeight: 'bold' }}>{ticket.messages && ticket.messages.length > 0 ? `${ticket.messages.length} meddelanden` : 'Nytt ärende'} &rarr;</span>
-                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                     {ticket.status === 'open' && (
-                       <button onClick={(e) => markResolved(ticket.id, e)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.75rem' }}>
-                         <CheckCircle size={14} /> Markera Löst
-                       </button>
-                     )}
-                     <button onClick={(e) => handleDeleteTicket(ticket.id, e)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.75rem' }}>
-                       <Trash2 size={14} /> Radera
-                     </button>
-                   </div>
+                  <span style={{ fontSize: '0.875rem', color: '#3b82f6', fontWeight: 'bold' }}>{ticket.messages && ticket.messages.length > 0 ? `${ticket.messages.length} meddelanden` : 'Nytt ärende'} &rarr;</span>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    {ticket.status === 'open' && (
+                      <button onClick={(e) => markResolved(ticket.id, e)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.75rem' }}>
+                        <CheckCircle size={14} /> Markera Löst
+                      </button>
+                    )}
+                    <button onClick={(e) => handleDeleteTicket(ticket.id, e)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.75rem' }}>
+                      <Trash2 size={14} /> Radera
+                    </button>
+                  </div>
                 </div>
               </div>
             )
@@ -1616,7 +1669,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
 // ==========================================================
 const AdminLogs = ({ supabase }: { supabase: any }) => {
   const [logs, setLogs] = useState<any[]>([]);
-  
+
   useEffect(() => {
     async function fetchLogs() {
       const { data } = await supabase.from('admin_logs')
@@ -1640,7 +1693,7 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Granskningslogg</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Övervakar varenda exakt handling alla admins utför på sajten.</p>
-      
+
       <div className="admin-card" style={{ padding: '0', overflowX: 'auto' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
@@ -1751,9 +1804,9 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       status: notifErr ? 'warning' : ((notifCount !== null && notifCount > 0) ? 'warning' : 'ok'),
       message: notifErr ? `Fel vid sökning av notiser.` : ((notifCount !== null && notifCount > 0) ? `Hittade ${notifCount} gamla notiser som drar minne i databasen.` : '✅ Inga onödiga urgamla notiser i systemet.'),
       fixAction: (notifCount !== null && notifCount > 0) ? async () => {
-         await supabase.from('notifications').delete().lt('created_at', thirtyDaysAgo.toISOString());
-         await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${notifCount} gamla notiser.`);
-         runDiagnostics();
+        await supabase.from('notifications').delete().lt('created_at', thirtyDaysAgo.toISOString());
+        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${notifCount} gamla notiser.`);
+        runDiagnostics();
       } : undefined
     } : p));
 
@@ -1771,16 +1824,16 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     const { count: avCount1 } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).ilike('avatar_url', '%undefined%');
     const { count: avCount2 } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).ilike('avatar_url', '%null%');
     const totalAvIssues = (avCount1 || 0) + (avCount2 || 0);
-    
+
     setResults(prev => prev.map(p => p.id === 'avatars' ? {
       ...p,
       status: totalAvIssues > 0 ? 'warning' : 'ok',
       message: totalAvIssues > 0 ? `Hittade ${totalAvIssues} profiler med formateringsfel i avatar-länken ("undefined").` : '✅ Inga trasiga profilbilds-URL:er hittades.',
       fixAction: totalAvIssues > 0 ? async () => {
-         await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%undefined%');
-         await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%null%');
-         await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Fixade ${totalAvIssues} trasiga avatar-länkar.`);
-         runDiagnostics();
+        await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%undefined%');
+        await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%null%');
+        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Fixade ${totalAvIssues} trasiga avatar-länkar.`);
+        runDiagnostics();
       } : undefined
     } : p));
 
@@ -1788,18 +1841,18 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     const scanRes = await adminRunDeepScan(currentUser.id);
     if (scanRes?.success && scanRes.issues) {
       if (scanRes.issues.length > 0) {
-        const newItems = scanRes.issues.map((iss:any) => ({
+        const newItems = scanRes.issues.map((iss: any) => ({
           id: iss.id,
           title: iss.title,
           status: 'warning' as const,
           message: iss.message,
           fixAction: async () => {
-             const fixRes = await adminFixDeepScanIssue(iss.id, currentUser.id);
-             if (fixRes?.error) alert('Det gick inte att laga: ' + fixRes.error);
-             else {
-               await logAdminAction(supabase, currentUser.id, `Vårdcentralen Deep-Lösning: ${fixRes.message}`);
-               runDiagnostics();
-             }
+            const fixRes = await adminFixDeepScanIssue(iss.id, currentUser.id);
+            if (fixRes?.error) alert('Det gick inte att laga: ' + fixRes.error);
+            else {
+              await logAdminAction(supabase, currentUser.id, `Vårdcentralen Deep-Lösning: ${fixRes.message}`);
+              runDiagnostics();
+            }
           }
         }));
         // Merge the dynamically found issues into the UI status list
@@ -1821,13 +1874,13 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   const handleWipeCss = async () => {
     if (!cssWipeTarget.trim()) return;
     if (confirm(`Säkerhetsvarning: Vill du verkligen nollställa all CSS-design för ${cssWipeTarget}?`)) {
-       const { error } = await supabase.from('profiles').update({ custom_style: null }).ilike('username', cssWipeTarget.trim());
-       if (error) alert("Ett fel uppstod: " + error.message);
-       else {
-         alert(`Designen för ${cssWipeTarget} var nollställd.`);
-         await logAdminAction(supabase, currentUser.id, `Nollställde CSS-design för användare ${cssWipeTarget}`);
-         setCssWipeTarget('');
-       }
+      const { error } = await supabase.from('profiles').update({ custom_style: null }).ilike('username', cssWipeTarget.trim());
+      if (error) alert("Ett fel uppstod: " + error.message);
+      else {
+        alert(`Designen för ${cssWipeTarget} var nollställd.`);
+        await logAdminAction(supabase, currentUser.id, `Nollställde CSS-design för användare ${cssWipeTarget}`);
+        setCssWipeTarget('');
+      }
     }
   };
 
@@ -1836,17 +1889,18 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       alert("Ange minst 3 tecken för att mass-radera.");
       return;
     }
-    
-    if (confirm(`VARNING: Detta kommer radera ALLA inlägg (Whiteboard, Forum, Gästbok) som innehåller texten "${massDeleteQuery}". Är du helt säker?`)) {
+
+    if (confirm(`VARNING: Detta kommer radera ALLA inlägg (Whiteboard, Forum, Gästbok, Chatten) som innehåller texten "${massDeleteQuery}". Är du helt säker?`)) {
       setMassDeleting(true);
       try {
         const query = `%${massDeleteQuery.trim()}%`;
-        
+
         const { error: wError } = await supabase.from('whiteboard').delete().ilike('content', query);
         const { error: fError } = await supabase.from('forum_posts').delete().ilike('content', query);
         const { error: gError } = await supabase.from('guestbook').delete().ilike('content', query);
+        const { error: cError } = await supabase.from('chat_messages').delete().ilike('content', query);
 
-        if (wError || fError || gError) {
+        if (wError || fError || gError || cError) {
           alert("Ett fel uppstod vid mass-radering. Vissa inlägg kan ha raderats.");
         } else {
           alert(`Mass-radering slutförd! Alla inlägg med "${massDeleteQuery}" är borta.`);
@@ -1868,8 +1922,8 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
           <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Wrench size={24} /> Vårdcentralen</h2>
           <p style={{ color: '#047857', margin: '0.25rem 0 0 0', fontSize: '0.875rem', fontWeight: '500' }}>Kör en fullständig Deep Scan för att spåra upp fel och lappa ihop trasiga fält automatiskt.</p>
         </div>
-        <button 
-          onClick={runDiagnostics} 
+        <button
+          onClick={runDiagnostics}
           disabled={running}
           style={{ backgroundColor: running ? '#d1d5db' : '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.75rem', borderRadius: '8px', fontSize: '1rem', fontWeight: '800', cursor: running ? 'not-allowed' : 'pointer', boxShadow: '0 4px 6px rgba(239,68,68,0.3)', transition: 'all 0.2s', alignSelf: 'center' }}
         >
@@ -1879,41 +1933,41 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
       <div style={{ display: 'grid', gap: '0.75rem' }}>
         {results.map(res => {
-           let bgColor = 'var(--bg-card)';
-           let borderColor = 'var(--border-color)';
-           let badge = '💤';
-           if (res.status === 'ok') { bgColor = '#f0fdf4'; borderColor = '#10b981'; badge = '✅'; }
-           if (res.status === 'warning') { bgColor = '#fffbeb'; borderColor = '#f59e0b'; badge = '⚠️'; }
-           if (res.status === 'running') { bgColor = '#eff6ff'; badge = '⏳'; }
+          let bgColor = 'var(--bg-card)';
+          let borderColor = 'var(--border-color)';
+          let badge = '💤';
+          if (res.status === 'ok') { bgColor = '#f0fdf4'; borderColor = '#10b981'; badge = '✅'; }
+          if (res.status === 'warning') { bgColor = '#fffbeb'; borderColor = '#f59e0b'; badge = '⚠️'; }
+          if (res.status === 'running') { bgColor = '#eff6ff'; badge = '⏳'; }
 
-           return (
-             <div key={res.id} className="admin-card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderLeft: `6px solid ${borderColor}`, backgroundColor: bgColor, transition: 'all 0.3s' }}>
-                <div style={{ fontSize: '1.75rem' }}>{badge}</div>
-                <div style={{ flex: 1 }}>
-                   <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: '700' }}>{res.title}</h3>
-                   <p style={{ margin: '0.125rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: '500' }}>{res.message}</p>
-                </div>
-                {res.status === 'warning' && !res.message.includes('Löst:') && !res.message.includes('Fel:') && (
-                  <button onClick={res.fixAction} disabled={!res.fixAction} style={{ backgroundColor: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: res.fixAction ? 'pointer' : 'not-allowed', opacity: res.fixAction ? 1 : 0.5 }}>Fixa Auto</button>
-                )}
-             </div>
-           );
+          return (
+            <div key={res.id} className="admin-card" style={{ display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem 1.25rem', borderLeft: `6px solid ${borderColor}`, backgroundColor: bgColor, transition: 'all 0.3s' }}>
+              <div style={{ fontSize: '1.75rem' }}>{badge}</div>
+              <div style={{ flex: 1 }}>
+                <h3 style={{ margin: 0, fontSize: '1rem', color: 'var(--text-main)', fontWeight: '700' }}>{res.title}</h3>
+                <p style={{ margin: '0.125rem 0 0 0', color: 'var(--text-muted)', fontSize: '0.875rem', fontWeight: '500' }}>{res.message}</p>
+              </div>
+              {res.status === 'warning' && !res.message.includes('Löst:') && !res.message.includes('Fel:') && (
+                <button onClick={res.fixAction} disabled={!res.fixAction} style={{ backgroundColor: '#fef3c7', color: '#d97706', border: '1px solid #fcd34d', padding: '0.4rem 1rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: res.fixAction ? 'pointer' : 'not-allowed', opacity: res.fixAction ? 1 : 0.5 }}>Fixa Auto</button>
+              )}
+            </div>
+          );
         })}
       </div>
 
       <div style={{ marginTop: '2rem', display: 'grid', gap: '1rem' }}>
         <div className="admin-card" style={{ padding: '1.5rem', borderTop: '4px solid #ef4444' }}>
-          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Trash2 size={20}/> Akut Mass-radera Spam</h3>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Sök upp och radera ALLA inlägg som innehåller ett visst ord eller länk (Whiteboard, Forum, Gästbok).</p>
+          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Trash2 size={20} /> Akut Mass-radera Spam</h3>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Sök upp och radera ALLA inlägg som innehåller ett visst ord eller länk (Whiteboard, Forum, Gästbok, Chatten).</p>
           <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <input 
-              type="text" 
-              placeholder="Exempel: bit.ly/spam-link" 
+            <input
+              type="text"
+              placeholder="Exempel: bit.ly/spam-link"
               value={massDeleteQuery}
               onChange={e => setMassDeleteQuery(e.target.value)}
               style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }}
             />
-            <button 
+            <button
               onClick={handleMassDelete}
               disabled={massDeleting}
               style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
@@ -1924,18 +1978,18 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         </div>
 
         <div className="admin-card" style={{ padding: '1.5rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
-          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Eraser size={20}/> Nollställ Profil-design</h3>
+          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Eraser size={20} /> Nollställ Profil-design</h3>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Om en användare har förstört sitt krypin med dålig CSS kan du rensa den här genom att ange användarnamnet.</p>
           <div style={{ display: 'flex', gap: '1rem' }}>
-            <input 
-              type="text" 
-              placeholder="Fyll i användarnamn (@ behövs ej)..." 
-              value={cssWipeTarget} 
+            <input
+              type="text"
+              placeholder="Fyll i användarnamn (@ behövs ej)..."
+              value={cssWipeTarget}
               onChange={(e) => setCssWipeTarget(e.target.value)}
-              className="chat-input" 
-              style={{ flex: 1, backgroundColor: 'white', border: '1px solid #fca5a5', padding: '0.75rem', borderRadius: '8px', outline: 'none' }} 
+              className="chat-input"
+              style={{ flex: 1, backgroundColor: 'white', border: '1px solid #fca5a5', padding: '0.75rem', borderRadius: '8px', outline: 'none' }}
             />
-            <button 
+            <button
               onClick={handleWipeCss}
               style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
             >
@@ -1990,7 +2044,7 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
         .from('profiles')
         .select('id')
         .ilike('username', `%${term}%`);
-      
+
       const matchedIds = matchedProfiles?.map((p: any) => p.id) || [];
       if (matchedIds.length > 0) {
         // Vi söker efter rader där antingen blockeraren eller den blockade matchar ID:t
@@ -2020,18 +2074,18 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Blockeringar</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Överblicka vem som har blockerat vem på plattformen. Sök på ett namn för att se vem som blockerat den personen.</p>
-      
+
       <div className="admin-card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <div style={{ position: 'relative', flex: '1 1 auto' }}>
             <Search size={18} style={{ position: 'absolute', left: '1rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text" 
-              value={search} 
-              onChange={e => { setSearch(e.target.value); fetchBlocks(e.target.value); }} 
-              placeholder="Sök på den blockade användaren (t.ex. kalle)..." 
-              className="admin-input" 
-              style={{ width: '100%', paddingLeft: '3rem' }} 
+            <input
+              type="text"
+              value={search}
+              onChange={e => { setSearch(e.target.value); fetchBlocks(e.target.value); }}
+              placeholder="Sök på den blockade användaren (t.ex. kalle)..."
+              className="admin-input"
+              style={{ width: '100%', paddingLeft: '3rem' }}
             />
           </div>
           <button onClick={() => { fetchBlocks(search); logAdminAction(supabase, currentUser.id, `Tryckte på SÖK-knappen i Blockeringar (sökterm: "${search}")`); }} className="admin-input" style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -2064,11 +2118,11 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
               </div>
             </div>
             <div className="admin-card-actions">
-              <button 
-                onClick={() => handleUnblock(b.blocker_id, b.blocked_id, b.blocker?.username || 'Okänd', b.blocked?.username || 'Okänd')} 
+              <button
+                onClick={() => handleUnblock(b.blocker_id, b.blocked_id, b.blocker?.username || 'Okänd', b.blocked?.username || 'Okänd')}
                 style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.6rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
               >
-                <Eraser size={16}/> Avblockera
+                <Eraser size={16} /> Avblockera
               </button>
             </div>
           </div>

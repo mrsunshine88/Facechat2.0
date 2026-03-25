@@ -140,6 +140,30 @@ const KIDS_NEON_TEXT = [
   { name: 'Ingen Neon', css: 'TARGET { text-shadow: none !important; animation: none !important; }' }
 ];
 
+const KrypinSkeleton = () => (
+   <div style={{ backgroundColor: 'var(--bg-color)', minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
+      <div className="main-content" style={{ display: 'flex', gap: '2rem', padding: '2.5rem 2rem', maxWidth: '1100px', margin: '0 auto', width: '100%' }}>
+         <div style={{ width: '250px', display: 'flex', flexDirection: 'column', gap: '1.5rem', flexShrink: 0 }}>
+            <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+               <div className="skeleton-pulse" style={{ width: '100px', height: '100px', borderRadius: '50%' }}></div>
+               <div className="skeleton-pulse" style={{ width: '150px', height: '20px' }}></div>
+               <div className="skeleton-pulse" style={{ width: '100px', height: '15px' }}></div>
+            </div>
+            <div className="card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+               {[1,2,3,4,5].map(i => <div key={i} className="skeleton-pulse" style={{ width: '100%', height: '40px', borderRadius: '8px' }}></div>)}
+            </div>
+         </div>
+         <div style={{ flex: 1 }}>
+            <div className="card" style={{ minHeight: '600px', padding: '2.5rem' }}>
+               <div className="skeleton-pulse" style={{ width: '200px', height: '30px', marginBottom: '2rem' }}></div>
+               <div className="skeleton-pulse" style={{ width: '100%', height: '150px', marginBottom: '1.5rem', borderRadius: '12px' }}></div>
+               <div className="skeleton-pulse" style={{ width: '100%', height: '300px', borderRadius: '12px' }}></div>
+            </div>
+         </div>
+      </div>
+   </div>
+);
+
 export default function MittKrypin() {
   return (
     <React.Suspense fallback={<div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>Laddar krypin...</div>}>
@@ -249,6 +273,7 @@ function MittKrypinContent() {
     let channel: any;
 
     async function initData() {
+      // Optimerat: Hämta auth först, sen resten parallellt!
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { window.location.href = '/login'; return; }
       
@@ -257,61 +282,62 @@ function MittKrypinContent() {
       const viewer = myProfile || { id: user.id, username: user.email?.split('@')[0], is_admin: isRoot, perm_content: isRoot };
       setViewerUser(viewer);
 
-      let profileToView = null;
-      if (targetUsername) {
-        const { data: targetProfile } = await supabase.from('profiles').select('*').ilike('username', targetUsername).single();
-        profileToView = targetProfile;
-      } else {
-        profileToView = myProfile;
-      }
-      
-      if (!profileToView) {
-        if (!targetUsername) {
-          profileToView = viewer;
-        } else {
-          setCustomAlert('Hittade inte användaren ' + targetUsername);
-          window.location.href = '/krypin';
-          return;
-        }
-      }
-      
-      setCurrentUser(profileToView);
-
-      let blockedMe = false;
+      let profileToView: any = null;
       let iBlocked = false;
-      const bSet = new Set<string>();
-      
-      const { data: allBlocks } = await supabase
-         .from('user_blocks')
-         .select('*')
-         .or(`blocker_id.eq.${viewer.id},blocked_id.eq.${viewer.id}`);
-         
-      if (allBlocks) {
-         allBlocks.forEach((b: any) => {
+      let blockedMe = false;
+
+      try {
+        // Parallell hämta targetProfile och blockeringar
+        const [targetRes, blocksRes] = await Promise.all([
+          targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).single() : Promise.resolve({ data: myProfile }),
+          supabase.from('user_blocks').select('*').or(`blocker_id.eq.${viewer.id},blocked_id.eq.${viewer.id}`)
+        ]);
+
+        profileToView = targetRes.data;
+        if (!profileToView) {
+          if (!targetUsername) {
+            profileToView = viewer;
+          } else {
+            setCustomAlert('Hittade inte användaren ' + targetUsername);
+            window.location.href = '/krypin';
+            return;
+          }
+        }
+        setCurrentUser(profileToView);
+
+        const bSet = new Set<string>();
+        if (blocksRes.data) {
+          blocksRes.data.forEach((b: any) => {
             if (b.blocker_id === viewer.id) bSet.add(b.blocked_id);
             if (b.blocked_id === viewer.id) bSet.add(b.blocker_id);
-         });
-      }
-      setGlobalBlockedIds(bSet);
-
-      if (profileToView.id !== viewer.id) {
-        if (allBlocks) {
-           iBlocked = allBlocks.some((b: any) => b.blocker_id === viewer.id && b.blocked_id === profileToView.id);
-           blockedMe = allBlocks.some((b: any) => b.blocker_id === profileToView.id && b.blocked_id === viewer.id);
-           setIsBlocked(iBlocked);
-           setHasBlockedMe(blockedMe);
-
-           if (iBlocked || blockedMe) {
-              setCustomAlert('Hittade inte användaren ' + (targetUsername || ''));
-              window.location.href = '/krypin';
-              return;
-           }
+          });
         }
+        setGlobalBlockedIds(bSet);
+
+        if (profileToView.id !== viewer.id && blocksRes.data) {
+          iBlocked = blocksRes.data.some((b: any) => b.blocker_id === viewer.id && b.blocked_id === profileToView.id);
+          blockedMe = blocksRes.data.some((b: any) => b.blocker_id === profileToView.id && b.blocked_id === viewer.id);
+          setIsBlocked(iBlocked);
+          setHasBlockedMe(blockedMe);
+
+          if (iBlocked || blockedMe) {
+            setCustomAlert('Hittade inte användaren ' + (targetUsername || ''));
+            window.location.href = '/krypin';
+            return;
+          }
+        }
+
+        // Parallell hämta gästbok, vänner och mejl
+        Promise.all([
+          fetchGuestbook(profileToView.id),
+          fetchFriends(profileToView.id, viewer.id),
+          !targetUsername ? fetchMessages(viewer.id) : Promise.resolve()
+        ]);
+      } catch (err) {
+        console.error("Init data error:", err);
       }
 
-      fetchGuestbook(profileToView.id);
-      fetchFriends(profileToView.id, viewer.id);
-      if (!targetUsername) fetchMessages(profileToView.id); 
+      if (!profileToView) return; 
 
       // Sätt upp realtime listener för Gästboken, Privata Meddelanden och Vänner
       if(channel) supabase.removeChannel(channel);
@@ -332,6 +358,10 @@ function MittKrypinContent() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_1=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
+        // Profiluppdateringar för den som visas
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${profileToView.id}` }, (payload: any) => {
+           setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
+        })
         .subscribe();
       if (profileToView && profileToView.id !== viewer.id && !iBlocked && !blockedMe) {
          await supabase.from('notifications').insert({
@@ -623,7 +653,17 @@ function MittKrypinContent() {
           actor_id: viewerUser.id,
           type: 'friend_request',
           content: 'vill bli din vän.',
-          link: `/krypin?u=${viewerUser.username}&tab=Vänner`
+           link: `/krypin?tab=Vänner`
+       });
+
+       // TRING! Send Web Push Notification to Receiver
+       fetch('/api/send-push', {
+         method: 'POST', body: JSON.stringify({
+           userId: id1 === viewerUser.id ? id2 : id1,
+           title: 'Ny vänförfrågan!',
+           message: `${viewerUser.username} vill bli din vän på Facechat.`,
+           url: `/krypin?tab=Vänner`
+         }), headers: { 'Content-Type': 'application/json' }
        });
     } else {
        setCustomAlert('Ni är redan vänner eller så väntar en förfrågan!');
@@ -804,6 +844,18 @@ function MittKrypinContent() {
   const handleToggleBlock = async () => {
     if (!viewerUser || !currentUser) return;
     
+    // Check if I am an admin (Admins should not block)
+    const isViewerAdmin = viewerUser.is_admin || 
+                     viewerUser.perm_users || 
+                     viewerUser.perm_content || 
+                     viewerUser.perm_rooms || 
+                     viewerUser.perm_roles || 
+                     viewerUser.perm_support || 
+                     viewerUser.perm_logs || 
+                     viewerUser.perm_stats || 
+                     viewerUser.perm_diagnostics || 
+                     viewerUser.perm_chat;
+    
     // Check if target is an admin (Protected)
     const isAdminTarget = currentUser.is_admin || 
                           currentUser.perm_users || 
@@ -816,6 +868,11 @@ function MittKrypinContent() {
                           currentUser.perm_diagnostics || 
                           currentUser.perm_chat;
     
+    if (isViewerAdmin && !isBlocked) {
+      setCustomAlert('Som administratör kan du inte blockera användare personligen. Använd modereringsverktygen i adminpanelen om en användare bryter mot reglerna.');
+      return;
+    }
+
     if (isAdminTarget && !isBlocked) {
       setCustomAlert('Det går inte att blockera en administratör då de måste kunna kommunicera med dig gällande support och regler.');
       return;
@@ -856,6 +913,47 @@ function MittKrypinContent() {
       item_id: reportTarget.id,
       reason: finalReason
     });
+
+    // Notifiera alla administratörer om den nya anmälan så de ser den i klockan!
+    try {
+      const { data: admins } = await supabase.from('profiles').select('id')
+        .or('is_admin.eq.true,perm_content.eq.true');
+      
+      if (admins && admins.length > 0) {
+        // Filtrera bort den person som blir anmäld om den är admin (jäv), 
+        // men låt apersson508@gmail.com alltid få notiser.
+        const filteredAdmins = admins.filter(admin => 
+          admin.id !== reportTarget.reportedUserId || viewerUser.auth_email === 'apersson508@gmail.com'
+        );
+
+        if (filteredAdmins.length > 0) {
+          const adminNotifs = filteredAdmins.map(admin => ({
+            receiver_id: admin.id,
+            actor_id: viewerUser.id,
+            type: 'report',
+            content: 'har skickat in en ny anmälan.',
+            link: '/admin?tab=reports'
+          }));
+
+          await supabase.from('notifications').insert(adminNotifs);
+
+          // Skicka även push-notiser till admins
+          filteredAdmins.forEach(admin => {
+            fetch('/api/send-push', {
+              method: 'POST', body: JSON.stringify({
+                userId: admin.id,
+                title: 'Ny anmälan inkommen!',
+                message: `${viewerUser.username} har anmält ${reportTarget.type === 'profile' ? 'en person' : 'ett inlägg'}.`,
+                url: '/admin?tab=reports'
+              }), headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Misslyckades att notifiera admins:", notifErr);
+    }
+
     setCustomAlert('Din anmälan har skickats till våra moderatorer. Tack för att du hjälper till att hålla Facechat tryggt!');
     setShowReportModal(false);
     setReportReason('');
@@ -954,7 +1052,20 @@ function MittKrypinContent() {
                   currentUser?.perm_stats || 
                   currentUser?.perm_diagnostics || 
                   currentUser?.perm_chat;
+  const isViewerAdmin = viewerUser?.is_admin || 
+                     viewerUser?.perm_users || 
+                     viewerUser?.perm_content || 
+                     viewerUser?.perm_rooms || 
+                     viewerUser?.perm_roles || 
+                     viewerUser?.perm_support || 
+                     viewerUser?.perm_logs || 
+                     viewerUser?.perm_stats || 
+                     viewerUser?.perm_diagnostics || 
+                     viewerUser?.perm_chat;
+
   const adminText = isSuperAdmin ? 'SUPERADMIN' : 'ADMIN';
+
+  if (!currentUser) return <KrypinSkeleton />;
 
   return (
     <>
@@ -1648,9 +1759,11 @@ function MittKrypinContent() {
                           </button>
                         </>
                       )}
-                      <button onClick={handleToggleBlock} style={{ backgroundColor: isBlocked ? '#fca5a5' : '#ef4444', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', flex: '1 1 auto', justifyContent: 'center' }}>
-                        <ShieldAlert size={16} /> {isBlocked ? 'Häv Blockering' : 'Blockera'}
-                      </button>
+                      {(!isViewerAdmin || isBlocked) && (!isAdminLabel || isBlocked) && (
+                        <button onClick={handleToggleBlock} style={{ backgroundColor: isBlocked ? '#fca5a5' : '#ef4444', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', flex: '1 1 auto', justifyContent: 'center' }}>
+                          <ShieldAlert size={16} /> {isBlocked ? 'Häv Blockering' : 'Blockera'}
+                        </button>
+                      )}
                       <button 
                         onClick={() => {
                           setReportTarget({ id: currentUser.id, type: 'profile', reportedUserId: currentUser.id });
@@ -1779,16 +1892,16 @@ function MittKrypinContent() {
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     {pendingRequests.filter(req => !globalBlockedIds.has(req.id)).map((req, i) => (
-                      <div key={i} style={{ padding: '1rem', border: '1px solid #fcd34d', backgroundColor: '#fffbeb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div key={i} style={{ padding: '1rem', border: '1px solid #fcd34d', backgroundColor: '#fffbeb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }} onClick={() => router.push(`?u=${req.username}`)}>
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#fcd34d', overflow: 'hidden' }}>
                               {req.avatar_url && <img src={req.avatar_url} style={{width:'100%', height:'100%', objectFit:'cover'}}/>}
                             </div>
                              <span style={{ fontWeight: 'bold' }}>{req.username} vill bli din vän!</span>
                          </div>
-                         <div style={{ display: 'flex', gap: '0.5rem' }}>
-                            <button onClick={() => handleAcceptRequest(req.id)} style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Acceptera</button>
-                            <button onClick={() => handleDenyRequest(req.id)} style={{ padding: '0.5rem 1rem', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Neka</button>
+                         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                            <button onClick={() => handleAcceptRequest(req.id)} style={{ padding: '0.5rem 1rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', flex: '1 1 auto', minWidth: '100px' }}>Acceptera</button>
+                            <button onClick={() => handleDenyRequest(req.id)} style={{ padding: '0.5rem 1rem', backgroundColor: '#ef4444', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold', flex: '1 1 auto', minWidth: '80px' }}>Neka</button>
                          </div>
                       </div>
                     ))}

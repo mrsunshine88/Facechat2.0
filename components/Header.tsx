@@ -168,13 +168,20 @@ export default function Header() {
          }, 5000);
       }).subscribe();
       
-    // 7. Lyssna på blockeringar
-    const banChannel = supabase.channel('header-profile-ban-' + userProfile.id)
+    // 7. Lyssna på profil-ändringar (Realtime Admin Status)
+    const profileChannel = supabase.channel('header-profile-updates-' + userProfile.id)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userProfile.id}` }, async (payload: any) => {
          if (payload.new.is_banned) {
             await supabase.auth.signOut();
             window.location.href = '/login?error=' + encodeURIComponent('Ditt konto har blivit blockerat av en administratör.');
+            return;
          }
+         
+         // Magiskt: Uppdatera profil-state direkt om admin-status eller behörighet ändras!
+         setUserProfile((prev: any) => ({
+            ...prev,
+            ...payload.new
+         }));
       }).subscribe();
       
     return () => { 
@@ -182,7 +189,7 @@ export default function Header() {
        supabase.removeChannel(supportChannel); 
        supabase.removeChannel(presenceChannel);
        supabase.removeChannel(arcadeChannel);
-       supabase.removeChannel(banChannel);
+       supabase.removeChannel(profileChannel);
     };
   }, [userProfile, supabase])
 
