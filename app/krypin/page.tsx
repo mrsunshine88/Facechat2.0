@@ -357,10 +357,10 @@ function MittKrypinContent() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'private_messages', filter: `sender_id=eq.${viewer.id}` }, () => fetchMessages(viewer.id))
         // Vänskap / Requests (filtrerade på inblandade användare id 1 och 2)
         .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friendships', filter: `user_id_1=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_1=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'friendships', filter: `action_user_id=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
+        // Vänskaps-uppdateringar (INSERT, UPDATE, DELETE)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships', filter: `user_id_1=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships', filter: `user_id_2=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships', filter: `action_user_id=eq.${profileToView.id}` }, () => fetchFriends(profileToView.id, viewer.id))
         // Profiluppdateringar för den som visas
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${profileToView.id}` }, (payload: any) => {
            setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
@@ -697,8 +697,15 @@ function MittKrypinContent() {
       const { data: existingList } = await supabase.from('friendships').select('status').eq('user_id_1', id1).eq('user_id_2', id2).limit(1);
       const existing = existingList && existingList.length > 0 ? existingList[0] : null;
       
-      if (!existing || existing.status !== 'pending') {
-         console.warn("Attempted to accept a non-pending or non-existent request");
+      if (!existing) {
+         setCustomAlert("Hittade inte förfrågan i databasen. Försök ladda om sidan.");
+         setIsProcessingFriendship(false);
+         fetchFriends(currentUser.id, viewerUser.id);
+         return;
+      }
+      
+      if (existing.status !== 'pending') {
+         setCustomAlert("Denna förfrågan är redan hanterad.");
          setIsProcessingFriendship(false);
          fetchFriends(currentUser.id, viewerUser.id);
          return;
