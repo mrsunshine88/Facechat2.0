@@ -378,7 +378,8 @@ function MittKrypinContent() {
       // Hämta hemlig data om det är jag själv, eller publik data om det är nån annan
       if (profileToView) {
          if (profileToView.id === viewer.id) {
-            const { data: sec } = await supabase.from('user_secrets').select('*').eq('user_id', viewer.id).single();
+            const { data: secList } = await supabase.from('user_secrets').select('*').eq('user_id', viewer.id).limit(1);
+            const sec = secList && secList.length > 0 ? secList[0] : null;
             if (sec) {
                setCurrentUser((prev: any) => ({ ...prev, ...sec }));
             }
@@ -447,8 +448,8 @@ function MittKrypinContent() {
          // Inkommande förfrågningar: Jag är inblandad, men jag är INTE action_user_id.
          // VIKTIGT: Filtrera även bort personer som vi REDAN är vänner med (som finns i friendIds)
          const incomingReqIds = pendingData
-           .filter(f => f.action_user_id !== targetId && !friendIds.includes(f.action_user_id))
-           .map(f => f.action_user_id);
+           .filter(f => f.action_user_id !== targetId && !friendIds.includes(f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1))
+           .map(f => f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1);
            
          if (incomingReqIds.length > 0) {
             const { data: reqProfs } = await supabase.from('profiles').select('id, username, avatar_url').in('id', incomingReqIds);
@@ -467,7 +468,8 @@ function MittKrypinContent() {
     } else {
        const id1 = viewerId < targetId ? viewerId : targetId;
        const id2 = viewerId < targetId ? targetId : viewerId;
-       const { data: hasPen } = await supabase.from('friendships').select('status, action_user_id').eq('user_id_1', id1).eq('user_id_2', id2).eq('status', 'pending').maybeSingle();
+        const { data: penList } = await supabase.from('friendships').select('status, action_user_id').eq('user_id_1', id1).eq('user_id_2', id2).eq('status', 'pending').limit(1);
+        const hasPen = penList && penList.length > 0 ? penList[0] : null;
        if (hasPen && hasPen.action_user_id === viewerId) {
           setHasSentRequest(true);
        } else {
@@ -1945,13 +1947,13 @@ function MittKrypinContent() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
               
               {/* Vänförfrågningar (visas bara för min profil) */}
-              {isMyProfile && pendingRequests.filter(req => !globalBlockedIds.has(req.id)).length > 0 && (
+              {isMyProfile && pendingRequests.filter(req => !globalBlockedIds.has(req.id) && !friends.some(f => f.id === req.id)).length > 0 && (
                 <div>
                   <h4 style={{ fontSize: '1.1rem', color: '#f59e0b', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <AlertTriangle size={18} /> Vänförfrågningar ({pendingRequests.filter(req => !globalBlockedIds.has(req.id)).length})
+                    <AlertTriangle size={18} /> Vänförfrågningar ({pendingRequests.filter(req => !globalBlockedIds.has(req.id) && !friends.some(f => f.id === req.id)).length})
                   </h4>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-                    {pendingRequests.filter(req => !globalBlockedIds.has(req.id)).map((req, i) => (
+                    {pendingRequests.filter(req => !globalBlockedIds.has(req.id) && !friends.some(f => f.id === req.id)).map((req, i) => (
                       <div key={i} style={{ padding: '1rem', border: '1px solid #fcd34d', backgroundColor: '#fffbeb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }} onClick={() => router.push(`?u=${req.username}`)}>
                             <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#fcd34d', overflow: 'hidden' }}>
