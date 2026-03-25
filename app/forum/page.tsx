@@ -25,7 +25,8 @@ export default function Forumet() {
     async function fetchUser() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).single();
+        const { data: profList } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1);
+        const profile = profList && profList.length > 0 ? profList[0] : null;
         setCurrentUser(profile);
       }
     }
@@ -64,12 +65,14 @@ export default function Forumet() {
   const handleCreateThread = async (e: React.FormEvent) => {
     e.preventDefault();
     if(!newTitle.trim() || !newContent.trim() || !currentUser) return;
-    const { data: threadData } = await supabase.from('forum_threads').insert({
+    const { data: threadDataList } = await supabase.from('forum_threads').insert({
       author_id: currentUser.id,
       title: newTitle.trim(),
       category: newCategory,
       uses_alias: useAlias
-    }).select().single();
+    }).select().limit(1);
+
+    const threadData = threadDataList && threadDataList.length > 0 ? threadDataList[0] : null;
 
     if (threadData) {
       await supabase.from('forum_posts').insert({

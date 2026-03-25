@@ -49,7 +49,8 @@ export default function AdminPanel() {
         router.push('/');
         return;
       }
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
+      const profile = profList && profList.length > 0 ? profList[0] : null;
       if (!profile?.is_admin && user.email !== 'apersson508@gmail.com') { // Hard fallback
         router.push('/');
         return;

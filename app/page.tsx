@@ -19,7 +19,8 @@ export default function Dashboard() {
     async function getUser() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
+        const { data: profList } = await supabase.from('profiles').select('username').eq('id', user.id).limit(1)
+        const profile = profList && profList.length > 0 ? profList[0] : null
         if (profile?.username) {
           setNickname(profile.username)
         } else if (user.email) {

@@ -45,7 +45,8 @@ function ChattrumContent() {
     async function loadUser() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
+        const profile = profList && profList.length > 0 ? profList[0] : null;
         const fullProfile = { ...profile, auth_email: user.email };
         setCurrentUser(fullProfile);
         return fullProfile;

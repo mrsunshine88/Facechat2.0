@@ -68,11 +68,11 @@ export default function Whiteboard() {
 
     if (user) {
       const [profileRes, blocksRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        supabase.from('profiles').select('*').eq('id', user.id).limit(1),
         supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
       ]);
       
-      currentProfile = profileRes.data;
+      currentProfile = profileRes.data && profileRes.data.length > 0 ? profileRes.data[0] : null;
       setCurrentUser(currentProfile);
       
       if (blocksRes.data) {

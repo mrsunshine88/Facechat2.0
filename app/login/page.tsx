@@ -84,7 +84,8 @@ export default function Login() {
         if (signInError) throw signInError
         
         if (signInData?.user) {
-          const { data: profile } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).single();
+          const { data: profList } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).limit(1);
+          const profile = profList && profList.length > 0 ? profList[0] : null;
           if (profile?.is_banned) {
             await supabase.auth.signOut();
             setError('Ditt konto har blivit blockerat av en administratör.');

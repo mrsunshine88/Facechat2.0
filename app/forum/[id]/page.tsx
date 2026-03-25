@@ -54,7 +54,8 @@ export default function ForumThread() {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).single();
+        const { data: profList } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1);
+        const profile = profList && profList.length > 0 ? profList[0] : null;
         setCurrentUser(profile);
       }
       fetchData();
@@ -77,7 +78,7 @@ export default function ForumThread() {
       
       const [blocksRes, threadRes, postsRes] = await Promise.all([
         user ? supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`) : Promise.resolve({ data: [] }),
-        supabase.from('forum_threads').select('*, profiles(username, alias_name, avatar_url)').eq('id', threadId).single(),
+        supabase.from('forum_threads').select('*, profiles(username, alias_name, avatar_url)').eq('id', threadId).limit(1),
         supabase.from('forum_posts').select('*, profiles(username, alias_name, avatar_url)').eq('thread_id', threadId).order('created_at', { ascending: true })
       ]);
 
@@ -87,8 +88,9 @@ export default function ForumThread() {
         setBlockedUserIds(blockedIds);
       }
 
-      if (threadRes.data) {
-        if (blockedIds.includes(threadRes.data.author_id)) {
+      const thread = threadRes.data && threadRes.data.length > 0 ? threadRes.data[0] : null;
+      if (thread) {
+        if (blockedIds.includes(thread.author_id)) {
           router.push('/forum');
           return;
         }
