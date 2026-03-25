@@ -112,21 +112,33 @@ export default function MinaSidor() {
     async function fetchUser() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-        const { data: secrets } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).maybeSingle();
+        const loadProfile = async () => {
+          const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+          const { data: secrets } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).maybeSingle();
+          
+          if (profile) {
+            setCurrentUser({ ...profile, email: user.email, ...secrets });
+            setNewUsername(profile.username);
+            setShowPhone(secrets?.show_phone || false);
+            setShowAddress(secrets?.show_address || false);
+            setShowZipcode(secrets?.show_zipcode || false);
+            setShowInterests(profile.show_interests || false);
+            setUserInterests(profile.interests || []);
+          } else {
+            setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
+            setNewUsername(user.email?.split('@')[0] || 'Unknown');
+          }
+        };
+
+        await loadProfile();
+
+        // Realtime profile listener
+        const sub = supabase.channel('minasidor-self-update')
+          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => {
+            loadProfile();
+          }).subscribe();
         
-        if (profile) {
-          setCurrentUser({ ...profile, email: user.email, ...secrets });
-          setNewUsername(profile.username);
-          setShowPhone(secrets?.show_phone || false);
-          setShowAddress(secrets?.show_address || false);
-          setShowZipcode(secrets?.show_zipcode || false);
-          setShowInterests(profile.show_interests || false);
-          setUserInterests(profile.interests || []);
-        } else {
-          setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
-          setNewUsername(user.email?.split('@')[0] || 'Unknown');
-        }
+        return () => { supabase.removeChannel(sub); };
       }
     }
     fetchUser();

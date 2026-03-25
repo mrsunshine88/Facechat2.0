@@ -68,7 +68,7 @@ const KIDS_TEXT_COLORS = [
 
 const KIDS_THEMES = [
   { name: 'Nollställ (Rensa allt)', css: '' },
-  { name: 'Ninjago (Eld)', css: '.krypin-layout { background-color: #450a0a; } .card { background-color: #000 !important; color: #fca5a5 !important; border: 2px solid #ef4444 !important; border-radius: 0 !important; } .user-link, h1, h2, h3, p { color: #fecaca !important; } button { background-color: #7f1d1d !important; color: white !important; border: 1px solid #ef4444 !important; border-radius: 0 !important; font-weight: 900; }' },
+  { name: 'Ninjago (Eld)', css: '.krypin-layout { background-color: #450a0a; } .card { background-color: #000 !important; color: #fca5a5 !important; border: 2px solid #ef4444 !important; border-radius: 0 !important; } .user-link, .username-display, h1, h2, h3, p { color: #fecaca !important; } button { background-color: #7f1d1d !important; color: white !important; border: 1px solid #ef4444 !important; border-radius: 0 !important; font-weight: 900; }' },
   { name: 'Subnautica', css: '.krypin-layout { background-color: #083344; background-image: radial-gradient(circle at center, #06b6d4 0%, #083344 100%); } .card { background-color: rgba(15,23,42,0.6) !important; color: #cffafe !important; border: 1px solid #06b6d4 !important; backdrop-filter: blur(5px); } .card h1, .card h2, .card h3, button { color: #22d3ee !important; } button { background-color: rgba(8, 51, 68, 0.8) !important; border: 1px solid #06b6d4 !important; }' },
   { name: 'Rosa Dröm', css: '.krypin-layout { background-color: #fce7f3; } .card { background-color: #fdf2f8 !important; border: 3px dashed #f472b6 !important; border-radius: 20px !important; color: #831843 !important; } button { background-color: #fbcfe8 !important; color: #831843 !important; border: 2px solid #f472b6 !important; border-radius: 999px !important; }' },
   { name: 'Neon Hacker', css: '.krypin-layout { background-color: #000; } .card { background-color: #111 !important; border: 1px solid #0f0 !important; color: #0f0 !important; box-shadow: 0 0 10px #0f0; } .krypin-layout, .krypin-layout * { font-family: "Courier New", monospace !important; } button { background-color: #000 !important; color: #0f0 !important; border: 1px solid #0f0 !important; }' },
@@ -671,39 +671,42 @@ function MittKrypinContent() {
   };
 
   const handleAcceptRequest = async (friendId: string) => {
-    const id1 = viewerUser.id < friendId ? viewerUser.id : friendId;
-    const id2 = viewerUser.id < friendId ? friendId : viewerUser.id;
+    if (!currentUser) return;
+    const id1 = currentUser.id < friendId ? currentUser.id : friendId;
+    const id2 = currentUser.id < friendId ? friendId : currentUser.id;
     await supabase.from('friendships').update({ status: 'accepted' }).eq('user_id_1', id1).eq('user_id_2', id2);
     setPendingRequests(prev => prev.filter(req => req.id !== friendId));
     
     await supabase.from('notifications').insert({
        receiver_id: friendId,
-       actor_id: viewerUser.id,
+       actor_id: currentUser.id,
        type: 'friend_accept',
        content: 'har accepterat din vänförfrågan! Ni är nu vänner.',
-       link: `/krypin?u=${viewerUser.username}&tab=Vänner`
+       link: `/krypin?u=${currentUser.username}&tab=Vänner`
     });
     
-    fetchFriends(viewerUser.id, viewerUser.id);
+    fetchFriends(currentUser.id, viewerUser.id);
   }
 
   const handleDenyRequest = async (friendId: string) => {
-    const id1 = viewerUser.id < friendId ? viewerUser.id : friendId;
-    const id2 = viewerUser.id < friendId ? friendId : viewerUser.id;
+    if (!currentUser) return;
+    const id1 = currentUser.id < friendId ? currentUser.id : friendId;
+    const id2 = currentUser.id < friendId ? friendId : currentUser.id;
     await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
     setPendingRequests(prev => prev.filter(req => req.id !== friendId));
-    fetchFriends(viewerUser.id, viewerUser.id);
+    fetchFriends(currentUser.id, viewerUser.id);
   }
 
   const handleRemoveFriend = async (friendId: string) => {
+    if (!currentUser) return;
     if(!confirm('Är du säker på att du vill ta bort den här personen som vän?')) return;
-    const id1 = viewerUser.id < friendId ? viewerUser.id : friendId;
-    const id2 = viewerUser.id < friendId ? friendId : viewerUser.id;
+    const id1 = currentUser.id < friendId ? currentUser.id : friendId;
+    const id2 = currentUser.id < friendId ? friendId : currentUser.id;
     await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
     
     // Optimistic UI update
     setFriends(prev => prev.filter(f => f.id !== friendId));
-    fetchFriends(viewerUser.id, viewerUser.id);
+    fetchFriends(currentUser.id, viewerUser.id);
   }
 
   const handleCancelRequest = async () => {
@@ -1047,6 +1050,7 @@ function MittKrypinContent() {
                   currentUser?.perm_users || 
                   currentUser?.perm_content || 
                   currentUser?.perm_rooms || 
+                  currentUser?.perm_roles || 
                   currentUser?.perm_support || 
                   currentUser?.perm_logs || 
                   currentUser?.perm_stats || 
@@ -1278,9 +1282,9 @@ function MittKrypinContent() {
                          <h3 style={{ color: '#a78bfa', margin: 0, marginBottom: '1rem', fontSize: '1.25rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                             <Music size={24} /> Bakgrundsmusik (Spelas Automatiskt)
                          </h3>
-                         <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1.5rem' }}>Välj en låt som spelas när andra besöker din profil! (Tips: Välj "Ingen musik" för att stänga av). <strong>Ditt val sparas direkt när du klickar!</strong></p>
+                         <p style={{ color: '#94a3b8', fontSize: '0.85rem', marginBottom: '1.5rem', lineHeight: '1.5' }}>Välj en låt som spelas när andra besöker din profil! (Tips: Välj "Ingen musik" för att stänga av). <strong>Ditt val sparas direkt när du klickar!</strong></p>
                          
-                         {draftSong && (
+                         {draftSong && !isMusicMuted && (
                             <iframe 
                                width="1" height="1" 
                                src={`https://www.youtube.com/embed/${draftSong}?autoplay=1&loop=1&playlist=${draftSong}&controls=0`}

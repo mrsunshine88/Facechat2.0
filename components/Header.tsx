@@ -301,7 +301,7 @@ export default function Header() {
 
         <div className="header-actions" style={{ gap: '0.5rem' }}>
           {/* ARCADE TICKER */}
-          <div onClick={() => router.push('/krypin')} className="hover-lift" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', gap: '0.3rem', backgroundColor: '#064e3b', padding: '0.2rem 0.6rem', borderRadius: '20px', color: '#34d399', fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #10b981', boxShadow: '0 0 10px rgba(16,185,129,0.5)', animation: isTickerBlinking ? 'blinkEffect 0.5s infinite alternate' : 'none', whiteSpace: 'nowrap' }}>
+          <div onClick={() => router.push('/krypin?arcade=true')} className="hover-lift" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', minWidth: '40px', gap: '0.3rem', backgroundColor: '#064e3b', padding: '0.2rem 0.6rem', borderRadius: '20px', color: '#34d399', fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid #10b981', boxShadow: '0 0 10px rgba(16,185,129,0.5)', animation: isTickerBlinking ? 'blinkEffect 0.5s infinite alternate' : 'none', whiteSpace: 'nowrap' }}>
             {arcadeTicker !== null ? (
                <span style={{ display: 'flex', alignItems: 'center', gap: '0.2rem' }}>
                  {arcadeTicker.gameId === 'snake' ? '🐍' : ''}

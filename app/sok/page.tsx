@@ -77,6 +77,33 @@ export default function SokOchSpana() {
           if (bData) {
               setBlockedUserIds(bData.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id));
           }
+
+          // Realtime subscription for friendships
+          const channel = supabase.channel('friendship_changes')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, payload => {
+              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
+                const newFriendship = payload.new as any;
+                if (newFriendship.status === 'accepted' && (newFriendship.user_id_1 === user.id || newFriendship.user_id_2 === user.id)) {
+                  const friendId = newFriendship.user_id_1 === user.id ? newFriendship.user_id_2 : newFriendship.user_id_1;
+                  setFriends(prev => [...prev, friendId]);
+                  setPendingRequests(prev => prev.filter(id => id !== friendId));
+                } else if (newFriendship.status === 'pending' && newFriendship.user_id_2 === user.id) {
+                  setPendingRequests(prev => [...prev, newFriendship.user_id_1]);
+                }
+              } else if (payload.eventType === 'DELETE') {
+                const oldFriendship = payload.old as any;
+                if (oldFriendship && (oldFriendship.user_id_1 === user.id || oldFriendship.user_id_2 === user.id)) {
+                  const friendId = oldFriendship.user_id_1 === user.id ? oldFriendship.user_id_2 : oldFriendship.user_id_1;
+                  setFriends(prev => prev.filter(id => id !== friendId));
+                  setPendingRequests(prev => prev.filter(id => id !== friendId));
+                }
+              }
+            })
+            .subscribe();
+          
+          return () => {
+            supabase.removeChannel(channel);
+          };
       }
       
       let query = supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(40);
@@ -88,7 +115,7 @@ export default function SokOchSpana() {
       if (data) setPeople(data);
     }
     fetchPeople();
-  }, []);
+  }, [viewerId]);
 
   const handleAddFriend = async (e: React.MouseEvent, personId: string) => {
     e.stopPropagation();
@@ -134,6 +161,24 @@ export default function SokOchSpana() {
     } else {
       alert("Ett fel uppstod: " + error.message);
     }
+  };
+
+  const handleRemoveFriend = async (e: React.MouseEvent, personId: string) => {
+    e.stopPropagation();
+    if (!viewerId) return;
+    if (!confirm("Är du säker på att du vill ta bort den här personen som vän?")) return;
+    
+    const { createBrowserClient } = await import('@supabase/ssr');
+    const supabase = createBrowserClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    );
+    
+    const id1 = viewerId < personId ? viewerId : personId;
+    const id2 = viewerId < personId ? personId : viewerId;
+    
+    await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
+    setFriends(friends.filter(f => f !== personId));
   };
 
   return (
@@ -193,22 +238,21 @@ export default function SokOchSpana() {
              const now = new Date();
              return (now.getTime() - lastSeenDate.getTime()) <= 15 * 60 * 1000;
           })
-          .map((person, index) => {
+          .map((person) => {
             const isFriend = friends.includes(person.id);
             const isPending = pendingRequests.includes(person.id);
             const isOnline = person.last_seen ? (new Date().getTime() - new Date(person.last_seen).getTime()) <= 15 * 60 * 1000 : false;
 
             return (
-              <div key={index} className="card" onClick={() => window.location.href = `/krypin?u=${person.username}`} style={{ padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 0, position: 'relative', transition: 'transform 0.2s', cursor: 'pointer' }}>
+              <div key={person.id} className="card" onClick={() => window.location.href = `/krypin?u=${person.username}`} style={{ padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 0, position: 'relative', transition: 'transform 0.2s', cursor: 'pointer' }}>
                 <div title={isOnline ? 'Inloggad just nu' : 'Offline'} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', width: '12px', height: '12px', backgroundColor: isOnline ? '#22c55e' : '#ef4444', borderRadius: '50%', border: '2px solid white' }}></div>
                 <div style={{ width: '90px', height: '90px', borderRadius: '50%', backgroundColor: '#e2e8f0', marginBottom: '1.25rem', overflow: 'hidden' }}>
                   {person.avatar_url && <img src={person.avatar_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="Avatar" />}
                 </div>
                 <h3 className="user-link" style={{ fontSize: '1.125rem', marginBottom: '0.25rem', textAlign: 'center' }}>{person.username || 'Okänd'}</h3>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: '500' }}>📍 {person.city || 'Okänd ort'}</p>
-                
                 {isFriend ? (
-                  <button onClick={(e) => e.stopPropagation()} style={{ width: '100%', backgroundColor: '#f0fdf4', color: '#166534', fontWeight: '600', padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px solid #bbf7d0', cursor: 'default' }}>
+                  <button onClick={(e) => handleRemoveFriend(e, person.id)} style={{ width: '100%', backgroundColor: '#f0fdf4', color: '#166534', fontWeight: '600', padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px solid #bbf7d0', cursor: 'pointer' }} className="hover-lift">
                     <UserPlus size={18} /> ✅ Vänner
                   </button>
                 ) : isPending ? (

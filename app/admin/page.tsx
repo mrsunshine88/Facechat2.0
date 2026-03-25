@@ -62,6 +62,14 @@ export default function AdminPanel() {
       if (tab) {
         setActiveTab(tab);
       }
+
+      // Realtime profile/permission listener (for the logged in admin)
+      const profileSub = supabase.channel('admin-self-update')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, (payload) => {
+          setUserProfile((prev: any) => ({ ...prev, ...payload.new }));
+        }).subscribe();
+      
+      return () => { supabase.removeChannel(profileSub); };
     }
     checkAuth();
   }, [router, supabase]);
