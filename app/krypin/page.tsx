@@ -688,18 +688,16 @@ function MittKrypinContent() {
          return;
       }
 
-      const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('user_id_1', id1).eq('user_id_2', id2);
+      const { error } = await supabase.from('friendships').update({ 
+        status: 'accepted',
+        action_user_id: currentUser.id 
+      }).eq('user_id_1', id1).eq('user_id_2', id2);
+      
       if (error) throw error;
 
       setPendingRequests(prev => prev.filter(req => req.id !== friendId));
       
-      await supabase.from('notifications').insert({
-         receiver_id: friendId,
-         actor_id: currentUser.id,
-         type: 'friend_accept',
-         content: 'har accepterat din vänförfrågan! Ni är nu vänner.',
-         link: `/krypin?u=${currentUser.username}&tab=Vänner`
-      });
+      // SQL TRIGGER SKÖTER NOTISEN NU!
       
       setCustomAlert("Vänförfrågan accepterad!");
       fetchFriends(currentUser.id, viewerUser.id);
@@ -720,7 +718,9 @@ function MittKrypinContent() {
       // Optimistic UI update
       setPendingRequests(prev => prev.filter(req => req.id !== friendId));
       
-      const { error } = await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
+      const { error } = await supabase.from('friendships').delete()
+        .eq('user_id_1', id1)
+        .eq('user_id_2', id2);
       
       if (error) throw error;
       
