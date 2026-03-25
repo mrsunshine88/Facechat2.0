@@ -64,7 +64,7 @@ export default function Forumet() {
 
   const handleCreateThread = async (e: React.FormEvent) => {
     e.preventDefault();
-    if(!newTitle.trim() || !newContent.trim() || !currentUser) return;
+    if(!newTitle.trim() || !currentUser) return;
     const { data: threadDataList } = await supabase.from('forum_threads').insert({
       author_id: currentUser.id,
       title: newTitle.trim(),
@@ -78,12 +78,13 @@ export default function Forumet() {
       await supabase.from('forum_posts').insert({
         thread_id: threadData.id,
         author_id: currentUser.id,
-        content: newContent.trim(),
+        content: newTitle.trim(),
         uses_alias: useAlias
       });
       setShowNewThread(false);
-      setNewTitle(''); setNewContent('');
+      setNewTitle('');
       fetchThreads();
+      router.push(`/forum/${threadData.id}`);
     }
   };
 
@@ -194,12 +195,11 @@ export default function Forumet() {
                   required
                 />
               </div>
-              <textarea 
-                value={newContent} onChange={e => setNewContent(e.target.value)}
-                placeholder="Beskriv ditt ämne här..." 
-                style={{ width: '100%', minHeight: '150px', padding: '0.75rem', borderRadius: '8px', border: '2px solid var(--border-color)', outline: 'none', resize: 'vertical' }}
-                required
-              />
+              
+              <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px dashed var(--border-color)', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+                <p style={{ margin: 0 }}><strong>Tips:</strong> Du behöver bara en vass rubrik för att starta tråden. När tråden är skapad kan du skriva din första kommentar för att ge mer detaljer!</p>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: '500' }}>
                   Du skickar som: <span style={{ color: useAlias ? 'var(--theme-forum)' : 'inherit', fontWeight: 'bold' }}>{useAlias ? (currentUser?.alias_name || 'Stenansikte') : ``}</span>

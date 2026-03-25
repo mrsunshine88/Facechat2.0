@@ -136,7 +136,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
   // ========== DATABASE HIGHSCORE ==========
   const fetchHighScores = async (gameId: string) => {
     setLeaderboardGame(gameId);
-    // För säkerhets skull dubbelkollar vi ifall kolumnen finns (fallback till snake)
     const { data: scores, error } = await supabase
       .from('snake_scores')
       .select(`id, score, created_at, user_id, game_id, profiles ( username, avatar_url )`)
@@ -147,9 +146,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
     if (!error && scores) {
       setTopScores(scores);
     } else {
-       // KANSKE saknas kolumnen? Felhantering om SQL inte körts:
        if (error?.message?.includes("game_id")) {
-           // Fallback för gamla databasen! (Visar enbart generiska Snake scores)
            const { data: oldScores } = await supabase
                .from('snake_scores')
                .select(`id, score, created_at, user_id, profiles ( username, avatar_url )`)
@@ -173,10 +170,9 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
       const s = gameState.current.snake;
       
       if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd', 'Enter', 'Backspace', 'Escape'].includes(e.key)) {
-         // Prevent default only if it's not inside an input field
-         if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
+          if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
             e.preventDefault();
-         }
+          }
       }
       
       if (e.key === 'ArrowUp' || e.key === 'w') { keys.up = true; if(s.dy === 0){ s.nextDx = 0; s.nextDy = -1;} }
@@ -185,7 +181,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
       if (e.key === 'ArrowRight' || e.key === 'd') { keys.right = true; if(s.dx === 0){ s.nextDx = 1; s.nextDy = 0;} }
       if (e.key === ' ' || e.key === 'Enter') { keys.action = true; }
       
-      // TILLBAKA KNAPP (Sudd-knappen eller Esc)
       if (e.key === 'Backspace' || e.key === 'Escape') {
          setIsPlaying(false);
          setIsGameOver(false);
@@ -228,7 +223,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
       setIsPlaying(true);
       setActiveScreen(gameType);
       
-      // Request focus
       if (canvasRef.current) canvasRef.current.focus();
       
       if (gameType === 'snake') {
@@ -247,7 +241,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
           }
           gameState.current.breakout = { paddleX: 8, ballX: 10, ballY: 15, ballDx: 1, ballDy: -1, bricks };
       } else if (gameType === 'invaders') {
-          gameState.current.speed = 40; // High speed scroller
+          gameState.current.speed = 40; 
           let stars = Array.from({length: 30}, () => ({x: Math.random()*20, y: Math.random()*20, s: Math.random()*0.5 + 0.1}));
           gameState.current.invaders = { playerX: 9, bullets: [], enemies: [], stars, fireCooldown: 0, level: 1 };
       } else if (gameType === 'tetris') {
@@ -276,16 +270,14 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
     const oldTopScores = [...topScores];
     const targetGame = gameIdOverwrite || gameState.current.activeGame;
 
-    // Spara i DB. (Om kolumnen game_id inte finns kastar den fel, men vi försöker.)
     const { error } = await supabase.from('snake_scores').insert({
         user_id: viewerUser.id,
         score: finalScore,
-        game_id: targetGame // Endast de som kör SQL-scriptet har denna!
+        game_id: targetGame 
     });
 
     if (!error) {
        await fetchHighScores(targetGame);
-       // Hitta vems plats vi stal (samma logik)
        let rankStolen = -1;
        for (let i = 0; i < oldTopScores.length; i++) {
           if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
@@ -311,7 +303,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
      playSound('crash');
      setIsPlaying(false);
      setIsGameOver(true);
-     setScore(gameState.current.score); // MUST SYNCRONIZE REACT STATE!
+     setScore(gameState.current.score); 
      const endedGame = gameState.current.activeGame;
      setLeaderboardGame(endedGame);
      fetchHighScores(endedGame);
@@ -319,9 +311,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
      submitScoreAndCheckNotifications(gameState.current.score, endedGame);
   };
 
-  // ========== MAIN GAME LOOP ==========
   const gameLoop = (timestamp: number) => {
-    // Menu Logic (Handles selection smoothly)
     if (gameState.current.activeGame === 'menu') {
         const stateKeys = gameState.current.keys;
         if (stateKeys.down && !stateKeys.lastAction) { selectedMenuIndex.current = (selectedMenuIndex.current + 1) % GAMES.length; playSound('blip'); }
@@ -330,44 +320,33 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
            playSound('score');
            initGame(GAMES[selectedMenuIndex.current].id as GameType);
         }
-        
-        // Spara key-state så att menyn inte skrollar tusen steg per sekund
         stateKeys.lastAction = stateKeys.down || stateKeys.up || stateKeys.action;
-
-        // Render Menu
         drawMenu(timestamp);
         gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
         return;
     }
 
-    // GAME IN PROGRESS
     if (timestamp - gameState.current.lastRender >= gameState.current.speed) {
         gameState.current.lastRender = timestamp;
         gameState.current.frameCount++;
         if (gameState.current.frameCount % 5 === 0) gameState.current.blinkOn = !gameState.current.blinkOn;
-        
         updateGameObjects();
         drawGameEngine();
     }
     gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
   };
 
-  // ----- UPDATE LOGIC -----
   const updateGameObjects = () => {
       const st = gameState.current;
       const keys = st.keys;
 
       if (st.activeGame === 'snake') {
-          // SNAKE
           st.snake.dx = st.snake.nextDx;
           st.snake.dy = st.snake.nextDy;
           const head = { x: st.snake.body[0].x + st.snake.dx, y: st.snake.body[0].y + st.snake.dy };
-          
           if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) { triggerGameOver(); return; }
           if (st.snake.body.some((segment:any) => segment.x === head.x && segment.y === head.y)) { triggerGameOver(); return; }
-          
           st.snake.body.unshift(head);
-          
           if (head.x === st.snake.food.x && head.y === st.snake.food.y) {
               playSound('score');
               st.score += 10;
@@ -376,19 +355,14 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
           } else {
               st.snake.body.pop();
           }
-
       } else if (st.activeGame === 'racing') {
-          // RACING (Retro Top-Down)
           if (keys.left && st.racing.playerX > 2) st.racing.playerX -= 1;
           if (keys.right && st.racing.playerX < TILE_COUNT - 5) st.racing.playerX += 1;
-          
           st.racing.roadOffset = (st.racing.roadOffset + 1) % 4;
-          
           if (st.frameCount % Math.max(5, Math.floor(20 / st.racing.speedMult)) === 0) {
               const rX = Math.floor(Math.random() * (TILE_COUNT - 7)) + 3;
               st.racing.enemies.push({ x: rX, y: -4, type: Math.random() > 0.5 ? 1 : 2 });
           }
-          
           for (let i = st.racing.enemies.length - 1; i >= 0; i--) {
               const e = st.racing.enemies[i];
               e.y += 1 * st.racing.speedMult;
@@ -403,28 +377,19 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                   triggerGameOver(); return;
               }
           }
-      
       } else if (st.activeGame === 'breakout') {
-          // BREAKOUT
           if (keys.left && st.breakout.paddleX > 0) st.breakout.paddleX--;
           if (keys.right && st.breakout.paddleX < TILE_COUNT - 4) st.breakout.paddleX++;
-          
           st.breakout.ballX += st.breakout.ballDx;
           st.breakout.ballY += st.breakout.ballDy;
-
-          // Väggar
           if (st.breakout.ballX <= 0 || st.breakout.ballX >= TILE_COUNT - 1) { st.breakout.ballDx *= -1; playSound('blip'); }
           if (st.breakout.ballY <= 0) { st.breakout.ballDy *= -1; playSound('blip'); }
-
-          // Paddle (Y=18)
           if (st.breakout.ballY === 18 && st.breakout.ballX >= st.breakout.paddleX && st.breakout.ballX <= st.breakout.paddleX + 4) {
              st.breakout.ballDy = -1; playSound('blop');
           }
-
-          // Krossa stenar
           for(let i=0; i<st.breakout.bricks.length; i++) {
              const b = st.breakout.bricks[i];
-             if (st.breakout.ballX === b.x || st.breakout.ballX === b.x + 1) { // width 2
+             if (st.breakout.ballX === b.x || st.breakout.ballX === b.x + 1) {
                 if (st.breakout.ballY === b.y) {
                     st.breakout.bricks.splice(i, 1);
                     st.breakout.ballDy *= -1;
@@ -434,16 +399,13 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                 }
              }
           }
-
           if (st.breakout.bricks.length === 0) {
-              // NÄSTA NIVÅ!
               playSound('score');
               st.speed = Math.max(30, st.speed - 5);
               st.breakout.ballX = 10;
               st.breakout.ballY = 15;
               st.breakout.ballDy = -1;
               st.breakout.paddleX = 8;
-              
               const level = Math.floor(st.score / 180) + 1;
               const rows = Math.min(8, 3 + level);
               for(let i=1; i<19; i+=2) {
@@ -454,13 +416,9 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
               return;
           }
           if (st.breakout.ballY >= TILE_COUNT) { triggerGameOver(); return; }
-
       } else if (st.activeGame === 'invaders') {
-          // ASTRO SCROLLING SHOOTER
           if (keys.left && st.invaders.playerX > 0) st.invaders.playerX -= 0.5;
           if (keys.right && st.invaders.playerX < TILE_COUNT - 3) st.invaders.playerX += 0.5;
-          if (keys.up && st.invaders.playerY > 0) st.invaders.playerY -= 0.5; // Optional up/down if wanted, but left/right is fine for Astro
-          
           if (keys.action && st.invaders.fireCooldown <= 0) {
              st.invaders.bullets.push({x: st.invaders.playerX + 1, y: 17});
              if (st.invaders.level > 1) { st.invaders.bullets.push({x: st.invaders.playerX, y: 17}); st.invaders.bullets.push({x: st.invaders.playerX + 2, y: 17}); }
@@ -468,12 +426,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
              playSound('shoot');
           }
           if(st.invaders.fireCooldown > 0) st.invaders.fireCooldown--;
-
-          // Stars Background Parallax
           st.invaders.stars.forEach((s:any) => { s.y += s.s; if(s.y > TILE_COUNT) s.y = 0; });
-
-          // Spawn Enemies / Walls (Måste flyga igenom!)
-// Snabbare astro-spawns
           if (st.frameCount % Math.max(10, 80 - Math.floor(st.score/100)) === 0) {
              const randType = Math.random();
              if (randType > 0.4) {
@@ -494,8 +447,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                  if (st.score > 200) st.invaders.enemies.push({x: Math.random() * (TILE_COUNT-2), y: -6, type, hp: 1, dx: Math.random()>0.5?0.3:-0.3, dy: 0.3});
              }
           }
-
-          // Move Bullets
           for(let i=st.invaders.bullets.length-1; i>=0; i--) {
              const b = st.invaders.bullets[i];
              b.y -= 1;
@@ -504,9 +455,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                   const e = st.invaders.enemies[j];
                   if (b.x >= e.x - 0.5 && b.x <= e.x+2 && b.y <= e.y+1 && b.y >= e.y-1) {
                      st.invaders.bullets.splice(i, 1);
-                     
-                     if (e.type !== 3) e.hp--; // Powerups är odödliga för skott! Blev förstörda förut
-                     
+                     if (e.type !== 3) e.hp--; 
                      if (e.hp <= 0 && e.type !== 3) {
                          st.invaders.enemies.splice(j, 1);
                          playSound('blop');
@@ -516,36 +465,23 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                   }
               }
           }
-
-          // Move Enemies
           for(let i=st.invaders.enemies.length-1; i>=0; i--) {
              const e = st.invaders.enemies[i];
-             e.y += e.dy;
-             e.x += e.dx;
-             if (e.x < 0 || e.x > TILE_COUNT-2) e.dx *= -1; // Bounce walls
-             
-             if (e.y > TILE_COUNT) { 
-                 st.invaders.enemies.splice(i, 1); 
-                 if (e.type === 1) { st.score += 2; } // Överlevde asteroid
-                 continue; 
-             }
-             
-             // Hit player?
+             e.y += e.dy; e.x += e.dx;
+             if (e.x < 0 || e.x > TILE_COUNT-2) e.dx *= -1; 
+             if (e.y > TILE_COUNT) { st.invaders.enemies.splice(i, 1); if (e.type === 1) { st.score += 2; } continue; }
              if (e.y >= 17 && e.y <= 19 && e.x >= st.invaders.playerX - 1 && e.x <= st.invaders.playerX + 2) {
                  if (e.type === 3) {
-                     // Fångade Powerup! Extra Eldkraft!
                      st.invaders.enemies.splice(i, 1);
                      playSound('score');
                      st.score += 50;
-                     st.invaders.level++; // Snabbare skott
+                     st.invaders.level++;
                  } else {
                      triggerGameOver(); return;
                  }
              }
           }
-      
       } else if (st.activeGame === 'tetris') {
-          // TETRIS
           const p = st.tetris.piece;
           const collides = (dx: number, dy: number, shape: any[]) => {
               return shape.some(cell => {
@@ -556,76 +492,54 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                  return false;
               });
           };
-
           if (keys.left && !st.keys.lastLeft) { if (!collides(-1, 0, p.shape)) { p.x--; playSound('blip'); } }
           if (keys.right && !st.keys.lastRight) { if (!collides(1, 0, p.shape)) { p.x++; playSound('blip'); } }
           if (keys.down) { if (!collides(0, 1, p.shape)) p.y++; }
           if (keys.action && !st.keys.lastAction) {
-             const newShape = p.shape.map((c:any) => ({x: -c.y, y: c.x})); // Rotate CW
+             const newShape = p.shape.map((c:any) => ({x: -c.y, y: c.x}));
              if (!collides(0, 0, newShape)) { p.shape = newShape; playSound('jump'); }
           }
-          
-          st.keys.lastLeft = keys.left;
-          st.keys.lastRight = keys.right;
-          st.keys.lastAction = keys.action;
-
+          st.keys.lastLeft = keys.left; st.keys.lastRight = keys.right; st.keys.lastAction = keys.action;
           st.tetris.dropCounter++;
           if (st.tetris.dropCounter >= st.tetris.dropSpeed) {
              st.tetris.dropCounter = 0;
-             if (!collides(0, 1, p.shape)) {
-                 p.y++;
-             } else {
-                 if (p.y <= 1) { triggerGameOver(); return; } // Spawn lock = game over
-                 
+             if (!collides(0, 1, p.shape)) { p.y++; } else {
+                 if (p.y <= 1) { triggerGameOver(); return; }
                  p.shape.forEach((c:any) => {
-                     const ny = p.y + c.y;
-                     const nx = p.x + c.x;
+                     const ny = p.y + c.y; const nx = p.x + c.x;
                      if (ny >= 0 && ny < 20) st.tetris.board[ny][nx] = 1;
                  });
-                 
                  let lines = 0;
                  for(let y=19; y>=0; y--) {
                      if (st.tetris.board[y].every((cell:number) => cell !== 0)) {
                          st.tetris.board.splice(y, 1);
                          st.tetris.board.unshift(new Array(10).fill(0));
-                         lines++;
-                         y++; // line shifted down
+                         lines++; y++;
                      }
                  }
                  if (lines > 0) {
-                     st.score += lines * 100;
-                     playSound('score');
+                     st.score += lines * 100; playSound('score');
                      st.tetris.dropSpeed = Math.max(2, st.tetris.dropSpeed - 1);
-                 } else {
-                     playSound('crash');
-                 }
+                 } else { playSound('crash'); }
                  st.tetris.piece = getNewTetrisPiece();
              }
           }
       }
-
-      // Update Live Score UI bypassing React!
       const liveScoreEl = document.getElementById('arcade-live-score');
       if (liveScoreEl) liveScoreEl.innerText = st.score.toString();
   };
 
-
-  // ----- DRAW LOGIC -----
   const drawMenu = (ts: number) => {
       const cvt = canvasRef.current?.getContext('2d');
       if (!cvt) return;
-      
       cvt.fillStyle = BG_COLOR;
       cvt.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-      
       cvt.fillStyle = FG_COLOR;
       cvt.font = 'bold 20px "Courier New", monospace';
       cvt.textAlign = 'center';
       cvt.fillText("FACECHAT ARCADE", CANVAS_SIZE/2, 40);
-
       cvt.font = '14px "Courier New", monospace';
       cvt.textAlign = 'left';
-      
       GAMES.forEach((game, index) => {
          const isSelected = selectedMenuIndex.current === index;
          const y = 80 + (index * 25);
@@ -642,91 +556,53 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
   const drawGameEngine = () => {
       const cvt = canvasRef.current?.getContext('2d');
       if (!cvt) return;
-      
       cvt.fillStyle = BG_COLOR;
       cvt.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
       cvt.fillStyle = FG_COLOR;
-      
       const st = gameState.current;
-
       const drawRect = (x: number, y: number, w: number, h: number) => {
           cvt.fillRect(x * GRID_SIZE, y * GRID_SIZE, w * GRID_SIZE, h * GRID_SIZE);
       };
-
       if (st.activeGame === 'snake') {
-          drawRect(st.snake.food.x, st.snake.food.y, 1, 1); // Solida fyrkants-äpplen
+          drawRect(st.snake.food.x, st.snake.food.y, 1, 1);
           st.snake.body.forEach((s:any) => drawRect(s.x, s.y, 1, 1));
-      } 
-      else if (st.activeGame === 'racing') {
-          // Rita vägkanter som rör sig
+      } else if (st.activeGame === 'racing') {
           for(let i=0; i<TILE_COUNT+4; i+=4) {
              drawRect(1, i - st.racing.roadOffset, 1, 2);
              drawRect(TILE_COUNT - 2, i - st.racing.roadOffset, 1, 2);
           }
-          // Player car
           drawRect(st.racing.playerX, 16, 2, 3);
           if (st.blinkOn) drawRect(st.racing.playerX + 0.5, 17, 1, 1);
-          
-          // Enemy cars
           st.racing.enemies.forEach((e:any) => {
               drawRect(e.x, e.y, 2, 3);
               if (e.type === 2) drawRect(e.x, e.y+1, 2, 1);
           });
-      }
-      else if (st.activeGame === 'breakout') {
+      } else if (st.activeGame === 'breakout') {
           drawRect(st.breakout.paddleX, 18, 4, 1);
           drawRect(st.breakout.ballX, st.breakout.ballY, 1, 1);
           st.breakout.bricks.forEach((b:any) => drawRect(b.x, b.y, 1.8, 1));
-      }
-      else if (st.activeGame === 'invaders') {
-          // Stars BG
+      } else if (st.activeGame === 'invaders') {
           st.invaders.stars.forEach((s:any) => drawRect(s.x, s.y, 0.1, 0.1));
-          
-          // Player ship (arrow shape)
           drawRect(st.invaders.playerX + 1, 17, 1, 1);
           drawRect(st.invaders.playerX, 18, 3, 1);
           drawRect(st.invaders.playerX - 0.5, 19, 4, 0.5);
-          
           st.invaders.bullets.forEach((b:any) => drawRect(b.x, b.y, 0.5, 1));
-          
           st.invaders.enemies.forEach((e:any) => {
-              if (e.type === 1) {
-                  // Asteroid (Square, solid)
-                  drawRect(e.x, e.y, 2, 2);
-                  if(!st.blinkOn) drawRect(e.x+0.5, e.y+0.5, 1, 1);
-              } else if (e.type === 2) {
-                  // Fighter Ship
-                  drawRect(e.x+0.5, e.y, 1, 1.5);
-                  drawRect(e.x-0.5, e.y+0.5, 3, 0.5);
-              } else if (e.type === 3) {
-                  // Powerup/Star (blinking diamond shape)
-                  if (!st.blinkOn) {
-                      drawRect(e.x+0.5, e.y, 1, 2);
-                      drawRect(e.x, e.y+0.5, 2, 1);
-                  }
-              }
+              if (e.type === 1) { drawRect(e.x, e.y, 2, 2); if(!st.blinkOn) drawRect(e.x+0.5, e.y+0.5, 1, 1); }
+              else if (e.type === 2) { drawRect(e.x+0.5, e.y, 1, 1.5); drawRect(e.x-0.5, e.y+0.5, 3, 0.5); }
+              else if (e.type === 3) { if (!st.blinkOn) { drawRect(e.x+0.5, e.y, 1, 2); drawRect(e.x, e.y+0.5, 2, 1); } }
           });
-      }
-      else if (st.activeGame === 'tetris') {
-          // Rita Spelplan (Mitten, offset 5 tiles, bredd 10)
+      } else if (st.activeGame === 'tetris') {
           const ox = 5;
-          // Bordets kanter
-          cvt.strokeStyle = FG_COLOR;
-          cvt.lineWidth = 1;
+          cvt.strokeStyle = FG_COLOR; cvt.lineWidth = 1;
           cvt.strokeRect(ox * GRID_SIZE - 2, 0, 10 * GRID_SIZE + 4, 20 * GRID_SIZE + 2);
-          
-          // Frysta block
           for (let y = 0; y < 20; y++) {
              for (let x = 0; x < 10; x++) {
-                if (st.tetris.board[y][x] !== 0) {
-                   drawRect(ox + x, y, 1, 1);
-                }
+                if (st.tetris.board[y][x] !== 0) drawRect(ox + x, y, 1, 1);
              }
           }
-          // Nuvarande pjäs
           st.tetris.piece.shape.forEach((c:any) => {
-              const ny = st.tetris.piece.y + c.y;
-              const nx = st.tetris.piece.x + c.x;
+              const ny = st.tetris.piece.y + c.y; const nx = st.tetris.piece.x + c.x;
               if (ny >= 0) drawRect(ox + nx, ny, 1, 1);
           });
       }
@@ -734,9 +610,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-       
        <div style={{ textAlign: 'center', position: 'relative' }}>
-          
           <button 
              onClick={() => {
                 const newMute = !isMuted;
@@ -747,7 +621,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
           >
              {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
           </button>
-
           <h2 style={{ fontSize: '1.75rem', color: '#10b981', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontFamily: 'Impact, sans-serif', letterSpacing: '1px', textShadow: '2px 2px 0 #0f172a' }}>
              <Gamepad2 size={24} /> FACECHAT ARCADE
           </h2>
@@ -756,11 +629,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
        </div>
 
        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'center' }}>
-          
-          {/* VÄNSTER: ARCADE KONSOL (Kompakt) */}
           <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '380px', width: '100%', boxSizing: 'border-box' }}>
-             
-             {/* TOP SKAL (Skärmdelen) */}
              <div style={{ 
                 backgroundColor: '#1e293b', 
                 padding: '1.5rem', 
@@ -774,7 +643,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                 width: '100%',
                 boxSizing: 'border-box'
              }}>
-                 {/* SKÄRMEN (CANVAS) */}
                  <div style={{ 
                     backgroundColor: '#cbd5e1', 
                     padding: '10px', 
@@ -799,13 +667,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                                 touchAction: 'none' 
                             }}
                         />
-
-                        {isPlaying && (
-                             <div style={{ position: 'absolute', bottom: '10px', right: '15px', color: 'rgba(255,255,255,0.85)', fontFamily: '"Courier New", monospace', fontWeight: 'bold', fontSize: '1.25rem', textShadow: '1px 1px 0 #000', pointerEvents: 'none', zIndex: 10 }}>
-                                SCORE: <span id="arcade-live-score">{score}</span>
-                             </div>
-                        )}
-
                         {isGameOver && (
                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(135, 158, 134, 0.9)'}}>
                               <h3 style={{ margin: 0, color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center' }}>GAME OVER</h3>
@@ -814,10 +675,28 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                            </div>
                         )}
                      </div>
+                     
+                     <div style={{ 
+                         marginTop: '8px', 
+                         display: 'flex', 
+                         justifyContent: 'center', 
+                         alignItems: 'center',
+                         fontFamily: '"Courier New", monospace',
+                         fontWeight: '900',
+                         fontSize: '1.2rem',
+                         color: FG_COLOR,
+                         letterSpacing: '2px',
+                         minHeight: '24px'
+                     }}>
+                        {isPlaying ? (
+                            <>SCORE: <span id="arcade-live-score">{score}</span></>
+                        ) : (
+                            <span>ARCADE READY</span>
+                        )}
+                     </div>
                  </div>
              </div>
 
-             {/* UNDERDEL (KNAPPSATS MODERN KONTROLL) */}
              <div style={{ 
                 backgroundColor: '#1e293b', 
                 width: '100%', 
@@ -833,7 +712,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                 touchAction: 'none',
                 boxSizing: 'border-box'
              }}>
-                 {/* Vänster: D-PAD */}
                  <div style={{ position: 'relative', width: '120px', height: '120px', flexShrink: 0 }}>
                      <button 
                         onPointerDown={(e) => { handleDirBtn('UP', true); e.preventDefault(); }} 
@@ -861,26 +739,14 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                         style={{ position: 'absolute', bottom: 0, left: '40px', width: '40px', height: '40px', borderRadius: '0 0 8px 8px', border: 'none', backgroundColor: '#334155', boxShadow: 'inset 0 -2px 2px rgba(0,0,0,0.2), 0 4px 0 #0f172a', cursor: 'pointer', touchAction: 'none' }}
                      />
                  </div>
-                 
-                 {/* Mitten: Tömmer utrymmet så vi slipper råka klicka fel! */}
                  <div style={{ flex: 1 }} />
-
-                 {/* Höger: Action Buttons */}
                  <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', transform: 'rotate(-10deg)', marginRight: '5px', flexShrink: 0 }}>
-                     
-                     {/* B-KNAPP = TILLBAKA/MENY */}
                      <button 
                         onClick={(e) => { 
-                           setIsPlaying(false);
-                           setIsGameOver(false);
-                           setActiveScreen('menu');
-                           gameState.current.activeGame = 'menu';
-                           e.preventDefault(); 
+                           setIsPlaying(false); setIsGameOver(false); setActiveScreen('menu'); gameState.current.activeGame = 'menu'; e.preventDefault(); 
                         }} 
                         style={{ width: '55px', height: '55px', borderRadius: '50%', border: 'none', backgroundColor: '#ef4444', boxShadow: 'inset -2px -2px 5px rgba(0,0,0,0.3), 0 6px 0 #991b1b', color: 'rgba(255,255,255,0.9)', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer', touchAction: 'none', marginTop: '30px' }}
                      >B</button>
-                     
-                     {/* A-KNAPP = ACTION/OK */}
                      <button 
                         onPointerDown={(e) => { handleDirBtn('ACTION', true); e.preventDefault(); }} 
                         onPointerUp={(e) => { handleDirBtn('ACTION', false); e.preventDefault(); }}
@@ -891,9 +757,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
              </div>
           </div>
 
-          {/* HÖGER: LEADERBOARD TOpp 5 */}
           <div style={{ flex: '1 1 300px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem', alignSelf: 'stretch', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-             
              <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem', position: 'relative' }}>
                 <select 
                    value={leaderboardGame}
@@ -910,9 +774,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
              <h3 style={{ color: '#f59e0b', fontSize: '1.25rem', marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <Trophy size={20} /> TOPP 5 KRYPIN-LEGENDER
              </h3>
-             
              {isSubmitting && <div style={{ color: 'var(--text-muted)' }}>Synkar poäng till stordatorn...</div>}
-
              {!isSubmitting && topScores.length === 0 ? (
                 <p style={{ color: 'var(--text-muted)' }}>Mysteriskt tomt här... Bli den FÖRSTA mästaren i {GAMES.find(g=>g.id===leaderboardGame)?.name}! 👑</p>
              ) : (
@@ -923,13 +785,11 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                       if (index === 0) { rankColor = '#fbbf24'; medalg = '🥇'; }
                       if (index === 1) { rankColor = '#94a3b8'; medalg = '🥈'; }
                       if (index === 2) { rankColor = '#b45309'; medalg = '🥉'; }
-                      
                       return (
                           <div key={ts.id} style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: '8px', gap: '1rem' }}>
                               <span style={{ fontSize: '1.25rem', fontWeight: 'bold', minWidth: '30px', color: rankColor }}>
                                  {medalg || `#${index + 1}`}
                               </span>
-                              
                               <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden', flexShrink: 0 }}>
                                   {ts.profiles?.avatar_url ? (
                                      <img src={ts.profiles.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -937,19 +797,16 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>?</div>
                                   )}
                               </div>
-                              
                               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                                  <a href={`/krypin?u=${ts.profiles?.username}`} style={{ color: 'var(--text-main)', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.95rem' }}>@{ts.profiles?.username}</a>
                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(ts.created_at).toLocaleDateString()}</span>
                               </div>
-                              
                               <span style={{ fontWeight: '900', color: '#10b981', fontSize: '1.1rem' }}>{ts.score}</span>
                           </div>
                       );
                    })}
                 </div>
              )}
-
              <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', display: 'flex', gap: '0.75rem', color: '#2563eb' }}>
                 <AlertCircle size={20} style={{ flexShrink: 0 }} />
                 <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: '1.4' }}>
@@ -958,7 +815,6 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
              </div>
           </div>
        </div>
-
     </div>
   );
 }

@@ -43,6 +43,8 @@ export default function Whiteboard() {
 
   const [activeCommentPostId, setActiveCommentPostId] = useState<string | null>(null)
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
+  const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({}) // Track which posts show all comments
+  const [showLikersPostId, setShowLikersPostId] = useState<string | null>(null) // Track which post's likers list is visible
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,6 +98,14 @@ export default function Whiteboard() {
       if (data) postsData = data;
     }
 
+    // Resolve parent_posts if they exist
+    const parentPostIds = postsData.map(p => p.parent_id).filter(Boolean);
+    let resolvedParentPosts: any[] = [];
+    if (parentPostIds.length > 0) {
+      const { data: parents } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').in('id', parentPostIds);
+      if (parents) resolvedParentPosts = parents;
+    }
+
     if(postsData.length > 0) {
        let filteredPostsData = postsData.filter(p => !blockedUserIds.includes(p.author_id));
        const postIds = filteredPostsData.map(p => p.id);
@@ -116,12 +126,15 @@ export default function Whiteboard() {
               likes: likesData?.filter(l => l.comment_id === c.id && !blockedUserIds.includes(l.user_id)) || []
            })) || [];
            
+           const parent_post = resolvedParentPosts.find(pp => pp.id === post.parent_id);
+           
            return {
              ...post,
              likes: postLikes,
-             comments: postComments
+             comments: postComments,
+             parent_post: parent_post
            }
-         });
+        });
          
          setPosts(enrichedPosts.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
        } else {
@@ -282,28 +295,32 @@ export default function Whiteboard() {
 
   const handleSharePost = async (post: any) => {
     if (!currentUser) return;
-    if (confirm(`Vill du dela inlägget från ${post.profiles?.username} på din egen Whiteboard?`)) {
-       const shareContent = `[Delat från ${post.profiles?.username}]:\n\n"${post.content}"`;
-       const { error } = await supabase.from('whiteboard').insert({
-         author_id: currentUser.id,
-         content: shareContent
-       });
-       if (!error) {
-         if (post.author_id !== currentUser.id) {
-           await supabase.from('notifications').insert({
-              receiver_id: post.author_id,
-              actor_id: currentUser.id,
-              type: 'whiteboard_share',
-              content: 'delade ditt inlägg på Whiteboarden.',
-              link: `/whiteboard?post=${post.id}`
-           });
-           fetch('/api/send-push', {
-             method: 'POST', body: JSON.stringify({ userId: post.author_id, title: 'Facechat Whiteboard', message: `${currentUser.username} delade ditt inlägg!`, url: `/whiteboard?post=${post.id}` }), headers: { 'Content-Type': 'application/json' }
-           }).catch(console.error);
-         }
-         fetchData();
-         alert('Inlägget har delats friskt på din Whiteboard!');
-       }
+    
+    // Facebook style share: Store original ID but allow a personal caption
+    const caption = prompt(`Skriv något om detta inlägg (valfritt):`, "");
+    if (caption === null) return; // Cancelled
+
+    const { error } = await supabase.from('whiteboard').insert({
+      author_id: currentUser.id,
+      content: caption.trim() || "", // Caption can be empty
+      parent_id: post.parent_id || post.id // Always reference original if multiple shares
+    });
+
+    if (!error) {
+      if (post.author_id !== currentUser.id) {
+        await supabase.from('notifications').insert({
+          receiver_id: post.author_id,
+          actor_id: currentUser.id,
+          type: 'whiteboard_share',
+          content: 'delade ditt inlägg på Whiteboarden.',
+          link: `/whiteboard?post=${post.id}`
+        });
+        fetch('/api/send-push', {
+          method: 'POST', body: JSON.stringify({ userId: post.author_id, title: 'Facechat Whiteboard', message: `${currentUser.username} delade ditt inlägg!`, url: `/whiteboard?post=${post.id}` }), headers: { 'Content-Type': 'application/json' }
+        }).catch(console.error);
+      }
+      fetchData();
+      alert('Inlägget har delats friskt på din Whiteboard!');
     }
   }
 
@@ -375,25 +392,74 @@ export default function Whiteboard() {
 
   return (
     <div className="card" style={{ padding: '2rem' }}>
-      <h1 style={{ fontSize: '1.75rem', marginBottom: '1rem', color: 'var(--theme-primary)', fontWeight: '700' }}>
-        Whiteboard (Nyhetsflöde)
+      <h1 style={{ fontSize: '1.75rem', marginBottom: '0.5rem', color: '#1c1e21', fontWeight: '800', letterSpacing: '-0.02em' }}>
+        Whiteboard
       </h1>
-      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Dina inlägg, dina vänners inlägg, och vad de gillar.</p>
+      <p style={{ color: '#65676b', marginBottom: '2rem', fontSize: '0.9rem' }}>Se vad som händer i ditt nätverk just nu.</p>
       
-      {/* Skapa inlägg */}
-      <div style={{ display: 'flex', gap: '1rem', marginBottom: '2rem', backgroundColor: '#f8fafc', padding: '1.5rem', borderRadius: '12px', border: '1px solid var(--border-color)', flexWrap: 'wrap' }}>
-        <div style={{ width: '48px', height: '48px', backgroundColor: 'var(--theme-primary)', borderRadius: '50%', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flexShrink: 0 }}>
-          {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={24} />}
+      <style>{`
+        .fb-action-btn:hover {
+          background-color: #f2f2f2 !important;
+        }
+        .wb-post-card {
+          transition: transform 0.1s ease;
+        }
+        .user-link:hover {
+          text-decoration: underline !important;
+        }
+        .skeleton-pulse {
+          background: linear-gradient(90deg, #f0f2f5 25%, #e2e8f0 50%, #f0f2f5 75%);
+          background-size: 200% 100%;
+          animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+          0% { background-position: 200% 0; }
+          100% { background-position: -200% 0; }
+        }
+        @media (max-width: 600px) {
+          .card {
+            padding: 1rem !important;
+          }
+          .wb-post-inner {
+            padding: 0.75rem !important;
+          }
+          .fb-action-btn {
+            font-size: 0.8rem !important;
+            padding: 0.4rem !important;
+          }
+        }
+      `}</style>
+      
+      {/* Skapa inlägg (Facebook style) */}
+      <div style={{ backgroundColor: 'white', padding: '1rem', borderRadius: '12px', border: '1px solid #dddfe2', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
+          <div style={{ width: '40px', height: '40px', backgroundColor: 'var(--theme-primary)', borderRadius: '50%', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flexShrink: 0 }}>
+            {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={20} />}
+          </div>
+          <button 
+            onClick={() => document.getElementById('wb-textarea')?.focus()}
+            style={{ flex: 1, backgroundColor: '#f0f2f5', border: 'none', borderRadius: '20px', padding: '0.6rem 1rem', textAlign: 'left', color: '#65676b', fontSize: '1rem', cursor: 'pointer' }}
+          >
+            Vad har du på hjärtat, {currentUser?.username || 'vän'}?
+          </button>
         </div>
-        <div style={{ flex: '1 1 200px', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        
+        <div id="wb-expanded-post" style={{ display: newPostContent.trim() ? 'block' : 'none' }}>
           <textarea 
-            placeholder="Vad har du på hjärtat?" 
+            id="wb-textarea"
+            placeholder="Skriv något..." 
             value={newPostContent}
             onChange={e => setNewPostContent(e.target.value)}
-            style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit' }}
+            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #dddfe2', outline: 'none', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit', marginBottom: '0.75rem', fontSize: '1rem' }}
           ></textarea>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', width: '100%' }}>
-            <button onClick={handlePost} disabled={!newPostContent.trim()} style={{ padding: '0.875rem 3rem', backgroundColor: 'var(--theme-primary)', color: 'white', borderRadius: '8px', fontWeight: 'bold', opacity: !newPostContent.trim() ? 0.5 : 1, cursor: 'pointer', border: 'none', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)' }}>Posta</button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button 
+              onClick={handlePost} 
+              disabled={!newPostContent.trim()} 
+              style={{ padding: '0.5rem 2.5rem', backgroundColor: '#1877f2', color: 'white', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', border: 'none', fontSize: '0.95rem' }}
+            >
+              Posta
+            </button>
           </div>
         </div>
       </div>
@@ -408,122 +474,186 @@ export default function Whiteboard() {
           const isAdmin = currentUser?.is_admin;
           const timeString = new Date(post.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date(post.created_at).toLocaleDateString('sv-SE');
           const iLiked = post.likes?.some((l:any) => l.user_id === currentUser?.id);
-          const showComments = activeCommentPostId === post.id || post.comments.length > 0;
+          
+          // Comment folding logic
+          const allComments = post.comments || [];
+          const isExpanded = expandedComments[post.id];
+          const visibleComments = isExpanded ? allComments : allComments.slice(-2);
+          const hasMoreComments = allComments.length > 2;
 
           return (
-            <div key={post.id} className="wb-post-card" style={{ border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0', backgroundColor: 'var(--bg-card)', overflow: 'hidden', boxShadow: '0 2px 10px rgba(0,0,0,0.02)' }}>
+            <div key={post.id} className="wb-post-card" style={{ border: '1px solid var(--border-color)', borderRadius: '12px', padding: '0', backgroundColor: 'white', overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', marginBottom: '1rem' }}>
               
-              {/* POST HEADER & CONTENT */}
-              <div className="wb-post-inner" style={{ padding: '1.5rem' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '1rem' }}>
-                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
-                    <div style={{ width: '48px', height: '48px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden', cursor: 'pointer' }} onClick={() => window.location.href = `/krypin?u=${post.profiles?.username}`}>
-                      {post.profiles?.avatar_url ? <img src={post.profiles.avatar_url} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <User size={24} color="#94a3b8" style={{margin:'12px'}}/>}
+              {/* POST HEADER */}
+              <div className="wb-post-inner" style={{ padding: '1rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+                    <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden', cursor: 'pointer' }} onClick={() => window.location.href = `/krypin?u=${post.profiles?.username}`}>
+                      {post.profiles?.avatar_url ? <img src={post.profiles.avatar_url} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <User size={20} color="#94a3b8" style={{margin:'10px'}}/>}
                     </div>
                     <div>
-                      <span className="user-link" onClick={() => window.location.href = `/krypin?u=${post.profiles?.username}`} style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer', fontSize: '1.1rem' }}>{post.profiles?.username || 'Okänd Användare'}</span>
-                      <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{timeString}</p>
+                      <span className="user-link" onClick={() => window.location.href = `/krypin?u=${post.profiles?.username}`} style={{ margin: 0, fontWeight: 'bold', cursor: 'pointer', fontSize: '1rem', color: '#1c1e21' }}>{post.profiles?.username || 'Okänd Användare'}</span>
+                      <p style={{ margin: 0, fontSize: '0.75rem', color: '#65676b' }}>{timeString} {post.parent_id && "• Delade ett inlägg"}</p>
                     </div>
                   </div>
                   
-                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', opacity: 0.6 }}>
                     {isOwnPost && (
-                      <button onClick={() => setEditingItem({ id: post.id, type: 'post', content: post.content })} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.8 }} title="Redigera inlägg">
-                        <Edit2 size={16} />
+                      <button onClick={() => setEditingItem({ id: post.id, type: 'post', content: post.content })} style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }} title="Redigera inlägg">
+                        <Edit2 size={14} />
                       </button>
                     )}
                     {(isOwnPost || isAdmin) && (
-                      <button onClick={() => handleDelete(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.7 }} title="Radera inlägg">
-                        <Trash2 size={18} />
+                      <button onClick={() => handleDelete(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
+                        <Trash2 size={16} />
                       </button>
                     )}
                     {!isOwnPost && (
-                      <button onClick={() => { setReportTarget({ id: post.id, type: 'whiteboard', reportedUserId: post.author_id }); setShowReportModal(true); }} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', opacity: 0.8 }} title="Anmäl inlägg">
-                        <AlertTriangle size={18} />
+                      <button onClick={() => { setReportTarget({ id: post.id, type: 'whiteboard', reportedUserId: post.author_id }); setShowReportModal(true); }} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer' }} title="Anmäl inlägg">
+                        <AlertTriangle size={16} />
                       </button>
                     )}
                   </div>
                 </div>
                 
-                {editingItem?.id === post.id && editingItem?.type === 'post' ? (
-                  <div style={{ marginBottom: '1.5rem' }}>
-                    <textarea 
-                      value={editingItem.content} 
-                      onChange={e => setEditingItem({ ...editingItem, content: e.target.value })}
-                      style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '60px', fontFamily: 'inherit' }}
-                    />
-                    <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                      <button onClick={handleSaveEdit} style={{ backgroundColor: '#10b981', color: 'white', padding: '0.25rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Spara</button>
-                      <button onClick={() => setEditingItem(null)} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.25rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Avbryt</button>
+                {/* POST CONTENT */}
+                <div style={{ marginBottom: '0.75rem' }}>
+                  {editingItem?.id === post.id && editingItem?.type === 'post' ? (
+                    <div style={{ marginBottom: '1rem' }}>
+                      <textarea 
+                        value={editingItem.content} 
+                        onChange={e => setEditingItem({ ...editingItem, content: e.target.value })}
+                        style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '60px', fontFamily: 'inherit' }}
+                      />
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                        <button onClick={handleSaveEdit} style={{ backgroundColor: '#10b981', color: 'white', padding: '0.25rem 1rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Spara</button>
+                        <button onClick={() => setEditingItem(null)} style={{ backgroundColor: 'white', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.25rem 1rem', borderRadius: '4px', cursor: 'pointer' }}>Avbryt</button>
+                      </div>
                     </div>
+                  ) : (
+                    <>
+                      {post.content && <p style={{ color: '#1c1e21', fontSize: '0.95rem', marginBottom: '0.75rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{post.content}</p>}
+                      
+                      {/* NESTED SHARED POST */}
+                      {post.parent_post && (
+                        <div style={{ border: '1px solid #dddfe2', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'white', marginTop: '0.5rem' }}>
+                          <div style={{ padding: '0.75rem' }}>
+                             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', marginBottom: '0.5rem' }}>
+                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden' }}>
+                                   {post.parent_post.profiles?.avatar_url ? <img src={post.parent_post.profiles.avatar_url} style={{width:'100%', height:'100%', objectFit:'cover'}} /> : <User size={16} color="#94a3b8" style={{margin:'8px'}}/>}
+                                </div>
+                                <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{post.parent_post.profiles?.username || 'Okänd'}</span>
+                             </div>
+                             <p style={{ fontSize: '0.9rem', color: '#1c1e21', margin: 0, whiteSpace: 'pre-wrap' }}>{post.parent_post.content}</p>
+                          </div>
+                        </div>
+                      )}
+
+                      {!post.parent_post && post.parent_id && (
+                        <div style={{ padding: '1rem', backgroundColor: '#f0f2f5', borderRadius: '8px', fontSize: '0.85rem', color: '#65676b', fontStyle: 'italic' }}>
+                          Originalinlägget har tagits bort.
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+
+                {/* LIKE & SHARE STATS */}
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0', fontSize: '0.85rem', color: '#65676b', borderBottom: '1px solid #ebedf0' }}>
+                  <div 
+                    style={{ display: 'flex', alignItems: 'center', gap: '0.25rem', cursor: 'pointer' }}
+                    onClick={() => setShowLikersPostId(showLikersPostId === post.id ? null : post.id)}
+                  >
+                    {post.likes && post.likes.length > 0 && (
+                      <>
+                        <div style={{ backgroundColor: '#1877f2', borderRadius: '50%', width: '18px', height: '18px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <Heart size={10} color="white" fill="white" />
+                        </div>
+                        <span> {post.likes.length} {post.likes.length === 1 ? 'person gillar' : 'personer gillar'} detta</span>
+                      </>
+                    )}
                   </div>
-                ) : (
-                  <p style={{ color: 'var(--text-main)', fontSize: '1.1rem', marginBottom: '1.5rem', whiteSpace: 'pre-wrap', lineHeight: '1.5' }}>{post.content}</p>
-                )}
+                  <div>
+                    {post.comments?.length > 0 && <span>{post.comments.length} kommentarer</span>}
+                    {post.shares_count > 0 && <span> • {post.shares_count} delningar</span>}
+                  </div>
+                </div>
                 
-                {post.likes && post.likes.length > 0 && (
-                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                      <Heart size={12} fill="var(--theme-primary)" color="var(--theme-primary)" /> 
-                      {renderLikeText(post.likes)}
-                   </p>
+                {/* LIKERS LIST DROPDOWN (Toggleable) */}
+                {showLikersPostId === post.id && post.likes && post.likes.length > 0 && (
+                  <div style={{ backgroundColor: '#f0f2f5', padding: '0.5rem', borderRadius: '8px', marginTop: '0.5rem', fontSize: '0.75rem', display: 'flex', flexWrap: 'wrap', gap: '0.4rem' }}>
+                    <span style={{ fontWeight: 'bold' }}>Gillat av:</span>
+                    {post.likes.map((l:any, idx:number) => (
+                      <span key={l.id} style={{ color: '#1877f2' }}>{l.profiles?.username}{idx < post.likes.length - 1 ? ',' : ''}</span>
+                    ))}
+                  </div>
                 )}
 
                 {/* POST ACTIONS */}
-                <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', gap: '0.5rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem', marginTop: '1rem' }}>
-                  <button onClick={() => handleToggleLikePost(post.id)} style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: iLiked ? 'var(--theme-primary)' : 'var(--text-muted)', fontWeight: 'bold', background: 'none', border: 'none', cursor: 'pointer' }} className="hover-lift">
-                    <Heart size={20} fill={iLiked ? 'var(--theme-primary)' : 'none'} /> <span className="hide-on-very-small">Gilla</span>
+                <div style={{ display: 'flex', justifyContent: 'space-around', gap: '0.25rem', paddingTop: '0.25rem' }}>
+                  <button onClick={() => handleToggleLikePost(post.id)} style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: iLiked ? '#1877f2' : '#65676b', fontWeight: '600', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '4px' }} className="fb-action-btn">
+                    <Heart size={18} fill={iLiked ? '#1877f2' : 'none'} color={iLiked ? '#1877f2' : '#65676b'} /> Gilla
                   </button>
-                  <button onClick={() => setActiveCommentPostId(post.id)} style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontWeight: 'bold', background: 'none', border: 'none', cursor: 'pointer' }} className="hover-lift">
-                    <MessageCircle size={20} /> <span className="hide-on-very-small">Kommentera {post.comments?.length > 0 && `(${post.comments.length})`}</span>{post.comments?.length > 0 && <span className="show-on-very-small-only" style={{display:'none'}}>{post.comments.length}</span>}
+                  <button onClick={() => setActiveCommentPostId(post.id)} style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#65676b', fontWeight: '600', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '4px' }} className="fb-action-btn">
+                    <MessageCircle size={18} /> Kommentera
                   </button>
-                  <button onClick={() => handleSharePost(post)} style={{ padding: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--text-muted)', fontWeight: 'bold', background: 'none', border: 'none', cursor: 'pointer' }} className="hover-lift">
-                    <Share2 size={20} /> <span className="hide-on-very-small">Dela</span>
+                  <button onClick={() => handleSharePost(post)} style={{ flex: 1, padding: '0.5rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem', color: '#65676b', fontWeight: '600', background: 'none', border: 'none', cursor: 'pointer', borderRadius: '4px' }} className="fb-action-btn">
+                    <Share2 size={18} /> Dela
                   </button>
                 </div>
               </div>
 
-              {/* COMMENTS SECTION (Toggled or visible if exists) */}
-              {showComments && (
-                 <div style={{ backgroundColor: '#f8fafc', padding: '1.5rem', borderTop: '1px solid var(--border-color)' }}>
+              {/* COMMENTS SECTION */}
+              {(allComments.length > 0 || activeCommentPostId === post.id) && (
+                 <div style={{ backgroundColor: '#f0f2f5', padding: '0.75rem 1rem', borderTop: '1px solid #ebedf0' }}>
                     
-                    {/* Render existing comments */}
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', marginBottom: '1.5rem' }}>
-                       {post.comments?.map((comment: any) => {
+                    {/* Show more comments button */}
+                    {hasMoreComments && !isExpanded && (
+                      <button 
+                        onClick={() => setExpandedComments({...expandedComments, [post.id]: true})}
+                        style={{ border: 'none', background: 'none', color: '#65676b', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', marginBottom: '1rem', padding: 0 }}
+                      >
+                        Visa {allComments.length - 2} tidigare kommentarer...
+                      </button>
+                    )}
+
+                    {/* Render comments */}
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                       {visibleComments.map((comment: any) => {
                           const cLiked = comment.likes?.some((l:any) => l.user_id === currentUser?.id);
                           const cOwn = comment.author_id === currentUser?.id;
                           return (
-                             <div key={comment.id} style={{ display: 'flex', gap: '0.75rem' }}>
+                             <div key={comment.id} style={{ display: 'flex', gap: '0.5rem' }}>
                                 <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: '#e2e8f0', overflow: 'hidden', flexShrink: 0, cursor: 'pointer' }} onClick={() => window.location.href = `/krypin?u=${comment.profiles?.username}`}>
                                    {comment.profiles?.avatar_url ? <img src={comment.profiles.avatar_url} style={{width:'100%', height:'100%', objectFit:'cover'}}/> : <User size={16} color="#94a3b8" style={{margin:'8px'}}/>}
                                 </div>
                                 <div style={{ flex: 1 }}>
-                                   <div style={{ backgroundColor: '#e2e8f0', padding: '0.75rem 1rem', borderRadius: '12px', display: 'inline-block' }}>
-                                     <span className="user-link" onClick={() => window.location.href = `/krypin?u=${comment.profiles?.username}`} style={{ fontWeight: 'bold', cursor: 'pointer', fontSize: '0.9rem', display: 'block', marginBottom: '0.2rem' }}>{comment.profiles?.username || 'Okänd'}</span>
+                                   <div style={{ backgroundColor: 'white', padding: '0.5rem 0.75rem', borderRadius: '18px', display: 'inline-block', maxWidth: '100%', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }}>
+                                     <span className="user-link" onClick={() => window.location.href = `/krypin?u=${comment.profiles?.username}`} style={{ fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', display: 'block', color: '#050505' }}>{comment.profiles?.username || 'Okänd'}</span>
                                      {editingItem?.id === comment.id && editingItem?.type === 'comment' ? (
-                                       <div style={{ marginTop: '0.5rem' }}>
+                                       <div style={{ marginTop: '0.4rem' }}>
                                          <textarea 
                                            value={editingItem.content} 
                                            onChange={e => setEditingItem({ ...editingItem, content: e.target.value })}
-                                           style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '50px', fontFamily: 'inherit' }}
+                                           style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '40px', fontSize: '0.85rem' }}
                                          />
-                                         <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                                           <button onClick={handleSaveEdit} style={{ backgroundColor: '#10b981', color: 'white', padding: '0.2rem 0.75rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 'bold' }}>Spara</button>
-                                           <button onClick={() => setEditingItem(null)} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.2rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.8rem' }}>Avbryt</button>
+                                         <div style={{ display: 'flex', gap: '0.4rem', marginTop: '0.4rem' }}>
+                                           <button onClick={handleSaveEdit} style={{ backgroundColor: '#1877f2', color: 'white', padding: '0.2rem 0.6rem', borderRadius: '4px', border: 'none', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Spara</button>
+                                           <button onClick={() => setEditingItem(null)} style={{ backgroundColor: 'white', color: 'black', border: '1px solid #ddd', padding: '0.2rem 0.6rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem' }}>Avbryt</button>
                                          </div>
                                        </div>
                                      ) : (
-                                       <span style={{ fontSize: '0.95rem', color: 'var(--text-main)', whiteSpace: 'pre-wrap' }}>{comment.content}</span>
+                                       <span style={{ fontSize: '0.9rem', color: '#050505', whiteSpace: 'pre-wrap' }}>{comment.content}</span>
                                      )}
                                    </div>
-                                   <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginTop: '0.4rem', marginLeft: '0.5rem', fontSize: '0.8rem', fontWeight: 'bold' }}>
-                                      <span onClick={() => handleToggleLikeComment(comment.id)} style={{ color: cLiked ? 'var(--theme-primary)' : 'var(--text-muted)', cursor: 'pointer' }}>Gilla</span>
-                                      <span style={{ color: 'var(--text-muted)', fontWeight: 'normal' }}>{new Date(comment.created_at).toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'})}</span>
+                                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.2rem', marginLeft: '0.5rem', fontSize: '0.75rem', fontWeight: 'bold', color: '#65676b' }}>
+                                      <span onClick={() => handleToggleLikeComment(comment.id)} style={{ color: cLiked ? '#1877f2' : 'inherit', cursor: 'pointer' }}>Gilla</span>
+                                      <span style={{ fontWeight: 'normal' }}>{new Date(comment.created_at).toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'})}</span>
                                       {comment.likes?.length > 0 && (
-                                         <span style={{ color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '0.2rem' }}><Heart size={10} fill="var(--text-muted)" /> {comment.likes.length}</span>
+                                         <span style={{ display: 'flex', alignItems: 'center', gap: '0.1rem' }}><Heart size={10} fill="#65676b" color="#65676b" /> {comment.likes.length}</span>
                                       )}
-                                      {cOwn && <span onClick={() => setEditingItem({ id: comment.id, type: 'comment', content: comment.content })} style={{ color: 'var(--text-muted)', cursor: 'pointer', opacity: 0.8 }} title="Redigera">Redigera</span>}
-                                      {(cOwn || isAdmin) && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer', opacity: 0.8 }} title="Radera">Ta bort</span>}
-                                      {!cOwn && <span onClick={() => { setReportTarget({ id: comment.id, type: 'whiteboard_comment', reportedUserId: comment.author_id }); setShowReportModal(true); }} style={{ color: '#f59e0b', cursor: 'pointer', opacity: 0.8 }} title="Anmäl">Anmäl</span>}
+                                      {cOwn && <span onClick={() => setEditingItem({ id: comment.id, type: 'comment', content: comment.content })} style={{ cursor: 'pointer' }}>Ändra</span>}
+                                      {(cOwn || isAdmin) && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
                                    </div>
                                 </div>
                              </div>
@@ -532,21 +662,21 @@ export default function Whiteboard() {
                     </div>
 
                     {/* Write new comment */}
-                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--theme-primary)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
                           {currentUser?.avatar_url ? <img src={currentUser.avatar_url} style={{width:'100%', height:'100%', objectFit:'cover'}}/> : <User size={16}/>}
                        </div>
-                       <div style={{ flex: 1, display: 'flex', gap: '0.5rem' }}>
+                       <div style={{ flex: 1, display: 'flex', gap: '0.4rem', position: 'relative' }}>
                           <input 
                             type="text" 
-                            placeholder="Skriv en kommentar..."
+                            placeholder={`Kommentera som ${currentUser?.username}...`}
                             value={commentInputs[post.id] || ''}
                             onChange={(e) => setCommentInputs({...commentInputs, [post.id]: e.target.value})}
                             onKeyDown={e => e.key === 'Enter' && handlePostComment(post.id)}
-                            style={{ flex: 1, padding: '0.6rem 1rem', borderRadius: '999px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'white' }}
+                            style={{ flex: 1, padding: '0.5rem 1rem', borderRadius: '20px', border: '1px solid #dddfe2', outline: 'none', backgroundColor: '#f0f2f5', fontSize: '0.9rem' }}
                           />
-                          <button onClick={() => handlePostComment(post.id)} disabled={!commentInputs[post.id]?.trim()} style={{ background: 'var(--theme-primary)', color: 'white', border: 'none', borderRadius: '50%', width: '36px', height: '36px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: commentInputs[post.id]?.trim() ? 'pointer' : 'not-allowed', opacity: commentInputs[post.id]?.trim() ? 1 : 0.5 }}>
-                            <Send size={16} style={{ marginLeft: '-2px' }} />
+                          <button onClick={() => handlePostComment(post.id)} disabled={!commentInputs[post.id]?.trim()} style={{ background: 'none', border: 'none', color: commentInputs[post.id]?.trim() ? '#1877f2' : '#bcc0c4', cursor: commentInputs[post.id]?.trim() ? 'pointer' : 'not-allowed' }}>
+                            <Send size={18} />
                           </button>
                        </div>
                     </div>

@@ -177,7 +177,7 @@ function MittKrypinContent() {
   const searchParams = useSearchParams();
   const targetUsername = searchParams?.get('u');
 
-  const [activeTab, setActiveTab] = useState(searchParams?.get('spela') ? 'Spel 🕹️' : (searchParams?.get('tab') || 'Profil'));
+  const [activeTab, setActiveTab] = useState((searchParams?.get('spela') || searchParams?.get('arcade')) ? 'Spel 🕹️' : (searchParams?.get('tab') || 'Profil'));
   const [currentUser, setCurrentUser] = useState<any>(null); // Den vems profil man KIKAR PÅ
   const [viewerUser, setViewerUser] = useState<any>(null); // Du som är INLOGGAD
   const [hasSentRequest, setHasSentRequest] = useState(false);

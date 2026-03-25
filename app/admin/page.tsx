@@ -725,9 +725,13 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
             {report.status === 'open' ? (
               <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
-                {report.item_type !== 'profile' && (
+                {report.item_type === 'forum_post' ? (
+                  <button onClick={() => handleDeleteForumThread(report.item_id, 'Anmält forum-innehåll')} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
+                    <Trash2 size={16} /> Radera Tråd
+                  </button>
+                ) : (
                   <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
-                    <Trash2 size={16} /> Radera Inlägg
+                    <Trash2 size={16} /> Radera {report.item_type === 'whiteboard_comment' ? 'Kommentar' : 'Inlägg'}
                   </button>
                 )}
                 <button onClick={() => handleBanUser(report)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
@@ -911,8 +915,8 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
             </div>
             <div className="admin-card-actions">
-              <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
-                <Trash2 size={20} />
+              <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
+                <Trash2 size={16} /> Radera {post.is_comment ? 'Kommentar' : 'Inlägg'}
               </button>
             </div>
           </div>
