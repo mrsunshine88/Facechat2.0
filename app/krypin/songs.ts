@@ -1,0 +1,70 @@
+export const PROFILE_SONGS = [
+  { name: '🔇 Ingen musik (Stäng av)', videoId: '' },
+  
+  // -- KLASSIKER & HITS --
+  { name: '🎵 A-ha - Take On Me', videoId: 'djV11Xbc914' },
+  { name: '🎵 Smash Mouth - All Star', videoId: 'L_jWHffIx5E' },
+  { name: '🎵 Avicii - Levels', videoId: '_ovdm2yX4MA' },
+  { name: '🎵 Darude - Sandstorm', videoId: 'y6120QOlsfU' },
+  { name: '🎵 Haddaway - What Is Love', videoId: 'HEXWRTEbj1I' },
+  { name: '🎵 Toto - Africa', videoId: 'FTQbiNvZqaY' },
+  { name: '🎵 Eiffel 65 - Blue (Da Ba Dee)', videoId: '68ugkg9RePc' },
+  { name: '🎵 Scatman John - Scatman', videoId: 'Hy8kmNEo1i8' },
+  { name: '🎵 Rick Astley - Never Gonna Give You Up', videoId: 'dQw4w9WgXcQ' },
+  { name: '🎵 O-Zone - Dragostea Din Tei', videoId: 'YnopHCL1Jk8' },
+  
+  // -- GAMING & NINTENDO --
+  { name: '🎮 Super Mario Bros Theme', videoId: 'NTa6Xbzfq1U' },
+  { name: '🎮 Minecraft - Calm (Sweden)', videoId: 'qq-RGFyaq0U' },
+  { name: '🎮 Minecraft - Pigstep', videoId: '2aJUnltwsqs' },
+  { name: '🎮 Minecraft - Aria Math', videoId: 'SA2MdKvmxJ0' },
+  { name: '🎮 Minecraft - Otherside', videoId: 'D77gg2DhyYs' },
+  { name: '🎮 Subnautica - Abandon Ship', videoId: '6uH4IOd0b5U' },
+  { name: '🎮 Subnautica - Saloon', videoId: 'aT9_-P7N950' },
+  { name: '🎮 LEGO Ninjago - The Weekend Whip', videoId: 'XFwWcFpywyI' },
+  { name: '🎮 Lego Ninjago - Ghost Whip', videoId: 'UZsjNmF_ZII' },
+  { name: '🎮 Wii Mii Channel Theme', videoId: 'eNbw66KCFUc' },
+  { name: '🎮 Zelda Ocarina of Time - Gerudo Valley', videoId: '0hEYvdMoF2g' },
+  { name: '🎮 Pokémon Theme Song', videoId: 'JuYeHPFR3f0' },
+  { name: '🎮 Undertale - Megalovania', videoId: 'KK3KXAECte4' },
+  { name: '🎮 Doom - E1M1 (At Dooms Gate)', videoId: 'BSsfjHCFosw' },
+  { name: '🎮 Mortal Kombat Theme', videoId: 'EAwWPadFsOA' },
+  { name: '🎮 Street Fighter - Guile Theme', videoId: 'Iof5pRAIZmw' },
+  { name: '🎮 Tetris Theme (Korobeiniki)', videoId: 'NmCCQxVBfyM' },
+  { name: '🎮 Skyrim - Dragonborn Theme', videoId: 'UsnRQJxanVM' },
+  { name: '🎮 Geometry Dash - Stereo Madness', videoId: '3WweuZbWj04' },
+  { name: '🎮 Animal Crossing - 5 PM', videoId: 'dlU6OR-ub70' },
+  
+  // -- MEMES & ROLIGT --
+  { name: '🤪 Nyan Cat (10 hours!)', videoId: '2yJgwwDcgV8' },
+  { name: '🤪 Epic Sax Guy', videoId: 'ez8m4PXksQs' },
+  { name: '🤪 Crab Rave', videoId: 'L_jWHffIx5E' },
+  { name: '🤪 Shooting Stars', videoId: 'feA64wXhbjo' },
+  { name: '🤪 Astronomia (Coffin Dance)', videoId: 'j9V78UbdzWI' },
+  { name: '🤪 Keyboard Cat', videoId: 'J---aiyznGQ' },
+  { name: '🤪 Trololo Song', videoId: '2Z4m4lnjxkY' },
+  { name: '🤪 He-Man - HEYYEYAAEYA', videoId: 'ZZ5LpwO-An4' },
+  { name: '🤪 GigaChad Theme (Can You Feel My Heart)', videoId: '1poMvQTKTCA' },
+  { name: '🤪 Sad Violin (Spela när du är ledsen)', videoId: 'gIuotFZnBtk' },
+  { name: '🤪 X-Files Theme (Illuminati)', videoId: 'hAAlDoAtV7Y' },
+  { name: '🤪 Curb Your Enthusiasm Theme', videoId: 'hPrd8FoClAA' },
+  { name: '🤪 SpongeBob - Tomfoolery', videoId: 'IRixzwZl6Z8' },
+  { name: '🤪 Elevator Music (Bossa Nova)', videoId: 'g4EQwT7Mmyw' },
+  
+  // -- CHILL, VIBE & LOFI --
+  { name: '🌧️ Lofi Hip Hop (Chillhop Radio)', videoId: 'jfKfPfyJRdk' },
+  { name: '🌧️ Synthwave / Retrowave Mix', videoId: 'YrRhEWiHBjU' },
+  { name: '🌧️ Mysigt Regn & Åska', videoId: 'mPZkdNFkNps' },
+  { name: '🌧️ Avkopplande Havsvågor', videoId: 'PoAeFpUB1hA' },
+  { name: '🌧️ Japansk Zen Trädgård', videoId: '6GxNJlmzqz4' },
+  { name: '🌧️ Eldstad & Sprakande Ved', videoId: 'L_LUpnjgPso' },
+  
+  // -- HÅRDROCK & PUMP UP --
+  { name: '🤘 System of a Down - Chop Suey!', videoId: 'CSvFpBOe8eY' },
+  { name: '🤘 Linkin Park - In The End', videoId: 'eVTXPUF4Oz4' },
+  { name: '🤘 Survivor - Eye of the Tiger', videoId: 'btPJPFnesV4' },
+  { name: '🤘 AC/DC - Thunderstruck', videoId: 'v2AC41dglnM' },
+  { name: '🤘 Cartoon - On & On (NCS)', videoId: 'K4DyBUG242c' },
+  { name: '🤘 The Prodigy - Firestarter', videoId: 'wmin5WkOuPw' },
+  { name: '🤘 Rammstein - Du Hast', videoId: 'W3q8Od5qJio' }
+];

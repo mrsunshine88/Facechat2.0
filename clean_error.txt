@@ -1,0 +1,32 @@
+
+> facechat-live@0.1.0 build
+> next build
+
+▲ Next.js 16.2.1 (Turbopack)
+
+  Creating an optimized production build ...
+✓ Compiled successfully in 2.6s
+  Running TypeScript ...
+  Finished TypeScript in 4.5s ...
+  Collecting page data using 15 workers ...
+  Generating static pages using 15 workers (0/17) ...
+\n⚠ Warning: Next.js inferred your workspace root, but it may not be correct.
+ We detected multiple lockfiles and selected the directory of C:\Users\perss\package-lock.json as the root directory.
+ To silence this warning, set `turbopack.root` in your Next.js config, or consider removing one of the lockfiles if it's not needed.
+   See https://nextjs.org/docs/app/api-reference/config/next-config-js/turbopack#root-directory for more information.
+ Detected additional lockfiles: 
+   * C:\Users\perss\Downloads\Facechat2.0-main\Facechat2.0-main\package-lock.json
+
+Error occurred prerendering page "/admin". Read more: https://nextjs.org/docs/messages/prerender-error
+Error: @supabase/ssr: Your project's URL and API key are required to create a Supabase client!
+
+Check your Supabase project's API settings to find these values
+
+https://supabase.com/dashboard/project/_/settings/api
+    at <unknown> (https://supabase.com/dashboard/project/_/settings/api)
+    at <unknown> (C:\Users\perss\Downloads\Facechat2.0-main\Facechat2.0-main\.next\server\chunks\ssr\016p_0md54--._.js:37:56503)
+    at <unknown> (C:\Users\perss\Downloads\Facechat2.0-main\Facechat2.0-main\.next\server\chunks\ssr\[root-of-the-server]__0_we8gz._.js:1:12046) {
+  digest: '2032762685'
+}
+Export encountered an error on /admin/page: /admin, exiting the build.
+⨯ Next.js build worker exited with code: 1 and signal: null
