@@ -17,6 +17,7 @@ export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [userProfile, setUserProfile] = useState<any>(null);
   const [unreadSupportCount, setUnreadSupportCount] = useState(0);
+  const [unreadReportsCount, setUnreadReportsCount] = useState(0);
   const router = useRouter();
 
   const supabase = createBrowserClient(
@@ -63,6 +64,31 @@ export default function AdminPanel() {
         }).subscribe();
         
       return () => { supabase.removeChannel(sub); };
+    }
+  }, [userProfile, supabase]);
+
+  // Hämta ANMÄLNINGAR count (Open)
+  useEffect(() => {
+    if (userProfile) {
+      const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
+      const canManageContent = isRoot || userProfile.perm_content === true;
+      
+      if (canManageContent) {
+        const fetchReportsCount = async () => {
+          const { count } = await supabase.from('reports')
+            .select('*', { count: 'exact', head: true })
+            .eq('status', 'open');
+          if (count !== null) setUnreadReportsCount(count);
+        };
+        
+        fetchReportsCount();
+        const sub = supabase.channel('admin-reports-alerts')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => {
+            fetchReportsCount();
+          }).subscribe();
+        
+        return () => { supabase.removeChannel(sub); };
+      }
     }
   }, [userProfile, supabase]);
 
@@ -127,8 +153,15 @@ export default function AdminPanel() {
               </button>
             )}
             {canManageContent && (
-              <button onClick={() => setActiveTab('reports')} className={`admin-nav-link ${activeTab === 'reports' ? 'active' : ''}`}>
-                 <AlertTriangle size={18} /> Anmälningar
+              <button onClick={() => setActiveTab('reports')} className={`admin-nav-link ${activeTab === 'reports' ? 'active' : ''}`} style={{ justifyContent: 'space-between' }}>
+                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                   <AlertTriangle size={18} /> Anmälningar
+                 </div>
+                 {unreadReportsCount > 0 && (
+                   <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
+                     {unreadReportsCount}
+                   </span>
+                 )}
               </button>
             )}
             {(canManageContent || canManageChat) && (
@@ -394,8 +427,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
   useEffect(() => {
     if (search.trim().length > 1) {
       const timer = setTimeout(() => {
-        logAdminAction(supabase, currentUser.id, `Utförde sökning efter användare: "${search.trim()}"`);
-      }, 1500);
+        logAdminAction(supabase, currentUser.id, `Sökte efter användare: "${search.trim()}"`);
+      }, 900);
       return () => clearTimeout(timer);
     }
   }, [search, supabase, currentUser.id]);
@@ -457,7 +490,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       <div className="admin-card" style={{ marginBottom: '2rem' }}>
         <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
           <input type="text" value={search} onChange={e => { setSearch(e.target.value); fetchUsers(e.target.value); }} placeholder="Sök på användarnamn..." className="admin-input" style={{ flex: '1 1 auto', minWidth: '150px' }} />
-          <button style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 auto' }}><Search size={18} /> Sök</button>
+          <button onClick={() => { fetchUsers(search); logAdminAction(supabase, currentUser.id, `Tryckte på SÖK-knappen i Användare (sökterm: "${search}")`); }} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', flex: '1 1 auto' }}><Search size={18} /> Sök</button>
         </div>
       </div>
       
@@ -1916,7 +1949,7 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
     if (search.trim().length > 1) {
       const timer = setTimeout(() => {
         logAdminAction(supabase, currentUser.id, `Sökte i Blockeringar efter: "${search.trim()}"`);
-      }, 1500);
+      }, 900);
       return () => clearTimeout(timer);
     }
   }, [search, supabase, currentUser.id]);
@@ -1985,7 +2018,7 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
               style={{ width: '100%', paddingLeft: '3rem' }} 
             />
           </div>
-          <button onClick={() => fetchBlocks(search)} className="admin-input" style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <button onClick={() => { fetchBlocks(search); logAdminAction(supabase, currentUser.id, `Tryckte på SÖK-knappen i Blockeringar (sökterm: "${search}")`); }} className="admin-input" style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             Sök
           </button>
         </div>
