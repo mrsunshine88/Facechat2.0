@@ -118,6 +118,10 @@ export default function SokOchSpana() {
   const handleAddFriend = async (e: React.MouseEvent, personId: string) => {
     e.stopPropagation();
     if (!viewerId) return;
+    if (viewerId === personId) {
+        alert("Du kan inte lägga till dig själv som vän.");
+        return;
+    }
     if (blockedUserIds.includes(personId)) {
         alert("Du kan inte lägga till en blockerad person som vän.");
         return;

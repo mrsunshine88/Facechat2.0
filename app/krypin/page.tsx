@@ -449,7 +449,7 @@ function MittKrypinContent() {
          // Inkommande förfrågningar: Jag är inblandad, men jag är INTE action_user_id.
          // VIKTIGT: Filtrera även bort personer som vi REDAN är vänner med (som finns i friendIds)
          const incomingReqIds = pendingData
-           .filter(f => f.action_user_id !== targetId && !friendIds.includes(f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1))
+           .filter(f => f.action_user_id !== targetId && f.user_id_1 !== f.user_id_2 && !friendIds.includes(f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1))
            .map(f => f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1);
            
          if (incomingReqIds.length > 0) {
@@ -655,6 +655,10 @@ function MittKrypinContent() {
 
   const handleAddFriend = async () => {
     if(!viewerUser || !currentUser || isMyProfile) return;
+    if (viewerUser.id === currentUser.id) {
+       setCustomAlert('Du kan inte skicka vänförfrågan till dig själv.');
+       return;
+    }
     if (isBlocked || hasBlockedMe) {
        setCustomAlert('Du kan inte skicka vänförfrågan till en person som är blockerad.');
        return;
