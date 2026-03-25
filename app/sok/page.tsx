@@ -130,10 +130,12 @@ export default function SokOchSpana() {
     );
     
     // Check if reverse request exists
-    const { data: existing } = await supabase.from('friendships')
+    const { data: existingList } = await supabase.from('friendships')
       .select('*')
       .or(`and(user_id_1.eq.${personId},user_id_2.eq.${viewerId}),and(user_id_1.eq.${viewerId},user_id_2.eq.${personId})`)
-      .single();
+      .limit(1);
+      
+    const existing = existingList && existingList.length > 0 ? existingList[0] : null;
       
     if (existing) {
        // Make it 'accepted' if pending from the other side, or ignore

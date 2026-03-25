@@ -623,16 +623,20 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
         let contentLink = '';
 
         if (r.item_type === 'whiteboard') {
-          const { data: p } = await supabase.from('whiteboard').select('content').eq('id', r.item_id).single();
+          const { data: pList } = await supabase.from('whiteboard').select('content').eq('id', r.item_id).limit(1);
+          const p = pList && pList.length > 0 ? pList[0] : null;
           if (p) { contentStr = p.content; contentLink = '/whiteboard'; }
         } else if (r.item_type === 'whiteboard_comment') {
-          const { data: c } = await supabase.from('whiteboard_comments').select('content').eq('id', r.item_id).single();
+          const { data: cList } = await supabase.from('whiteboard_comments').select('content').eq('id', r.item_id).limit(1);
+          const c = cList && cList.length > 0 ? cList[0] : null;
           if (c) { contentStr = c.content; contentLink = '/whiteboard'; }
         } else if (r.item_type === 'guestbook') {
-          const { data: g } = await supabase.from('guestbook').select('content').eq('id', r.item_id).single();
+          const { data: gList } = await supabase.from('guestbook').select('content').eq('id', r.item_id).limit(1);
+          const g = gList && gList.length > 0 ? gList[0] : null;
           if (g) { contentStr = g.content; contentLink = `/krypin?u=${r.reported?.username || ''}`; }
         } else if (r.item_type === 'forum_post') {
-          const { data: f } = await supabase.from('forum_posts').select('content, thread_id').eq('id', r.item_id).single();
+          const { data: fList } = await supabase.from('forum_posts').select('content, thread_id').eq('id', r.item_id).limit(1);
+          const f = fList && fList.length > 0 ? fList[0] : null;
           if (f) { contentStr = f.content; contentLink = `/forum/${f.thread_id}`; }
         } else if (r.item_type === 'profile') {
           contentStr = `Anmälan av profil: ${r.reported?.username || 'Okänd'}`;

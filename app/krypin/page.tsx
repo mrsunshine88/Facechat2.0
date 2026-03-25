@@ -278,7 +278,8 @@ function MittKrypinContent() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) { window.location.href = '/login'; return; }
       
-      const { data: myProfile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      const { data: myProfList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
+      const myProfile = myProfList && myProfList.length > 0 ? myProfList[0] : null;
       const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
       const viewer = myProfile || { id: user.id, username: user.email?.split('@')[0], is_admin: isRoot, perm_content: isRoot };
       setViewerUser(viewer);
@@ -290,11 +291,11 @@ function MittKrypinContent() {
       try {
         // Parallell hämta targetProfile och blockeringar
         const [targetRes, blocksRes] = await Promise.all([
-          targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).single() : Promise.resolve({ data: myProfile }),
+          targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: myProfile ? [myProfile] : [] }),
           supabase.from('user_blocks').select('*').or(`blocker_id.eq.${viewer.id},blocked_id.eq.${viewer.id}`)
         ]);
 
-        profileToView = targetRes.data;
+        profileToView = targetRes.data && targetRes.data.length > 0 ? targetRes.data[0] : null;
         if (!profileToView) {
           if (!targetUsername) {
             profileToView = viewer;
@@ -669,14 +670,8 @@ function MittKrypinContent() {
     });
     if(!error) {
        setHasSentRequest(true);
-       await supabase.from('notifications').insert({
-          receiver_id: id1 === viewerUser.id ? id2 : id1,
-          actor_id: viewerUser.id,
-          type: 'friend_request',
-          content: 'vill bli din vän.',
-           link: `/krypin?tab=Vänner`
-       });
-
+       
+       // TRING! Send Web Push Notification to Receiver
        // TRING! Send Web Push Notification to Receiver
        fetch('/api/send-push', {
          method: 'POST', body: JSON.stringify({
@@ -699,7 +694,8 @@ function MittKrypinContent() {
       const id2 = currentUser.id < friendId ? friendId : currentUser.id;
       
       // Double check status before updating to avoid race conditions
-      const { data: existing } = await supabase.from('friendships').select('status').eq('user_id_1', id1).eq('user_id_2', id2).single();
+      const { data: existingList } = await supabase.from('friendships').select('status').eq('user_id_1', id1).eq('user_id_2', id2).limit(1);
+      const existing = existingList && existingList.length > 0 ? existingList[0] : null;
       
       if (!existing || existing.status !== 'pending') {
          console.warn("Attempted to accept a non-pending or non-existent request");
