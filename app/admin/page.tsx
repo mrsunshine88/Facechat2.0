@@ -249,6 +249,12 @@ export default function AdminPanel() {
         .admin-input:focus { border-color: #ef4444; background-color: var(--bg-card); }
         .permission-card-hover { transition: transform 0.2s, box-shadow 0.2s; }
         .permission-card-hover:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: #3b82f6 !important; }
+        
+        @media (max-width: 768px) {
+          .admin-responsive-card { flex-direction: column !important; gap: 1rem !important; align-items: stretch !important; }
+          .admin-card-content { min-width: 0 !important; width: 100% !important; }
+          .admin-card-actions { width: 100% !important; justify-content: flex-start !important; }
+        }
       `}</style>
     </div>
   );
@@ -497,8 +503,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {users.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga användare hittades.</p>}
         {users.map(u => (
-          <div key={u.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', flexWrap: 'wrap', gap: '1rem', borderLeft: u.is_banned ? '4px solid #ef4444' : '4px solid transparent', backgroundColor: u.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div key={u.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', flexWrap: 'wrap', gap: '1rem', borderLeft: u.is_banned ? '4px solid #ef4444' : '4px solid transparent', backgroundColor: u.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
+            <div className="admin-card-content" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
               <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden' }}>
                 {u.avatar_url && <img src={u.avatar_url} alt="av" style={{width:'100%', height:'100%', objectFit:'cover'}} />}
               </div>
@@ -508,7 +514,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
               </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '0.5rem' }}>
+            <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem' }}>
               {u.is_banned ? (
                 <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <PlayCircle size={14}/> Avblocka
@@ -629,8 +635,8 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {reports.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga anmälningar hittades. Bra jobbat!</p>}
         {reports.map((report: any) => (
-          <div key={report.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${report.status === 'open' ? '#ef4444' : '#10b981'}`, padding: '1rem', opacity: report.status !== 'open' ? 0.6 : 1 }}>
-            <div style={{ flex: 1, minWidth: '300px' }}>
+          <div key={report.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${report.status === 'open' ? '#ef4444' : '#10b981'}`, padding: '1rem', opacity: report.status !== 'open' ? 0.6 : 1 }}>
+            <div className="admin-card-content" style={{ flex: 1, minWidth: '300px' }}>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: '#b91c1c', marginBottom: '0.25rem', textTransform: 'uppercase' }}>{report.item_type}</p>
               <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: '600', color: 'var(--text-main)', marginBottom: '0.5rem' }}>{report.reporter?.username} anmäler {report.reported?.username}</p>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}><strong>Orsak/Kategori:</strong> {report.reason}</p>
@@ -652,12 +658,12 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
             </div>
             
             {report.status === 'open' ? (
-              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
+              <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
                 <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
                   <Trash2 size={16}/> Radera Inlägg
                 </button>
                 <button onClick={() => handleBanUser(report)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
-                  <Ban size={14}/> Banna {report.reported?.username}{report.reported?.username}
+                  <Ban size={14}/> Banna {report.reported?.username}
                 </button>
                 <button onClick={() => handleDismiss(report.id)} style={{ backgroundColor: 'transparent', color: 'var(--text-muted)', border: '1px solid var(--border-color)', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   Avvisa
@@ -829,36 +835,40 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {view === 'whiteboard' && posts.map(post => (
-          <div key={`${post.is_comment ? 'c' : 'p'}-${post.id}`} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-whiteboard)', padding: '1rem' }}>
-            <div>
+          <div key={`${post.is_comment ? 'c' : 'p'}-${post.id}`} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-whiteboard)', padding: '1rem' }}>
+            <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                  {post.profiles?.username || 'Okänd'} {post.is_comment ? '(Kommentar)' : '(Huvudinlägg)'} • {new Date(post.created_at).toLocaleString('sv-SE')}
               </p>
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
             </div>
-            <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
-              <Trash2 size={20} />
-            </button>
+            <div className="admin-card-actions">
+              <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
+                <Trash2 size={20} />
+              </button>
+            </div>
           </div>
         ))}
         {view === 'guestbook' && guestbook.map(post => (
-          <div key={post.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-krypin)', padding: '1rem' }}>
-            <div>
+          <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-krypin)', padding: '1rem' }}>
+            <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{post.sender?.username || 'Okänd'} ➔ {post.receiver?.username || 'Okänd'} • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
             </div>
-            <button onClick={() => handleDelete('guestbook', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
-              <Trash2 size={20} />
-            </button>
+            <div className="admin-card-actions">
+              <button onClick={() => handleDelete('guestbook', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
+                <Trash2 size={20} />
+              </button>
+            </div>
           </div>
         ))}
         {view === 'forum' && forumPosts.map(post => (
-          <div key={post.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <div style={{ flex: 1, minWidth: '200px' }}>
+          <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+            <div className="admin-card-content" style={{ flex: 1, minWidth: '200px' }}>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{post.profiles?.username || 'Okänd'} i tråden "{post.forum_threads?.title || 'Okänd/Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
               <p style={{ margin: 0, color: 'var(--text-main)' }}>{post.content}</p>
             </div>
-            <div style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+            <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
               <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera inlägg">
                 <Trash2 size={16} /> Radera inlägg
               </button>
@@ -871,14 +881,16 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           </div>
         ))}
         {view === 'chat' && chatMessages.map(msg => (
-          <div key={msg.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid #3b82f6', padding: '1rem' }}>
-            <div>
+          <div key={msg.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid #3b82f6', padding: '1rem' }}>
+            <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{msg.profiles?.username || 'Okänd'} i rummet "{msg.chat_rooms?.name || 'Okänt'}" • {new Date(msg.created_at).toLocaleString('sv-SE')}</p>
               <p style={{ margin: 0, paddingRight: '1rem', fontStyle: msg.is_gif ? 'italic' : 'normal', color: msg.is_gif ? '#8b5cf6' : 'var(--text-main)' }}>{msg.is_gif ? '[GIF/BILD Skickad]' : msg.content}</p>
             </div>
-            <button onClick={() => handleDelete('chat_messages', msg.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera chattmeddelande">
-              <Trash2 size={20} />
-            </button>
+            <div className="admin-card-actions">
+              <button onClick={() => handleDelete('chat_messages', msg.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera chattmeddelande">
+                <Trash2 size={20} />
+              </button>
+            </div>
           </div>
         ))}
         {view === 'snake' && (
@@ -926,12 +938,12 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
              </div>
              
              {snakeScores.map((score, index) => (
-               <div key={score.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: index === 0 ? '4px solid #fbbf24' : '4px solid #10b981', padding: '1rem' }}>
-                 <div>
+               <div key={score.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderLeft: index === 0 ? '4px solid #fbbf24' : '4px solid #10b981', padding: '1rem' }}>
+                 <div className="admin-card-content">
                    <h4 style={{ margin: 0, color: 'var(--text-main)' }}>#{index + 1} - {score.profiles?.username || 'Okänd'} <span style={{ color: '#2563eb', fontSize: '0.8rem' }}>({String(score.game_id || 'snake').toUpperCase()})</span></h4>
                    <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>Spelades: {new Date(score.created_at).toLocaleString('sv-SE')}</p>
                  </div>
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                 <div className="admin-card-actions" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                    <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10b981' }}>{score.score}</span>
                    <button onClick={async () => {
                       if (confirm('Radera just detta rekord?')) {
@@ -1116,14 +1128,16 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1.5rem' }}>
         {rooms.map(r => (
-          <div key={r.id} className="admin-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h4 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                {r.is_secret ? <span title="Hemligt Rum"><EyeOff size={16} color="#3b82f6" /></span> : r.password ? <Lock size={16} color="#ef4444" /> : null} {r.name}
-              </h4>
+          <div key={r.id} className="admin-card admin-responsive-card" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="admin-card-content" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h4 style={{ fontSize: '1.25rem', fontWeight: 'bold', color: 'var(--text-main)', margin: 0, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  {r.is_secret ? <span title="Hemligt Rum"><EyeOff size={16} color="#3b82f6" /></span> : r.password ? <Lock size={16} color="#ef4444" /> : null} {r.name}
+                </h4>
+              </div>
             </div>
             
-            <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
+            <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
                <button onClick={() => handleRename(r.id, r.name)} style={{ flex: 1, backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: '1px solid var(--border-color)', padding: '0.5rem', borderRadius: '6px', fontSize: '0.75rem', cursor: 'pointer', fontWeight: '600', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.25rem' }}>
                  <Edit2 size={14} /> Byt Namn
                </button>
@@ -1554,7 +1568,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
               <div 
                 key={ticket.id} 
                 onClick={() => { setActiveTicketId(ticket.id); markAsRead(ticket.id); }}
-                className="admin-card" 
+                className="admin-card admin-responsive-card" 
                 style={{ 
                   display: 'flex', flexDirection: 'column', gap: '1rem', 
                   borderLeft: `4px solid ${ticket.category.includes('Bug') ? '#ef4444' : ticket.category.includes('Anm') ? '#f59e0b' : '#3b82f6'}`, 
@@ -1565,15 +1579,17 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                 }}
               >
                 {isUnread && <div style={{ position: 'absolute', top: '-6px', right: '-6px', width: '12px', height: '12px', backgroundColor: '#ef4444', borderRadius: '50%', border: '2px solid white' }} />}
-                <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
-                  <div>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 'bold', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{ticket.category}</span>
-                    <span style={{ marginLeft: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Från: {ticket.profiles?.username || 'Okänd'}</span>
+                <div className="admin-card-content">
+                  <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                    <div>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-main)', fontWeight: 'bold', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', padding: '0.2rem 0.5rem', borderRadius: '4px' }}>{ticket.category}</span>
+                      <span style={{ marginLeft: '1rem', color: 'var(--text-muted)', fontSize: '0.875rem' }}>Från: {ticket.profiles?.username || 'Okänd'}</span>
+                    </div>
+                    <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{new Date(ticket.created_at).toLocaleString('sv-SE')}</span>
                   </div>
-                  <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)' }}>{new Date(ticket.created_at).toLocaleString('sv-SE')}</span>
+                  <p style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: '500', margin: '1rem 0 0.5rem 0' }}>"{ticket.description}"</p>
                 </div>
-                <p style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: '500', margin: 0 }}>"{ticket.description}"</p>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
+                <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
                    <span style={{ fontSize: '0.875rem', color: '#3b82f6', fontWeight: 'bold' }}>{ticket.messages && ticket.messages.length > 0 ? `${ticket.messages.length} meddelanden` : 'Nytt ärende'} &rarr;</span>
                    <div style={{ display: 'flex', gap: '0.5rem' }}>
                      {ticket.status === 'open' && (
@@ -2033,8 +2049,8 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
         {loading && <p style={{ color: 'var(--text-muted)' }}>Laddar blockeringar...</p>}
         {!loading && blocks.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga aktiva blockeringar hittades{search ? ` för "${search}"` : ''}.</p>}
         {blocks.map(b => (
-          <div key={`${b.blocker_id}-${b.blocked_id}`} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderLeft: '4px solid #ef4444', transition: 'all 0.2s' }}>
-            <div>
+          <div key={`${b.blocker_id}-${b.blocked_id}`} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1.25rem 1.5rem', borderLeft: '4px solid #ef4444', transition: 'all 0.2s' }}>
+            <div className="admin-card-content">
               <p style={{ margin: 0, fontWeight: '700', color: 'var(--text-main)', fontSize: '1.1rem' }}>
                 <span style={{ color: '#ef4444' }}>{b.blocker?.username || 'Okänd'}</span>
                 <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)', margin: '0 0.75rem', fontWeight: 'normal' }}>har blockerat</span>
@@ -2047,12 +2063,14 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
                 </p>
               </div>
             </div>
-            <button 
-              onClick={() => handleUnblock(b.blocker_id, b.blocked_id, b.blocker?.username || 'Okänd', b.blocked?.username || 'Okänd')} 
-              style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.6rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
-            >
-              <Eraser size={16}/> Avblockera
-            </button>
+            <div className="admin-card-actions">
+              <button 
+                onClick={() => handleUnblock(b.blocker_id, b.blocked_id, b.blocker?.username || 'Okänd', b.blocked?.username || 'Okänd')} 
+                style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.6rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', transition: 'all 0.2s' }}
+              >
+                <Eraser size={16}/> Avblockera
+              </button>
+            </div>
           </div>
         ))}
       </div>
