@@ -16,7 +16,8 @@ const supabaseAdmin = createClient(
 
 // Helper to verify permissions
 async function verifyAdminPermission(requestingUserId: string, permissionRequired: string) {
-  const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', requestingUserId).single();
+  const { data: profList } = await supabaseAdmin.from('profiles').select('*').eq('id', requestingUserId).limit(1);
+  const profile = profList && profList.length > 0 ? profList[0] : null;
   if (!profile) throw new Error('User not found');
   
   if (profile.auth_email === 'apersson508@gmail.com' || profile.is_admin || profile.perm_roles) {
@@ -57,11 +58,13 @@ export async function adminDeleteContent(table: string, id: string, requestingUs
 export async function adminResolveReport(reportId: string, status: string, requestingUserId: string) {
   try {
     await verifyAdminPermission(requestingUserId, 'perm_content');
-    const { data: profile } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', requestingUserId).single();
+    const { data: profList } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', requestingUserId).limit(1);
+    const profile = profList && profList.length > 0 ? profList[0] : null;
     const isRoot = profile?.auth_email === 'apersson508@gmail.com';
 
     // Kolla om anmälningen rör admin själv (jäv)
-    const { data: report } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).single();
+    const { data: repList } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).limit(1);
+    const report = repList && repList.length > 0 ? repList[0] : null;
     if (report && report.reported_user_id === requestingUserId && !isRoot) {
       throw new Error('Jäv: Du kan inte hantera anmälningar som rör dig själv.');
     }
@@ -100,7 +103,8 @@ export async function adminRoomAction(action: string, roomId: string | null, pay
 export async function adminAddSecretUserToRoom(roomId: string, targetUserId: string, requestingUserId: string) {
   try {
     await verifyAdminPermission(requestingUserId, 'perm_rooms');
-    const { data: room, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).single();
+    const { data: roomList, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).limit(1);
+    const room = roomList && roomList.length > 0 ? roomList[0] : null;
     if (fetchErr) throw fetchErr;
     let users = room?.allowed_users || [];
     if (!users.includes(targetUserId)) {
@@ -117,7 +121,8 @@ export async function adminAddSecretUserToRoom(roomId: string, targetUserId: str
 export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId: string, requestingUserId: string) {
   try {
     await verifyAdminPermission(requestingUserId, 'perm_rooms');
-    const { data: room, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).single();
+    const { data: roomList, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).limit(1);
+    const room = roomList && roomList.length > 0 ? roomList[0] : null;
     if (fetchErr) throw fetchErr;
     let users = room?.allowed_users || [];
     users = users.filter((id: string) => id !== targetUserId);

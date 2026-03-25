@@ -113,8 +113,10 @@ export default function MinaSidor() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const loadProfile = async () => {
-          const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-          const { data: secrets } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).maybeSingle();
+          const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
+          const profile = profList && profList.length > 0 ? profList[0] : null;
+          const { data: secList } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1);
+          const secrets = secList && secList.length > 0 ? secList[0] : null;
           
           if (profile) {
             setCurrentUser({ ...profile, email: user.email, ...secrets });

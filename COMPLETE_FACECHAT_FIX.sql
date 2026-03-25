@@ -1,5 +1,5 @@
 -- =========================================================================
--- COMPLETE FACECHAT FIX (VERSION 5 - ROBUST)
+-- COMPLETE FACECHAT FIX (VERSION 5 - NUCLEAR CLEANUP)
 -- =========================================================================
 
 -- 1. RENSA GAMLA RESTER SÄKERT
@@ -18,14 +18,14 @@ EXCEPTION WHEN OTHERS THEN
     RAISE NOTICE 'Kunde inte ta bort funktioner: %', SQLERRM;
 END $$;
 
--- 2. SKAPA STÄD-FUNKTION
+-- 2. SKAPA STÄD-FUNKTION (NUCLEAR FORCE)
 CREATE OR REPLACE FUNCTION public.fix_duplicate_friendships()
 RETURNS integer AS $$
 DECLARE
   total_deleted integer := 0;
   count_temp integer := 0;
 BEGIN
-  -- A. Radera pending där accepted finns (oavsett ordning)
+  -- A. NUCLEAR FORCE: Radera ALLA 'pending' rader där parterna redan är vänner
   WITH d1 AS (
     DELETE FROM public.friendships f1
     WHERE f1.status = 'pending'
@@ -38,7 +38,7 @@ BEGIN
   ) SELECT count(*) INTO count_temp FROM d1;
   total_deleted := total_deleted + count_temp;
 
-  -- B. Dubbletter (ctid)
+  -- B. DUBBLETT-RENSNING (ctid) - Om det finns två 'accepted' rader för samma par
   WITH d2 AS (
     DELETE FROM public.friendships WHERE ctid IN (
       SELECT ctid FROM (
@@ -48,7 +48,7 @@ BEGIN
   ) SELECT count(*) INTO count_temp FROM d2;
   total_deleted := total_deleted + count_temp;
 
-  -- C. User_secrets
+  -- C. USER_SECRETS CLEANUP (Fixar 406-fel i inställningar)
   WITH d3 AS (
     DELETE FROM public.user_secrets WHERE ctid IN (
       SELECT ctid FROM (
@@ -62,7 +62,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 3. NOTIS-LOGIK
+
+-- 3. ÅTERSKAPA NOTIS-LOGIK (Stabilare version)
 CREATE OR REPLACE FUNCTION public.handle_friend_notification()
 RETURNS TRIGGER AS $$
 DECLARE target UUID;
@@ -80,5 +81,5 @@ END; $$ LANGUAGE plpgsql SECURITY DEFINER;
 -- 4. TRIGGER
 CREATE TRIGGER on_friendship_change AFTER INSERT OR UPDATE ON public.friendships FOR EACH ROW EXECUTE FUNCTION public.handle_friend_notification();
 
--- 5. KÖR OCH GE TYDLIG FEEDBACK
-SELECT public.fix_duplicate_friendships() as result_count;
+-- 5. KÖR STÄDNINGEN DIREKT
+SELECT public.fix_duplicate_friendships() as städade_rader;

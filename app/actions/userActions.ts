@@ -24,7 +24,8 @@ export async function deleteUserAccount(userId: string, requestingUserId: string
   );
 
   // Prevent deletion of apersson508
-  const { data: userProfile } = await supabaseAdmin.from('profiles').select('username').eq('id', userId).single();
+  const { data: profList } = await supabaseAdmin.from('profiles').select('username').eq('id', userId).limit(1);
+  const userProfile = profList && profList.length > 0 ? profList[0] : null;
   if (userProfile?.username?.toLowerCase() === 'apersson508') {
     return { error: 'Säkerhetsspärr: Detta konto är skyddat som root-administratör och kan aldrig raderas.' };
   }
