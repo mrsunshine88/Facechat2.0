@@ -168,6 +168,14 @@ export default function Whiteboard() {
 
   const handleDelete = async (postId: string) => {
     if (!confirm('Vill du verkligen radera detta inlägg?')) return
+    const postToDelete = posts.find(p => p.id === postId);
+    if (postToDelete?.parent_id) {
+       // Decrement shares_count on original post
+       const { data: parent } = await supabase.from('whiteboard').select('shares_count').eq('id', postToDelete.parent_id).single();
+       if (parent) {
+          await supabase.from('whiteboard').update({ shares_count: Math.max(0, (parent.shares_count || 0) - 1) }).eq('id', postToDelete.parent_id);
+       }
+    }
     setPosts(prev => prev.filter(p => p.id !== postId))
     await supabase.from('whiteboard').delete().eq('id', postId)
   }
@@ -308,6 +316,13 @@ export default function Whiteboard() {
     });
 
     if (!error) {
+      // Increment shares_count on original/parent post
+      const parentId = post.parent_id || post.id;
+      const { data: parent } = await supabase.from('whiteboard').select('shares_count').eq('id', parentId).single();
+      if (parent) {
+         await supabase.from('whiteboard').update({ shares_count: (parent.shares_count || 0) + 1 }).eq('id', parentId);
+      }
+      
       if (post.author_id !== currentUser.id) {
         await supabase.from('notifications').insert({
           receiver_id: post.author_id,
@@ -637,13 +652,13 @@ export default function Whiteboard() {
               {(allComments.length > 0 || activeCommentPostId === post.id) && (
                  <div style={{ backgroundColor: '#f0f2f5', padding: '0.75rem 1rem', borderTop: '1px solid #ebedf0' }}>
                     
-                    {/* Show more comments button */}
-                    {hasMoreComments && !isExpanded && (
+                    {/* Show/Hide more comments button */}
+                    {hasMoreComments && (
                       <button 
-                        onClick={() => setExpandedComments({...expandedComments, [post.id]: true})}
+                        onClick={() => setExpandedComments(prev => ({...prev, [post.id]: !prev[post.id]}))}
                         style={{ border: 'none', background: 'none', color: '#65676b', fontWeight: '600', fontSize: '0.85rem', cursor: 'pointer', marginBottom: '1rem', padding: 0 }}
                       >
-                        Visa {allComments.length - 2} tidigare kommentarer...
+                        {expandedComments[post.id] ? 'Visa färre' : `Visa ${allComments.length - 2} tidigare kommentarer...`}
                       </button>
                     )}
 

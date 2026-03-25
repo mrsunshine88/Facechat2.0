@@ -183,6 +183,34 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                 <Tag size={16} color="var(--theme-forum)" />
                 <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--theme-forum)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>{thread.category || 'Forum'}</span>
              </div>
+             
+             {/* ACTIONS MOVED TO HEADER */}
+             {posts[0] && (
+               <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
+                 <button 
+                   onClick={() => { setNewReply(`[citat]${thread.title}[/citat]\n`); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}
+                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                 >
+                   <MessageSquare size={14} /> Citera
+                 </button>
+                 {(currentUser?.id === posts[0].author_id) && (
+                   <button 
+                     onClick={() => setEditingPost({ id: posts[0].id, content: posts[0].content })}
+                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                   >
+                     <Edit2 size={14} /> Ändra
+                   </button>
+                 )}
+                 {(currentUser?.id === posts[0].author_id || currentUser?.is_admin) && (
+                   <button 
+                     onClick={() => handleDeletePost(posts[0].id)}
+                     style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                   >
+                     <Trash2 size={14} /> Radera
+                   </button>
+                 )}
+               </div>
+             )}
            </div>
         </div>
 
@@ -202,8 +230,9 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
 
       {/* Posts List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
-        {posts.map((post, idx) => {
-            const isFirst = idx === 0;
+        {posts.slice(1).map((post, idx) => {
+            const actualIdx = idx + 2;
+            const isFirst = false;
             const isDuplicateTitle = isFirst && post.content.trim().toLowerCase() === thread.title.trim().toLowerCase();
             
             const authorUsername = post.profiles?.username || 'Raderad';
@@ -241,7 +270,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
                       <span style={{ fontWeight: '600' }}>{timeStr}</span>
                       <span style={{ opacity: 0.5 }}>|</span>
-                      <span style={{ fontWeight: 'bold' }}>#{idx + 1}</span>
+                      <span style={{ fontWeight: 'bold' }}>#{actualIdx}</span>
                     </div>
                     
                     <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
