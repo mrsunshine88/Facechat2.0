@@ -198,6 +198,7 @@ function MittKrypinContent() {
   const [friends, setFriends] = useState<any[]>([]);
   const [pendingRequests, setPendingRequests] = useState<any[]>([]);
   const [pmModalOpen, setPmModalOpen] = useState(false);
+  const [isProcessingFriendship, setIsProcessingFriendship] = useState(false);
   const [pmContent, setPmContent] = useState('');
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [replyContent, setReplyContent] = useState('');
@@ -671,30 +672,66 @@ function MittKrypinContent() {
   };
 
   const handleAcceptRequest = async (friendId: string) => {
-    if (!currentUser) return;
-    const id1 = currentUser.id < friendId ? currentUser.id : friendId;
-    const id2 = currentUser.id < friendId ? friendId : currentUser.id;
-    await supabase.from('friendships').update({ status: 'accepted' }).eq('user_id_1', id1).eq('user_id_2', id2);
-    setPendingRequests(prev => prev.filter(req => req.id !== friendId));
-    
-    await supabase.from('notifications').insert({
-       receiver_id: friendId,
-       actor_id: currentUser.id,
-       type: 'friend_accept',
-       content: 'har accepterat din vänförfrågan! Ni är nu vänner.',
-       link: `/krypin?u=${currentUser.username}&tab=Vänner`
-    });
-    
-    fetchFriends(currentUser.id, viewerUser.id);
+    if (!currentUser || isProcessingFriendship) return;
+    setIsProcessingFriendship(true);
+    try {
+      const id1 = currentUser.id < friendId ? currentUser.id : friendId;
+      const id2 = currentUser.id < friendId ? friendId : currentUser.id;
+      
+      // Double check status before updating to avoid race conditions
+      const { data: existing } = await supabase.from('friendships').select('status').eq('user_id_1', id1).eq('user_id_2', id2).single();
+      
+      if (!existing || existing.status !== 'pending') {
+         console.warn("Attempted to accept a non-pending or non-existent request");
+         setIsProcessingFriendship(false);
+         fetchFriends(currentUser.id, viewerUser.id);
+         return;
+      }
+
+      const { error } = await supabase.from('friendships').update({ status: 'accepted' }).eq('user_id_1', id1).eq('user_id_2', id2);
+      if (error) throw error;
+
+      setPendingRequests(prev => prev.filter(req => req.id !== friendId));
+      
+      await supabase.from('notifications').insert({
+         receiver_id: friendId,
+         actor_id: currentUser.id,
+         type: 'friend_accept',
+         content: 'har accepterat din vänförfrågan! Ni är nu vänner.',
+         link: `/krypin?u=${currentUser.username}&tab=Vänner`
+      });
+      
+      setCustomAlert("Vänförfrågan accepterad!");
+      fetchFriends(currentUser.id, viewerUser.id);
+    } catch (err) {
+      console.error("Error accepting friend request:", err);
+    } finally {
+      setIsProcessingFriendship(false);
+    }
   }
 
   const handleDenyRequest = async (friendId: string) => {
-    if (!currentUser) return;
-    const id1 = currentUser.id < friendId ? currentUser.id : friendId;
-    const id2 = currentUser.id < friendId ? friendId : currentUser.id;
-    await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
-    setPendingRequests(prev => prev.filter(req => req.id !== friendId));
-    fetchFriends(currentUser.id, viewerUser.id);
+    if (!currentUser || isProcessingFriendship) return;
+    setIsProcessingFriendship(true);
+    try {
+      const id1 = currentUser.id < friendId ? currentUser.id : friendId;
+      const id2 = currentUser.id < friendId ? friendId : currentUser.id;
+      
+      // Optimistic UI update
+      setPendingRequests(prev => prev.filter(req => req.id !== friendId));
+      
+      const { error } = await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
+      
+      if (error) throw error;
+      
+      setCustomAlert("Vänförfrågan borttagen.");
+      fetchFriends(currentUser.id, viewerUser.id);
+    } catch (err) {
+      console.error("Error denying friend request:", err);
+      fetchFriends(currentUser.id, viewerUser.id);
+    } finally {
+      setIsProcessingFriendship(false);
+    }
   }
 
   const handleRemoveFriend = async (friendId: string) => {
