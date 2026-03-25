@@ -433,37 +433,65 @@ export default function Whiteboard() {
       
       {/* Skapa inlägg (Facebook style) */}
       <div style={{ backgroundColor: 'white', padding: '1rem', borderRadius: '12px', border: '1px solid #dddfe2', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', marginBottom: '1.5rem' }}>
-        <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
-          <div style={{ width: '40px', height: '40px', backgroundColor: 'var(--theme-primary)', borderRadius: '50%', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flexShrink: 0 }}>
-            {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={20} />}
-          </div>
-          <button 
-            onClick={() => setIsExpanded(true)}
-            style={{ flex: 1, backgroundColor: '#f0f2f5', border: 'none', borderRadius: '20px', padding: '0.6rem 1rem', textAlign: 'left', color: '#65676b', fontSize: '1rem', cursor: 'pointer' }}
-          >
-            Vad har du på hjärtat, {currentUser?.username || 'vän'}?
-          </button>
-        </div>
-        
-        <div id="wb-expanded-post" style={{ display: (isExpanded || newPostContent.trim()) ? 'block' : 'none' }}>
-          <textarea 
-            id="wb-textarea"
-            autoFocus={isExpanded}
-            placeholder="Skriv något..." 
-            value={newPostContent}
-            onChange={e => setNewPostContent(e.target.value)}
-            style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid #dddfe2', outline: 'none', resize: 'vertical', minHeight: '80px', fontFamily: 'inherit', marginBottom: '0.75rem', fontSize: '1rem' }}
-          ></textarea>
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+        {!isExpanded && !newPostContent.trim() ? (
+          <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
+            <div style={{ width: '40px', height: '40px', backgroundColor: 'var(--theme-primary)', borderRadius: '50%', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flexShrink: 0 }}>
+              {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={20} />}
+            </div>
             <button 
-              onClick={handlePost} 
-              disabled={!newPostContent.trim()} 
-              style={{ padding: '0.5rem 2.5rem', backgroundColor: '#1877f2', color: 'white', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer', border: 'none', fontSize: '0.95rem' }}
+              onClick={() => setIsExpanded(true)}
+              style={{ flex: 1, backgroundColor: '#f0f2f5', border: 'none', borderRadius: '20px', padding: '0.6rem 1rem', textAlign: 'left', color: '#65676b', fontSize: '1rem', cursor: 'pointer', transition: 'background-color 0.2s' }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = '#e4e6eb'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = '#f0f2f5'}
             >
-              Posta
+              Vad har du på hjärtat, {currentUser?.username || 'vän'}?
             </button>
           </div>
-        </div>
+        ) : (
+          <div id="wb-expanded-post">
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', borderBottom: '1px solid #eee', paddingBottom: '0.5rem' }}>
+               <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 'bold' }}>Skapa inlägg</h3>
+               <button 
+                 onClick={() => setIsExpanded(false)} 
+                 style={{ background: 'none', border: 'none', color: '#65676b', cursor: 'pointer', fontWeight: 'bold', fontSize: '1.2rem' }}
+               >
+                 ✕
+               </button>
+            </div>
+            
+            <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginBottom: '1rem' }}>
+              <div style={{ width: '40px', height: '40px', backgroundColor: 'var(--theme-primary)', borderRadius: '50%', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold', overflow: 'hidden', flexShrink: 0 }}>
+                {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={20} />}
+              </div>
+              <div style={{ fontWeight: 'bold', fontSize: '0.95rem' }}>{currentUser?.username || 'Gäst'}</div>
+            </div>
+
+            <textarea 
+              id="wb-textarea"
+              autoFocus={isExpanded}
+              placeholder={`Vad har du på hjärtat, ${currentUser?.username || 'vän'}?`} 
+              value={newPostContent}
+              onChange={e => setNewPostContent(e.target.value)}
+              style={{ width: '100%', padding: '1rem 0', borderRadius: '0', border: 'none', outline: 'none', resize: 'none', minHeight: '150px', fontFamily: 'inherit', marginBottom: '1rem', fontSize: '1.4rem', color: '#1c1e21', backgroundColor: 'transparent' }}
+            ></textarea>
+            
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', alignItems: 'center' }}>
+              <button 
+                onClick={() => { setIsExpanded(false); setNewPostContent(''); }}
+                style={{ background: 'none', border: 'none', color: '#65676b', cursor: 'pointer', fontWeight: 'bold' }}
+              >
+                Avbryt
+              </button>
+              <button 
+                onClick={() => { handlePost(); setIsExpanded(false); }} 
+                disabled={!newPostContent.trim()} 
+                style={{ padding: '0.6rem 2.5rem', backgroundColor: newPostContent.trim() ? '#1877f2' : '#e4e6eb', color: newPostContent.trim() ? 'white' : '#bcc0c4', borderRadius: '6px', fontWeight: 'bold', cursor: newPostContent.trim() ? 'pointer' : 'not-allowed', border: 'none', fontSize: '0.95rem' }}
+              >
+                Posta
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Flöde */}

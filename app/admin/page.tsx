@@ -621,6 +621,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
       const enriched = await Promise.all(filteredData.map(async (r: any) => {
         let contentStr = '';
         let contentLink = '';
+        let isForumStarter = false;
 
         if (r.item_type === 'whiteboard') {
           const { data: pList } = await supabase.from('whiteboard').select('content').eq('id', r.item_id).limit(1);
@@ -635,15 +636,20 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
           const g = gList && gList.length > 0 ? gList[0] : null;
           if (g) { contentStr = g.content; contentLink = `/krypin?u=${r.reported?.username || ''}`; }
         } else if (r.item_type === 'forum_post') {
-          const { data: fList } = await supabase.from('forum_posts').select('content, thread_id').eq('id', r.item_id).limit(1);
+          const { data: fList } = await supabase.from('forum_posts').select('content, thread_id, forum_threads(title)').eq('id', r.item_id).limit(1);
           const f = fList && fList.length > 0 ? fList[0] : null;
-          if (f) { contentStr = f.content; contentLink = `/forum/${f.thread_id}`; }
+          if (f) { 
+            contentStr = f.content; 
+            contentLink = `/forum/${f.thread_id}`;
+            // @ts-ignore
+            isForumStarter = f.content.trim() === f.forum_threads?.title?.trim();
+          }
         } else if (r.item_type === 'profile') {
           contentStr = `Anmälan av profil: ${r.reported?.username || 'Okänd'}`;
           contentLink = `/krypin?u=${r.reported?.username || ''}`;
         }
 
-        return { ...r, reported_content: contentStr, reported_link: contentLink };
+        return { ...r, reported_content: contentStr, reported_link: contentLink, is_forum_starter: isForumStarter };
       }));
       setReports(enriched);
     }
@@ -725,7 +731,11 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
           <div key={report.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${report.status === 'open' ? '#ef4444' : '#10b981'}`, padding: '1rem', opacity: report.status !== 'open' ? 0.6 : 1 }}>
             <div className="admin-card-content" style={{ flex: 1, minWidth: '300px' }}>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: report.item_type === 'profile' ? '#3b82f6' : '#b91c1c', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
-                {report.item_type === 'profile' ? '👤 Person-Anmälan' : `📝 Inläggs-Anmälan (${report.item_type})`}
+                {report.item_type === 'profile' ? '👤 Person-Anmälan' : (
+                   report.item_type === 'forum_post' 
+                   ? `📝 ${report.is_forum_starter ? 'TRÅD' : 'KOMMENTAR'}-Anmälan` 
+                   : `📝 Inläggs-Anmälan (${report.item_type})`
+                )}
               </p>
               <p style={{ margin: 0, fontSize: '0.875rem', fontWeight: '600', color: 'var(--text-main)', marginBottom: '0.5rem' }}>{report.reporter?.username} anmäler {report.reported?.username}</p>
               <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '0.5rem' }}><strong>Orsak/Kategori:</strong> {report.reason}</p>
@@ -750,9 +760,15 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
               <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
                 {report.item_type === 'forum_post' ? (
                   <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 auto' }}>
-                    <button onClick={() => handleDeleteForumThread(report.item_id, report.id)} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, justifyContent: 'center' }}>
-                      <Trash2 size={16} /> Radera Tråd
-                    </button>
+                    {report.is_forum_starter ? (
+                      <button onClick={() => handleDeleteForumThread(report.item_id, report.id)} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, justifyContent: 'center' }}>
+                        <Trash2 size={16} /> Radera hela Tråden
+                      </button>
+                    ) : (
+                      <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, justifyContent: 'center' }}>
+                        <Trash2 size={16} /> Radera kommentar
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
@@ -959,22 +975,30 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
             </div>
           </div>
         ))}
-        {view === 'forum' && forumPosts.map(post => (
-          <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
-            <div className="admin-card-content" style={{ flex: 1, minWidth: '200px' }}>
-              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{post.profiles?.username || 'Okänd'} i tråden "{post.forum_threads?.title || 'Okänd/Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, color: 'var(--text-main)' }}>{post.content}</p>
+        {view === 'forum' && forumPosts.map(post => {
+          const isStarter = post.content?.trim().toLowerCase() === post.forum_threads?.title?.trim().toLowerCase();
+          return (
+            <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${isStarter ? 'var(--theme-forum)' : '#94a3b8'}`, padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
+              <div className="admin-card-content" style={{ flex: 1, minWidth: '200px' }}>
+                <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: isStarter ? 'var(--theme-forum)' : 'var(--text-muted)', marginBottom: '0.5rem' }}>
+                  {isStarter ? '[TRÅDSTART]' : '[KOMMENTAR]'} • {post.profiles?.username || 'Okänd'} i "{post.forum_threads?.title || 'Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}
+                </p>
+                <p style={{ margin: 0, color: 'var(--text-main)', fontStyle: isStarter ? 'italic' : 'normal' }}>{post.content}</p>
+              </div>
+              <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+                {isStarter ? (
+                  <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden och alla dess svar">
+                    <Trash2 size={16} /> Radera hela Tråden
+                  </button>
+                ) : (
+                  <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera endast denna kommentar">
+                    <Trash2 size={16} /> Radera kommentar
+                  </button>
+                )}
+              </div>
             </div>
-            <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-              <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera endast denna kommentar">
-                <Trash2 size={16} /> Radera kommentar
-              </button>
-              <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden och alla dess svar">
-                <Trash2 size={16} /> Radera hela Tråden
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {view === 'chat' && chatMessages.map(msg => (
           <div key={msg.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid #3b82f6', padding: '1rem' }}>
             <div className="admin-card-content">

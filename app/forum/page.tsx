@@ -158,7 +158,7 @@ export default function Forumet() {
                   <div style={{ overflow: 'hidden' }}>
                     <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem', color: 'var(--text-main)', wordBreak: 'break-word' }}>{thread.title}</h3>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
-                      I <span style={{ fontWeight: '600', color: 'var(--theme-forum)' }}>{thread.category}</span> • Startad av {authorDisplay}
+                      I <span style={{ fontWeight: '600', color: 'var(--theme-forum)' }}>{thread.category}</span> • Startad av {authorDisplay} • {new Date(thread.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>
                   </div>
                   <div style={{ textAlign: 'right', color: 'var(--text-main)' }}>

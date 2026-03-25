@@ -81,7 +81,6 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
     })
     if (!error) {
        setNewReply('')
-       // Scroll to bottom functionality could be added here
     }
   }
 
@@ -132,19 +131,18 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh', flexDirection: 'column', gap: '1rem' }}>
         <Loader2 className="animate-spin" size={48} color="var(--theme-forum)" />
-        <p style={{ color: 'var(--text-muted)', fontWeight: 'bold' }}>Hämtar tråden...</p>
+        <p style={{ color: 'var(--text-muted)', fontWeight: 'bold' }}>Laddar...</p>
       </div>
     )
   }
 
   if (!thread) return <div style={{ padding: '2rem', textAlign: 'center' }}>Tråden hittades inte.</div>
 
-  // Visual helper for date
   const threadDateStr = thread.created_at ? new Date(thread.created_at).toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' }) : '...';
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '1rem' }}>
-      {/* Breadcrumb / Navigation */}
+      {/* Breadcrumb */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1.5rem', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
         <button onClick={() => router.push('/forum')} style={{ background: 'none', border: 'none', color: 'var(--theme-forum)', cursor: 'pointer', display: 'flex', alignItems: 'center', fontWeight: 'bold' }}>
           <ArrowLeft size={16} /> Tillbaka till Forumet
@@ -153,7 +151,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
         <span style={{ color: 'var(--text-main)', fontWeight: '600' }}>{thread.category || 'Allmänt'}</span>
       </div>
 
-      {/* FIXED HEADER: Rubrik till vänster, Profil till höger */}
+      {/* HEADER (Top Rubric) */}
       <div style={{ 
         backgroundColor: 'var(--bg-card)', 
         borderRadius: '12px', 
@@ -173,7 +171,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
 
         {/* Left Side: Title and Meta */}
         <div style={{ flex: 1 }}>
-           <h1 style={{ margin: 0, fontSize: '2.25rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: '1.1', marginBottom: '1rem' }}>
+           <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: '1.1', marginBottom: '1rem' }}>
              {thread.title}
            </h1>
            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', alignItems: 'center' }}>
@@ -203,9 +201,11 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
       </div>
 
       {/* Posts List */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '2rem' }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', marginBottom: '2rem' }}>
         {posts.map((post, idx) => {
             const isFirst = idx === 0;
+            const isDuplicateTitle = isFirst && post.content.trim().toLowerCase() === thread.title.trim().toLowerCase();
+            
             const authorUsername = post.profiles?.username || 'Raderad';
             const authorDisplay = post.uses_alias ? (post.profiles?.alias_name || 'Stenansikte (Anonym)') : (
               <span onClick={(e) => { e.preventDefault(); router.push(`/krypin?u=${authorUsername}`); }} className="user-link" style={{ cursor: 'pointer', fontWeight: 'bold' }}>{authorUsername}</span>
@@ -214,110 +214,99 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
             const timeStr = new Date(post.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
 
             return (
-              <React.Fragment key={post.id}>
-                {idx === 1 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', margin: '2.5rem 0 1.5rem 0' }}>
-                    <div style={{ height: '2px', flex: 1, backgroundColor: 'var(--border-color)' }}></div>
-                    <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: '900', color: 'var(--theme-forum)', textTransform: 'uppercase', letterSpacing: '0.15em' }}>Svar & Kommentarer</h3>
-                    <div style={{ height: '2px', flex: 1, backgroundColor: 'var(--border-color)' }}></div>
+              <div key={post.id} className="forum-post-row" style={{ display: 'flex', border: isFirst ? '3px solid var(--theme-forum)' : '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', boxShadow: isFirst ? '0 10px 30px rgba(0,0,0,0.1)' : 'var(--shadow-sm)' }}>
+                {/* Left sidebar info (Differentiated look) */}
+                <div className="author-sidebar" style={{ width: '180px', backgroundColor: isFirst ? '#f8fafc' : '#f1f5f9', padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>
+                  <div style={{ width: '80px', height: '80px', borderRadius: '8px', backgroundColor: post.uses_alias ? 'var(--theme-forum)' : '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', color: 'white', marginBottom: '1rem', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
+                    {avatarSrc ? <img src={avatarSrc} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : (post.uses_alias ? <Lock size={32}/> : <User size={32} />)}
                   </div>
-                )}
-                <div className="forum-post-row" style={{ display: 'flex', border: isFirst ? '3px solid var(--theme-forum)' : '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', boxShadow: isFirst ? '0 10px 30px rgba(0,0,0,0.1)' : 'var(--shadow-sm)', marginBottom: '1rem' }}>
-                  {/* Left sidebar info (Flashback Style) */}
-                  <div className="author-sidebar" style={{ width: '180px', backgroundColor: isFirst ? '#f8fafc' : '#f1f5f9', padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>
-                    <div style={{ width: '80px', height: '80px', borderRadius: '8px', backgroundColor: post.uses_alias ? 'var(--theme-forum)' : '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', color: 'white', marginBottom: '1rem', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                      {avatarSrc ? <img src={avatarSrc} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : (post.uses_alias ? <Lock size={32}/> : <User size={32} />)}
+                  
+                  <div style={{ textAlign: 'center', width: '100%' }}>
+                    <div style={{ fontWeight: '800', fontSize: '1rem', color: post.uses_alias ? 'var(--theme-forum)' : 'var(--text-main)', marginBottom: '0.5rem', wordBreak: 'break-word', lineHeight: '1.2' }}>
+                      {authorDisplay}
                     </div>
                     
-                    <div style={{ textAlign: 'center', width: '100%' }}>
-                      <div style={{ fontWeight: '800', fontSize: '1rem', color: post.uses_alias ? 'var(--theme-forum)' : 'var(--text-main)', marginBottom: '0.5rem', wordBreak: 'break-word', lineHeight: '1.2' }}>
-                        {authorDisplay}
-                      </div>
-                      
-                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
-                        <span>Reg: {post.profiles?.created_at ? new Date(post.profiles.created_at).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short' }) : 'Jan 2024'}</span>
-                        <span>Ort: {post.profiles?.city || 'Okänd'}</span>
-                        {isFirst && <span style={{ color: 'var(--theme-forum)', fontWeight: '900', marginTop: '0.5rem', fontSize: '0.65rem', letterSpacing: '1px', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 6px', borderRadius: '4px' }}>TRÅDSTARTARE</span>}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Right side content */}
-                  <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                    {/* Post Header */}
-                    <div style={{ padding: '0.75rem 1.25rem', backgroundColor: isFirst ? '#f1f5f9' : '#f8fafc', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <span style={{ fontWeight: '600' }}>{timeStr}</span>
-                        <span style={{ opacity: 0.5 }}>|</span>
-                        <span style={{ fontWeight: 'bold' }}>#{idx + 1}</span>
-                      </div>
-                      
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-                        <button 
-                          onClick={() => {
-                            setNewReply(prev => (prev ? prev + '\n\n' : '') + `[citat] Ursprungligen postat av ${authorUsername}:\n${post.content}\n[/citat]\n`);
-                            const textarea = document.querySelector('textarea');
-                            if (textarea) textarea.focus();
-                          }}
-                          style={{ background: 'none', border: 'none', color: 'var(--theme-forum)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                        >
-                          <MessageSquare size={14} /> Citera
-                        </button>
-
-                        {post.author_id === currentUser?.id && (
-                          <button onClick={() => setEditingPost({ id: post.id, content: post.content })} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                            <Edit2 size={14} /> Ändra
-                          </button>
-                        )}
-
-                        {post.author_id === currentUser?.id && (
-                          <button onClick={() => isFirst ? handleDeleteThread() : handleDeletePost(post.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
-                            <Trash2 size={14} /> Radera
-                          </button>
-                        )}
-
-                        {post.author_id !== currentUser?.id && (
-                          <button onClick={() => { setReportTarget({ id: post.id, type: 'forum_post', reportedUserId: post.author_id }); setShowReportModal(true); }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer' }}>
-                            <AlertTriangle size={14} />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div style={{ padding: '1.5rem', flex: 1, backgroundColor: 'white' }}>
-                      {editingPost?.id === post.id ? (
-                        <div>
-                          <textarea 
-                            value={editingPost!.content}
-                            onChange={e => setEditingPost({ ...editingPost!, content: e.target.value })}
-                            style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '2px solid var(--theme-forum)', outline: 'none', resize: 'vertical', minHeight: '120px', fontFamily: 'inherit' }}
-                          />
-                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
-                            <button onClick={handleSaveEdit} style={{ backgroundColor: '#10b981', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Spara ändringar</button>
-                            <button onClick={() => setEditingPost(null)} style={{ backgroundColor: '#f1f5f9', color: 'var(--text-main)', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer' }}>Avbryt</button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ color: 'var(--text-main)', lineHeight: '1.7', whiteSpace: 'pre-wrap', fontSize: isFirst ? '1.15rem' : '1.05rem', wordBreak: 'break-word', margin: 0 }}>
-                          {post.content.includes('[citat]') ? (
-                            (() => {
-                              const parts = post.content.split(/\[citat\]|\[\/citat\]/);
-                              return parts.map((part: string, i: number) => {
-                                if (i === 1) return (
-                                  <div key={i} style={{ backgroundColor: '#f1f5f9', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', margin: '1rem 0', fontStyle: 'italic', fontSize: '0.95rem', color: 'var(--text-muted)' }}>
-                                    {part.trim()}
-                                  </div>
-                                );
-                                return <span key={i}>{part}</span>;
-                              });
-                            })()
-                          ) : post.content}
-                        </div>
-                      )}
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
+                      <span>Reg: {post.profiles?.created_at ? new Date(post.profiles.created_at).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short' }) : 'Jan 2024'}</span>
+                      <span>Ort: {post.profiles?.city || 'Okänd'}</span>
+                      {isFirst && <span style={{ color: 'var(--theme-forum)', fontWeight: '900', marginTop: '0.5rem', fontSize: '0.65rem', letterSpacing: '1px', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 6px', borderRadius: '4px' }}>TRÅDSTARTARE</span>}
                     </div>
                   </div>
                 </div>
-              </React.Fragment>
+
+                {/* Right side content */}
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                  {/* Post Header */}
+                  <div style={{ padding: '0.75rem 1.25rem', backgroundColor: isFirst ? '#f1f5f9' : '#f8fafc', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <span style={{ fontWeight: '600' }}>{timeStr}</span>
+                      <span style={{ opacity: 0.5 }}>|</span>
+                      <span style={{ fontWeight: 'bold' }}>#{idx + 1}</span>
+                    </div>
+                    
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                      <button 
+                        onClick={() => {
+                          setNewReply(prev => (prev ? prev + '\n\n' : '') + `[citat] Ursprungligen postat av ${authorUsername}:\n${post.content}\n[/citat]\n`);
+                          const textarea = document.querySelector('textarea');
+                          if (textarea) textarea.focus();
+                        }}
+                        style={{ background: 'none', border: 'none', color: 'var(--theme-forum)', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                      >
+                        <MessageSquare size={14} /> Citera
+                      </button>
+
+                      {post.author_id === currentUser?.id && (
+                        <button onClick={() => setEditingPost({ id: post.id, content: post.content })} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                          <Edit2 size={14} /> Ändra
+                        </button>
+                      )}
+
+                      {post.author_id === currentUser?.id && (
+                        <button onClick={() => isFirst ? handleDeleteThread() : handleDeletePost(post.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}>
+                          <Trash2 size={14} /> Radera
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  <div style={{ padding: isDuplicateTitle ? '0.5rem' : '1.5rem', flex: 1, backgroundColor: 'white' }}>
+                    {editingPost?.id === post.id ? (
+                      <div>
+                        <textarea 
+                          value={editingPost!.content}
+                          onChange={e => setEditingPost({ ...editingPost!, content: e.target.value })}
+                          style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '2px solid var(--theme-forum)', outline: 'none', resize: 'vertical', minHeight: '120px', fontFamily: 'inherit' }}
+                        />
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: '1rem' }}>
+                          <button onClick={handleSaveEdit} style={{ backgroundColor: '#10b981', color: 'white', padding: '0.5rem 1.5rem', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: 'bold' }}>Spara</button>
+                          <button onClick={() => setEditingPost(null)} style={{ backgroundColor: '#f1f5f9', color: 'var(--text-main)', border: 'none', padding: '0.5rem 1.5rem', borderRadius: '6px', cursor: 'pointer' }}>Avbryt</button>
+                        </div>
+                      </div>
+                    ) : !isDuplicateTitle ? (
+                      <div style={{ color: 'var(--text-main)', lineHeight: '1.7', whiteSpace: 'pre-wrap', fontSize: isFirst ? '1.15rem' : '1.05rem', wordBreak: 'break-word', margin: 0 }}>
+                        {post.content.includes('[citat]') ? (
+                          (() => {
+                            const parts = post.content.split(/\[citat\]|\[\/citat\]/);
+                            return parts.map((part: string, i: number) => {
+                              if (i === 1) return (
+                                <div key={i} style={{ backgroundColor: '#f1f5f9', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', margin: '1rem 0', fontStyle: 'italic', fontSize: '0.95rem', color: 'var(--text-muted)' }}>
+                                  {part.trim()}
+                                </div>
+                              );
+                              return <span key={i}>{part}</span>;
+                            });
+                          })()
+                        ) : post.content}
+                      </div>
+                    ) : (
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontStyle: 'italic', opacity: 0.3, textAlign: 'center' }}>
+                         (Innehåll matchar trådens titel - dolt för att undvika redundans)
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
             );
         })}
       </div>
@@ -332,8 +321,6 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
           onChange={e => setNewReply(e.target.value)}
           placeholder="Skriv ditt svar här..."
           style={{ width: '100%', padding: '1.5rem', borderRadius: '12px', border: '2px solid var(--border-color)', outline: 'none', resize: 'vertical', minHeight: '150px', backgroundColor: 'white', fontSize: '1.05rem', transition: 'border-color 0.2s', fontFamily: 'inherit' }}
-          onFocus={e => e.target.style.borderColor = 'var(--theme-forum)'}
-          onBlur={e => e.target.style.borderColor = 'var(--border-color)'}
         />
         <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1.5rem' }}>
           <button
@@ -350,62 +337,13 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
               fontSize: '1rem',
               display: 'flex',
               alignItems: 'center',
-              gap: '0.75rem',
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.25)',
-              opacity: newReply.trim() ? 1 : 0.6
+              gap: '0.75rem'
             }}
           >
             <Send size={18} /> Publicera svar
           </button>
         </div>
       </div>
-
-      {/* Report Modal */}
-      {showReportModal && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: '1rem' }}>
-          <div style={{ backgroundColor: 'white', padding: '2rem', borderRadius: '16px', maxWidth: '500px', width: '100%', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)' }}>
-            <h2 style={{ margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <AlertTriangle color="#f59e0b" /> Anmäl inlägg
-            </h2>
-            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Varför vill du anmäla det här inlägget? Detta skickas direkt till våra moderatorer.</p>
-            
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Kategori</label>
-            <select 
-              value={reportCategory}
-              onChange={e => setReportCategory(e.target.value)}
-              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem' }}
-            >
-              <option value="Spam">Spam / Reklam</option>
-              <option value="Hate Speech">Hat/Kränkningar</option>
-              <option value="Inappropriate">Olämpligt innehåll</option>
-              <option value="Other">Annat</option>
-            </select>
-
-            <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 'bold' }}>Beskrivning</label>
-            <textarea
-              value={reportReason}
-              onChange={e => setReportReason(e.target.value)}
-              placeholder="Berätta mer om varför du anmäler..."
-              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', minHeight: '100px', marginBottom: '1.5rem', outline: 'none' }}
-            />
-            
-            <div style={{ display: 'flex', gap: '1rem' }}>
-              <button 
-                onClick={handleReport}
-                style={{ flex: 1, backgroundColor: '#ef4444', color: 'white', padding: '0.75rem', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                Skicka anmälan
-              </button>
-              <button 
-                onClick={() => setShowReportModal(false)}
-                style={{ flex: 1, backgroundColor: '#f1f5f9', color: 'var(--text-main)', padding: '0.75rem', borderRadius: '8px', border: 'none', fontWeight: 'bold', cursor: 'pointer' }}
-              >
-                Avbryt
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
