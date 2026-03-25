@@ -423,9 +423,10 @@ function MittKrypinContent() {
   }
 
   async function fetchFriends(targetId: string, viewerId: string) {
+    let friendIds: string[] = [];
     const { data: acceptedData } = await supabase.from('friendships').select('user_id_1, user_id_2').or(`user_id_1.eq.${targetId},user_id_2.eq.${targetId}`).eq('status', 'accepted');
     if (acceptedData) {
-      let friendIds = acceptedData.map(f => f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1);
+      friendIds = acceptedData.map(f => f.user_id_1 === targetId ? f.user_id_2 : f.user_id_1);
       friendIds = friendIds.filter(id => !globalBlockedIds.has(id));
       if(friendIds.length > 0) {
         const { data: profs } = await supabase.from('profiles').select('id, username, avatar_url').in('id', friendIds);
@@ -444,8 +445,9 @@ function MittKrypinContent() {
 
        if (pendingData) {
          // Inkommande förfrågningar: Jag är inblandad, men jag är INTE action_user_id.
+         // VIKTIGT: Filtrera även bort personer som vi REDAN är vänner med (som finns i friendIds)
          const incomingReqIds = pendingData
-           .filter(f => f.action_user_id !== targetId)
+           .filter(f => f.action_user_id !== targetId && !friendIds.includes(f.action_user_id))
            .map(f => f.action_user_id);
            
          if (incomingReqIds.length > 0) {
