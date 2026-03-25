@@ -27,7 +27,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [newReply, setNewReply] = useState('')
-  const [editingPost, setEditingPost] = useState<{ id: string, content: string } | null>(null)
+  const [editingPost, setEditingPost] = useState<{ id: string, content: string, title?: string } | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
   
   const [showReportModal, setShowReportModal] = useState(false)
@@ -174,9 +174,18 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
 
   async function handleSaveEdit() {
     if (!editingPost) return
+    
+    // Om det är första inlägget (trådstarten), uppdatera även trådens titel
+    if (posts[0] && editingPost.id === posts[0].id && editingPost.title) {
+      await supabase.from('forum_threads')
+        .update({ title: editingPost.title })
+        .eq('id', id);
+    }
+
     await supabase.from('forum_posts')
       .update({ content: editingPost.content })
       .eq('id', editingPost.id)
+      
     setEditingPost(null)
     fetchThread()
   }
@@ -244,47 +253,86 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
 
         {/* Left Side: Title and Meta */}
         <div style={{ flex: 1 }}>
-           <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: '1.1', marginBottom: '1rem' }}>
-             {thread.title}
-           </h1>
-           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', alignItems: 'center' }}>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Calendar size={16}  color="var(--theme-forum)" />
-                <span>Startad {threadDateStr}</span>
-             </div>
-             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                <Tag size={16} color="var(--theme-forum)" />
-                <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--theme-forum)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>{thread.category || 'Forum'}</span>
-             </div>
-             
-             {/* ACTIONS MOVED TO HEADER */}
-             {posts[0] && (
-               <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
-                 <button 
-                   onClick={() => { setNewReply(`[citat]${thread.title}[/citat]\n`); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}
-                   style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
-                 >
-                   <MessageSquare size={14} /> Citera
-                 </button>
-                 {(currentUser?.id === posts[0].author_id) && (
-                   <button 
-                     onClick={() => setEditingPost({ id: posts[0].id, content: posts[0].content })}
-                     style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
-                   >
-                     <Edit2 size={14} /> Ändra
-                   </button>
-                 )}
-                 {(currentUser?.id === posts[0].author_id || currentUser?.is_admin) && (
-                   <button 
-                     onClick={() => handleDeleteThread()}
-                     style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
-                   >
-                     <Trash2 size={14} /> Radera
-                   </button>
-                 )}
-               </div>
-             )}
-           </div>
+          {editingPost && posts[0] && editingPost.id === posts[0].id ? (
+            <div style={{ width: '100%', animation: 'fadeIn 0.3s ease' }}>
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '900', color: 'var(--theme-forum)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Ändra rubrik</label>
+                <input 
+                  value={editingPost.title !== undefined ? editingPost.title : thread.title}
+                  onChange={e => setEditingPost({ ...editingPost!, title: e.target.value })}
+                  autoFocus
+                  style={{ width: '100%', fontSize: '2rem', fontWeight: '900', color: 'var(--text-main)', padding: '0.75rem', borderRadius: '8px', border: '2px solid var(--theme-forum)', backgroundColor: 'white', outline: 'none', boxShadow: '0 4px 12px rgba(239, 68, 68, 0.1)' }}
+                />
+              </div>
+              
+              <div style={{ marginBottom: '1.5rem' }}>
+                <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: '900', color: 'var(--theme-forum)', marginBottom: '0.5rem', textTransform: 'uppercase', letterSpacing: '1px' }}>Ändra innehåll</label>
+                <textarea 
+                  value={editingPost.content}
+                  onChange={e => setEditingPost({ ...editingPost!, content: e.target.value })}
+                  style={{ width: '100%', minHeight: '150px', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', fontFamily: 'inherit', fontSize: '1.1rem', lineHeight: '1.6', backgroundColor: 'white' }}
+                />
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem' }}>
+                <button 
+                  onClick={handleSaveEdit} 
+                  style={{ backgroundColor: '#10b981', color: 'white', padding: '0.75rem 2rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem', boxShadow: '0 4px 6px rgba(16, 185, 129, 0.2)' }}
+                >
+                  Spara ändringar
+                </button>
+                <button 
+                  onClick={() => setEditingPost(null)} 
+                  style={{ backgroundColor: '#f1f5f9', color: 'var(--text-main)', padding: '0.75rem 2rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.95rem' }}
+                >
+                  Avbryt
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: '1.1', marginBottom: '1rem' }}>
+                {thread.title}
+              </h1>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                   <Calendar size={16}  color="var(--theme-forum)" />
+                   <span>Startad {threadDateStr}</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                   <Tag size={16} color="var(--theme-forum)" />
+                   <span style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--theme-forum)', padding: '2px 8px', borderRadius: '4px', fontWeight: 'bold', fontSize: '0.8rem' }}>{thread.category || 'Forum'}</span>
+                </div>
+                
+                {posts[0] && (
+                  <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
+                    <button 
+                      onClick={() => { setNewReply(`[citat]${thread.title}[/citat]\n`); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}
+                      style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                    >
+                      <MessageSquare size={14} /> Citera
+                    </button>
+                    {(currentUser?.id === posts[0].author_id) && (
+                      <button 
+                        onClick={() => setEditingPost({ id: posts[0].id, content: posts[0].content, title: thread.title })}
+                        style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                      >
+                        <Edit2 size={14} /> Ändra
+                      </button>
+                    )}
+                    {(currentUser?.id === posts[0].author_id || currentUser?.is_admin) && (
+                      <button 
+                        onClick={() => handleDeleteThread()}
+                        style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                      >
+                        <Trash2 size={14} /> Radera
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right Side: Author Info */}

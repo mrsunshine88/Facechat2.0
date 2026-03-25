@@ -298,35 +298,45 @@ export default function Whiteboard() {
     await fetchData();
   }
 
+  const [isSharing, setIsSharing] = useState(false);
+
   const handleSharePost = async (post: any) => {
-    if (!currentUser) return;
+    if (!currentUser || isSharing) return;
+    setIsSharing(true);
     
-    // Facebook style share: Store original ID but allow a personal caption
-    const caption = prompt(`Skriv något om detta inlägg (valfritt):`, "");
-    if (caption === null) return; // Cancelled
-
-    const { error } = await supabase.from('whiteboard').insert({
-      author_id: currentUser.id,
-      content: caption.trim() || "", // Caption can be empty
-      parent_id: post.parent_id || post.id // Always reference original if multiple shares
-    });
-
-    if (!error) {
-      if (post.author_id !== currentUser.id) {
-         // ... (notifications remain same)
-        await supabase.from('notifications').insert({
-          receiver_id: post.author_id,
-          actor_id: currentUser.id,
-          type: 'whiteboard_share',
-          content: 'delade ditt inlägg på Whiteboarden.',
-          link: `/whiteboard?post=${post.id}`
-        });
-        fetch('/api/send-push', {
-          method: 'POST', body: JSON.stringify({ userId: post.author_id, title: 'Facechat Whiteboard', message: `${currentUser.username} delade ditt inlägg!`, url: `/whiteboard?post=${post.id}` }), headers: { 'Content-Type': 'application/json' }
-        }).catch(console.error);
+    try {
+      const caption = prompt(`Skriv något om detta inlägg (valfritt):`, "");
+      if (caption === null) {
+        setIsSharing(false);
+        return;
       }
-      fetchData();
-      alert('Inlägget har delats friskt på din Whiteboard!');
+
+      const { error } = await supabase.from('whiteboard').insert({
+        author_id: currentUser.id,
+        content: caption.trim() || "",
+        parent_id: post.parent_id || post.id
+      });
+
+      if (!error) {
+        if (post.author_id !== currentUser.id) {
+          await supabase.from('notifications').insert({
+            receiver_id: post.author_id,
+            actor_id: currentUser.id,
+            type: 'whiteboard_share',
+            content: 'delade ditt inlägg på Whiteboarden.',
+            link: `/whiteboard?post=${post.id}`
+          });
+          fetch('/api/send-push', {
+            method: 'POST', body: JSON.stringify({ userId: post.author_id, title: 'Facechat Whiteboard', message: `${currentUser.username} delade ditt inlägg!`, url: `/whiteboard?post=${post.id}` }), headers: { 'Content-Type': 'application/json' }
+          }).catch(console.error);
+        }
+        await fetchData();
+        alert('Inlägget har delats friskt på din Whiteboard!');
+      }
+    } catch (err) {
+      console.error("Share error:", err);
+    } finally {
+      setIsSharing(false);
     }
   }
 
