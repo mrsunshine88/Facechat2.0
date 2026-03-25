@@ -436,24 +436,32 @@ function MittKrypinContent() {
     }
 
     if (targetId === viewerId) {
-       const { data: pendingData } = await supabase.from('friendships').select('user_id_1, user_id_2, action_user_id, status').or(`user_id_1.eq.${targetId},user_id_2.eq.${targetId}`).eq('status', 'pending');
+       // Hämta alla rader där jag är inblandad och status är pending
+       const { data: pendingData } = await supabase.from('friendships')
+         .select('user_id_1, user_id_2, action_user_id, status')
+         .or(`user_id_1.eq.${targetId},user_id_2.eq.${targetId}`)
+         .eq('status', 'pending');
+
        if (pendingData) {
-         // Filter out requests that are NO LONGER pending (status should be checked)
-         // and only show those where the OTHER person is the action_user.
-         const reqIds = pendingData
-           .filter(f => f.status === 'pending' && f.action_user_id !== targetId)
+         // Inkommande förfrågningar: Jag är inblandad, men jag är INTE action_user_id.
+         const incomingReqIds = pendingData
+           .filter(f => f.action_user_id !== targetId)
            .map(f => f.action_user_id);
            
-         if (reqIds.length > 0) {
-            const { data: reqProfs } = await supabase.from('profiles').select('id, username, avatar_url').in('id', reqIds);
+         if (incomingReqIds.length > 0) {
+            const { data: reqProfs } = await supabase.from('profiles').select('id, username, avatar_url').in('id', incomingReqIds);
             if (reqProfs) setPendingRequests(reqProfs);
          } else {
             setPendingRequests([]);
          }
+
+         // Kolla om jag själv har en skickad förfrågan (för knappen "Bli vän")
+         const hasSent = pendingData.some(f => f.action_user_id === targetId);
+         setHasSentRequest(hasSent);
        } else {
           setPendingRequests([]);
+          setHasSentRequest(false);
        }
-       setHasSentRequest(false);
     } else {
        const id1 = viewerId < targetId ? viewerId : targetId;
        const id2 = viewerId < targetId ? targetId : viewerId;
