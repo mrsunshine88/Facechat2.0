@@ -160,10 +160,12 @@ export default function AdminPanel() {
       <div style={{ width: '280px', minHeight: 'calc(100vh - 74px)', height: 'calc(100vh - 74px)', position: 'sticky', top: '74px', backgroundColor: 'var(--bg-card)', borderRight: '1px solid var(--border-color)', display: 'flex', flexDirection: 'column' }} className="admin-sidebar">
         <div style={{ padding: '2rem 1.5rem', borderBottom: '1px solid var(--border-color)' }}>
           <h1 style={{ fontSize: '1.5rem', fontWeight: '800', color: '#ef4444', display: 'flex', alignItems: 'center', gap: '0.5rem', lineHeight: '1.2' }}>
-            <ShieldAlert size={28} /> ADMIN V2
+            <ShieldAlert size={28} /> ADMIN
           </h1>
           <p style={{ fontSize: '0.75rem', marginTop: '0.75rem', color: 'var(--text-muted)' }}>Inloggad: {userProfile.username}</p>
-          {isRoot && <span style={{ display: 'inline-block', marginTop: '0.5rem', backgroundColor: '#7f1d1d', color: '#fca5a5', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>ROOT-BEHÖRIGHET</span>}
+          <span style={{ display: 'inline-block', marginTop: '0.5rem', backgroundColor: isRoot ? '#7f1d1d' : '#1e3a8a', color: isRoot ? '#fca5a5' : '#bfdbfe', padding: '0.1rem 0.5rem', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
+            {isRoot ? 'SUPERADMIN' : 'ADMIN'}
+          </span>
         </div>
 
         <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }} className="admin-sidebar-menu">

@@ -100,19 +100,17 @@ export default function SokOchSpana() {
               }
             })
             .subscribe();
+
+          const { data } = await supabase.from('profiles').select('*').neq('id', user.id).order('created_at', { ascending: false }).limit(40);
+          if (data) setPeople(data);
           
           return () => {
             supabase.removeChannel(channel);
           };
+      } else {
+          const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(40);
+          if (data) setPeople(data);
       }
-      
-      let query = supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(40);
-      if (user) {
-        query = query.neq('id', user.id);
-      }
-      
-      const { data } = await query;
-      if (data) setPeople(data);
     }
     fetchPeople();
   }, [viewerId]);
