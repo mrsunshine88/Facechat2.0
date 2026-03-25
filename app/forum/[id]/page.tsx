@@ -203,7 +203,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                  )}
                  {(currentUser?.id === posts[0].author_id || currentUser?.is_admin) && (
                    <button 
-                     onClick={() => handleDeletePost(posts[0].id)}
+                     onClick={() => handleDeleteThread()}
                      style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
                    >
                      <Trash2 size={14} /> Radera
