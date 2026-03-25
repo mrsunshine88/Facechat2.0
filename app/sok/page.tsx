@@ -153,14 +153,18 @@ export default function SokOchSpana() {
        return;
     }
 
-    const { error } = await supabase.from('friendships').insert({
-      user_id_1: viewerId,
-      user_id_2: personId,
+    // ALWAYS SORT IDs to ensure consistency (id1 < id2)
+    const id1 = viewerId < personId ? viewerId : personId;
+    const id2 = viewerId < personId ? personId : viewerId;
+
+    const { error: insertError } = await supabase.from('friendships').insert({
+      user_id_1: id1,
+      user_id_2: id2,
       status: 'pending',
       action_user_id: viewerId
     });
     
-    if (!error) {
+    if (!insertError) {
       setPendingRequests([...pendingRequests, personId]);
     } else {
       alert("Ett fel uppstod: " + error.message);
