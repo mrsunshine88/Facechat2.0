@@ -80,9 +80,9 @@ export default function SokOchSpana() {
 
           // Realtime subscription for friendships
           const channel = supabase.channel('friendship_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, payload => {
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, (payload: any) => {
               if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                const newFriendship = payload.new as any;
+                const newFriendship = payload.new;
                 if (newFriendship.status === 'accepted' && (newFriendship.user_id_1 === user.id || newFriendship.user_id_2 === user.id)) {
                   const friendId = newFriendship.user_id_1 === user.id ? newFriendship.user_id_2 : newFriendship.user_id_1;
                   setFriends(prev => [...prev, friendId]);
@@ -91,7 +91,7 @@ export default function SokOchSpana() {
                   setPendingRequests(prev => [...prev, newFriendship.user_id_1]);
                 }
               } else if (payload.eventType === 'DELETE') {
-                const oldFriendship = payload.old as any;
+                const oldFriendship = payload.old;
                 if (oldFriendship && (oldFriendship.user_id_1 === user.id || oldFriendship.user_id_2 === user.id)) {
                   const friendId = oldFriendship.user_id_1 === user.id ? oldFriendship.user_id_2 : oldFriendship.user_id_1;
                   setFriends(prev => prev.filter(id => id !== friendId));
