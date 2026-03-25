@@ -45,6 +45,7 @@ export default function Whiteboard() {
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({})
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({}) // Track which posts show all comments
   const [showLikersPostId, setShowLikersPostId] = useState<string | null>(null) // Track which post's likers list is visible
+  const [isExpanded, setIsExpanded] = useState(false)
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -437,16 +438,17 @@ export default function Whiteboard() {
             {currentUser?.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : <User size={20} />}
           </div>
           <button 
-            onClick={() => document.getElementById('wb-textarea')?.focus()}
+            onClick={() => setIsExpanded(true)}
             style={{ flex: 1, backgroundColor: '#f0f2f5', border: 'none', borderRadius: '20px', padding: '0.6rem 1rem', textAlign: 'left', color: '#65676b', fontSize: '1rem', cursor: 'pointer' }}
           >
             Vad har du på hjärtat, {currentUser?.username || 'vän'}?
           </button>
         </div>
         
-        <div id="wb-expanded-post" style={{ display: newPostContent.trim() ? 'block' : 'none' }}>
+        <div id="wb-expanded-post" style={{ display: (isExpanded || newPostContent.trim()) ? 'block' : 'none' }}>
           <textarea 
             id="wb-textarea"
+            autoFocus={isExpanded}
             placeholder="Skriv något..." 
             value={newPostContent}
             onChange={e => setNewPostContent(e.target.value)}

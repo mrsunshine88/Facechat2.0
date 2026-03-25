@@ -749,9 +749,11 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
             {report.status === 'open' ? (
               <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
                 {report.item_type === 'forum_post' ? (
-                  <button onClick={() => handleDeleteForumThread(report.item_id, report.id)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
-                    <Trash2 size={16} /> Radera Tråd
-                  </button>
+                  <div style={{ display: 'flex', gap: '0.5rem', flex: '1 1 auto' }}>
+                    <button onClick={() => handleDeleteForumThread(report.item_id, report.id)} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, justifyContent: 'center' }}>
+                      <Trash2 size={16} /> Radera Tråd
+                    </button>
+                  </div>
                 ) : (
                   <button onClick={() => handleDeleteItem(report)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
                     <Trash2 size={16} /> Radera {report.item_type === 'whiteboard_comment' ? 'Kommentar' : 'Inlägg'}
@@ -964,14 +966,12 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, color: 'var(--text-main)' }}>{post.content}</p>
             </div>
             <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
-              <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera inlägg">
-                <Trash2 size={16} /> Radera inlägg
+              <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera endast denna kommentar">
+                <Trash2 size={16} /> Radera kommentar
               </button>
-              {post.forum_threads?.id && (
-                <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden">
-                  <Trash2 size={16} /> Radera Tråd
-                </button>
-              )}
+              <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden och alla dess svar">
+                <Trash2 size={16} /> Radera hela Tråden
+              </button>
             </div>
           </div>
         ))}
