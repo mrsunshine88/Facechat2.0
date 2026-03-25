@@ -167,7 +167,7 @@ export default function SokOchSpana() {
     if (!insertError) {
       setPendingRequests([...pendingRequests, personId]);
     } else {
-      alert("Ett fel uppstod: " + error.message);
+      alert("Ett fel uppstod: " + insertError.message);
     }
   };
 
