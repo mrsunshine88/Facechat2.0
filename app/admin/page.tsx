@@ -667,6 +667,29 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     }
   };
 
+  const handleDeleteForumThread = async (postId: string, reportId: string) => {
+    if (confirm('Är du säker på att du vill radera HELA tråden? Alla kommentarer kommer också att försvinna.')) {
+      try {
+        // 1. Hämta tråd-ID från posten
+        const { data: post, error: fetchErr } = await supabase.from('forum_posts').select('thread_id').eq('id', postId).single();
+        if (fetchErr || !post?.thread_id) {
+          return alert('Kunde inte hitta tråden för detta inlägg.');
+        }
+
+        // 2. Radera hela tråden (cascadar till posts i DB)
+        const res = await adminDeleteContent('forum_threads', post.thread_id, currentUser.id);
+        if (res?.error) return alert('Kunde inte radera tråd: ' + res.error);
+
+        // 3. Markera rapporten som löst
+        await adminResolveReport(reportId, 'resolved', currentUser.id);
+        await logAdminAction(supabase, currentUser.id, `Hanterade en anmälan och raderade en hel forumtråd (Tråd-ID: ${post.thread_id}).`);
+        fetchReports();
+      } catch (err: any) {
+        alert('Ett oväntat fel uppstod: ' + err.message);
+      }
+    }
+  };
+
   const handleBanUser = async (report: any) => {
     if (confirm(`Ska användare ${report.reported?.username || 'Okänd'} bannas globalt från sajten?`)) {
       const res = await toggleBlockUser(report.reported_user_id, currentUser.id, true);
@@ -726,7 +749,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
             {report.status === 'open' ? (
               <div className="admin-card-actions" style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', justifyContent: 'flex-end', flex: '1 1 auto' }}>
                 {report.item_type === 'forum_post' ? (
-                  <button onClick={() => handleDeleteForumThread(report.item_id, 'Anmält forum-innehåll')} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
+                  <button onClick={() => handleDeleteForumThread(report.item_id, report.id)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.75rem 1rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '600', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '0.5rem', flex: '1 1 auto', justifyContent: 'center' }}>
                     <Trash2 size={16} /> Radera Tråd
                   </button>
                 ) : (
