@@ -111,32 +111,47 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
        // 3. Notifiera citerad person (högst prioritet)
        if (quotedId && quotedId !== currentUser.id) {
          await supabase.from('notifications').insert({
-           user_id: quotedId,
+           receiver_id: quotedId,
+           actor_id: currentUser.id,
            type: 'forum_quote',
-           content: `${currentUser.username} citerade dig i tråden "${thread?.title}"`,
+           content: `citerade dig i tråden "${thread?.title}"`,
            link: `/forum/${id}#post-${newPost.id}`
          });
+
+         fetch('/api/send-push', {
+           method: 'POST', body: JSON.stringify({ userId: quotedId, title: 'Facechat Forum', message: `${currentUser.username} citerade dig!`, url: `/forum/${id}#post-${newPost.id}` }), headers: { 'Content-Type': 'application/json' }
+         }).catch(console.error);
        }
 
        // 4. Notifiera trådstartaren (om det inte var vi eller den citerade)
        if (thread?.author_id && thread.author_id !== currentUser.id && thread.author_id !== quotedId) {
           await supabase.from('notifications').insert({
-            user_id: thread.author_id,
+            receiver_id: thread.author_id,
+            actor_id: currentUser.id,
             type: 'forum_reply',
-            content: `${currentUser.username} svarade i din tråd "${thread?.title}"`,
+            content: `svarade i din tråd "${thread?.title}"`,
             link: `/forum/${id}#post-${newPost.id}`
           });
+
+          fetch('/api/send-push', {
+            method: 'POST', body: JSON.stringify({ userId: thread.author_id, title: 'Facechat Forum', message: `${currentUser.username} svarade i din tråd!`, url: `/forum/${id}#post-${newPost.id}` }), headers: { 'Content-Type': 'application/json' }
+          }).catch(console.error);
        }
 
        // 5. Notifiera övriga deltagare
        for (const pid of participantIds) {
          if (pid !== quotedId && pid !== thread?.author_id) {
            await supabase.from('notifications').insert({
-             user_id: pid,
+             receiver_id: pid,
+             actor_id: currentUser.id,
              type: 'forum_activity',
              content: `Ny aktivitet i tråden "${thread?.title}"`,
              link: `/forum/${id}#post-${newPost.id}`
            });
+
+           fetch('/api/send-push', {
+             method: 'POST', body: JSON.stringify({ userId: pid, title: 'Facechat Forum', message: `Ny aktivitet i tråden "${thread?.title}"`, url: `/forum/${id}#post-${newPost.id}` }), headers: { 'Content-Type': 'application/json' }
+           }).catch(console.error);
          }
        }
     }

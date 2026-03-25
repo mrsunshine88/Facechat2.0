@@ -168,19 +168,11 @@ export default function Whiteboard() {
 
   const handleDelete = async (postId: string) => {
     if (!confirm('Vill du verkligen radera detta inlägg?')) return
-    const postToDelete = posts.find(p => p.id === postId);
-    if (postToDelete?.parent_id) {
-       // Decrement shares_count on original post
-       const { data: parent } = await supabase.from('whiteboard').select('shares_count').eq('id', postToDelete.parent_id).single();
-       if (parent) {
-          await supabase.from('whiteboard').update({ shares_count: Math.max(0, (parent.shares_count || 0) - 1) }).eq('id', postToDelete.parent_id);
-       }
-    }
     
     const { error } = await supabase.from('whiteboard').delete().eq('id', postId);
     if (!error) {
       setPosts(prev => prev.filter(p => p.id !== postId));
-      await fetchData(); // Force refresh to sync all counters
+      await fetchData(); // Refresh to sync counters (handled by DB trigger)
     }
   }
   
@@ -320,14 +312,8 @@ export default function Whiteboard() {
     });
 
     if (!error) {
-      // Increment shares_count on original/parent post
-      const parentId = post.parent_id || post.id;
-      const { data: parent } = await supabase.from('whiteboard').select('shares_count').eq('id', parentId).single();
-      if (parent) {
-         await supabase.from('whiteboard').update({ shares_count: (parent.shares_count || 0) + 1 }).eq('id', parentId);
-      }
-      
       if (post.author_id !== currentUser.id) {
+         // ... (notifications remain same)
         await supabase.from('notifications').insert({
           receiver_id: post.author_id,
           actor_id: currentUser.id,

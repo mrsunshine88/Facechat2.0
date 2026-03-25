@@ -10,7 +10,7 @@ BEGIN
     IF TG_TABLE_NAME = 'chat_messages' THEN
         cooldown_seconds := 1; -- 1 sekund för chatten
     ELSIF TG_TABLE_NAME = 'whiteboard' OR TG_TABLE_NAME = 'forum_posts' THEN
-        cooldown_seconds := 10; -- 10 sekunder för längre inlägg
+        cooldown_seconds := 3; -- Sänkt från 10 till 3 sekunder
     ELSE
         cooldown_seconds := 5;
     END IF;
