@@ -22,6 +22,7 @@ import React from 'react'
 export default function ForumThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [thread, setThread] = useState<any>(null)
   const [posts, setPosts] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,7 +46,13 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts', filter: `thread_id=eq.${id}` }, () => fetchThread())
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
+    const handleResize = () => setWindowWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+
+    return () => { 
+      supabase.removeChannel(channel);
+      window.removeEventListener('resize', handleResize);
+    }
   }, [id])
 
   async function fetchThread() {
@@ -74,13 +81,64 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
 
   async function handleReply() {
     if (!newReply.trim() || !currentUser) return
-    const { error } = await supabase.from('forum_posts').insert({
+    const { data: newPost, error } = await supabase.from('forum_posts').insert({
       thread_id: id,
       author_id: currentUser.id,
       content: newReply
-    })
-    if (!error) {
+    }).select().single()
+
+    if (!error && newPost) {
        setNewReply('')
+       fetchThread()
+
+       // --- NOTIFIKATIONS-LOGIK ---
+       
+       // 1. Hitta alla unika deltagare i tråden
+       const participantIds = Array.from(new Set(posts.map(p => p.author_id)))
+         .filter(pid => pid !== currentUser.id); // Notifiera inte oss själva
+
+       // 2. Kolla efter citat för att special-notifiera
+       const quoteMatch = newReply.match(/\[citat\] Ursprungligen postat av (.*?):/);
+       let quotedId = null;
+       if (quoteMatch && quoteMatch[1]) {
+         const quotedUsername = quoteMatch[1].trim();
+         const quotedUser = posts.find(p => p.profiles?.username === quotedUsername);
+         if (quotedUser) {
+           quotedId = quotedUser.author_id;
+         }
+       }
+
+       // 3. Notifiera citerad person (högst prioritet)
+       if (quotedId && quotedId !== currentUser.id) {
+         await supabase.from('notifications').insert({
+           user_id: quotedId,
+           type: 'forum_quote',
+           content: `${currentUser.username} citerade dig i tråden "${thread?.title}"`,
+           link: `/forum/${id}#post-${newPost.id}`
+         });
+       }
+
+       // 4. Notifiera trådstartaren (om det inte var vi eller den citerade)
+       if (thread?.author_id && thread.author_id !== currentUser.id && thread.author_id !== quotedId) {
+          await supabase.from('notifications').insert({
+            user_id: thread.author_id,
+            type: 'forum_reply',
+            content: `${currentUser.username} svarade i din tråd "${thread?.title}"`,
+            link: `/forum/${id}#post-${newPost.id}`
+          });
+       }
+
+       // 5. Notifiera övriga deltagare
+       for (const pid of participantIds) {
+         if (pid !== quotedId && pid !== thread?.author_id) {
+           await supabase.from('notifications').insert({
+             user_id: pid,
+             type: 'forum_activity',
+             content: `Ny aktivitet i tråden "${thread?.title}"`,
+             link: `/forum/${id}#post-${newPost.id}`
+           });
+         }
+       }
     }
   }
 
@@ -242,25 +300,35 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
             const avatarSrc = post.uses_alias ? null : post.profiles?.avatar_url;
             const timeStr = new Date(post.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
 
+            const isMobile = windowWidth < 768;
+
             return (
-              <div key={post.id} className="forum-post-row" style={{ display: 'flex', border: isFirst ? '3px solid var(--theme-forum)' : '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', boxShadow: isFirst ? '0 10px 30px rgba(0,0,0,0.1)' : 'var(--shadow-sm)' }}>
+              <div id={`post-${post.id}`} key={post.id} className="forum-post-row" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', border: isFirst ? '3px solid var(--theme-forum)' : '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', boxShadow: isFirst ? '0 10px 30px rgba(0,0,0,0.1)' : 'var(--shadow-sm)' }}>
                 {/* Left sidebar info (Differentiated look) */}
-                <div className="author-sidebar" style={{ width: '180px', backgroundColor: isFirst ? '#f8fafc' : '#f1f5f9', padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', borderRight: '1px solid var(--border-color)', flexShrink: 0 }}>
-                  <div style={{ width: '80px', height: '80px', borderRadius: '8px', backgroundColor: post.uses_alias ? 'var(--theme-forum)' : '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', color: 'white', marginBottom: '1rem', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)' }}>
-                    {avatarSrc ? <img src={avatarSrc} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : (post.uses_alias ? <Lock size={32}/> : <User size={32} />)}
+                <div className="author-sidebar" style={{ width: isMobile ? '100%' : '180px', backgroundColor: isFirst ? '#f8fafc' : '#f1f5f9', padding: isMobile ? '0.75rem 1rem' : '1.5rem 1rem', display: 'flex', flexDirection: isMobile ? 'row' : 'column', alignItems: 'center', borderRight: isMobile ? 'none' : '1px solid var(--border-color)', borderBottom: isMobile ? '1px solid var(--border-color)' : 'none', flexShrink: 0, gap: isMobile ? '1rem' : '0' }}>
+                  <div style={{ width: isMobile ? '40px' : '80px', height: isMobile ? '40px' : '80px', borderRadius: '8px', backgroundColor: post.uses_alias ? 'var(--theme-forum)' : '#cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', color: 'white', marginBottom: isMobile ? '0' : '1rem', border: '2px solid white', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', flexShrink: 0 }}>
+                    {avatarSrc ? <img src={avatarSrc} alt="avatar" style={{width:'100%', height:'100%', objectFit:'cover'}} /> : (post.uses_alias ? <Lock size={isMobile ? 20 : 32}/> : <User size={isMobile ? 20 : 32} />)}
                   </div>
                   
-                  <div style={{ textAlign: 'center', width: '100%' }}>
-                    <div style={{ fontWeight: '800', fontSize: '1rem', color: post.uses_alias ? 'var(--theme-forum)' : 'var(--text-main)', marginBottom: '0.5rem', wordBreak: 'break-word', lineHeight: '1.2' }}>
+                  <div style={{ textAlign: isMobile ? 'left' : 'center', width: '100%', flex: 1 }}>
+                    <div style={{ fontWeight: '800', fontSize: isMobile ? '0.9rem' : '1rem', color: post.uses_alias ? 'var(--theme-forum)' : 'var(--text-main)', marginBottom: isMobile ? '0' : '0.5rem', wordBreak: 'break-word', lineHeight: '1.2' }}>
                       {authorDisplay}
                     </div>
                     
-                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
-                      <span>Reg: {post.profiles?.created_at ? new Date(post.profiles.created_at).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short' }) : 'Jan 2024'}</span>
-                      <span>Ort: {post.profiles?.city || 'Okänd'}</span>
-                      {isFirst && <span style={{ color: 'var(--theme-forum)', fontWeight: '900', marginTop: '0.5rem', fontSize: '0.65rem', letterSpacing: '1px', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 6px', borderRadius: '4px' }}>TRÅDSTARTARE</span>}
-                    </div>
+                    {!isMobile && (
+                      <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'flex', flexDirection: 'column', gap: '0.25rem', borderTop: '1px solid #e2e8f0', paddingTop: '0.75rem', marginTop: '0.25rem' }}>
+                        <span>Reg: {post.profiles?.created_at ? new Date(post.profiles.created_at).toLocaleDateString('sv-SE', { year: 'numeric', month: 'short' }) : 'Jan 2024'}</span>
+                        <span>Ort: {post.profiles?.city || 'Okänd'}</span>
+                        {isFirst && <span style={{ color: 'var(--theme-forum)', fontWeight: '900', marginTop: '0.5rem', fontSize: '0.65rem', letterSpacing: '1px', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 6px', borderRadius: '4px' }}>TRÅDSTARTARE</span>}
+                      </div>
+                    )}
+                    {isMobile && (
+                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                        Ort: {post.profiles?.city || 'Okänd'}
+                      </div>
+                    )}
                   </div>
+                  {isMobile && <div style={{ fontSize: '0.75rem', fontWeight: 'bold', color: 'var(--text-muted)' }}>#{actualIdx}</div>}
                 </div>
 
                 {/* Right side content */}

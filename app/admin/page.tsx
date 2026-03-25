@@ -863,8 +863,20 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
   }
 
   async function fetchForumPosts() {
-    const { data } = await supabase.from('forum_posts').select('*, profiles(username), forum_threads(id, title)').order('created_at', { ascending: false }).limit(30);
-    if (data) setForumPosts(data);
+    const { data } = await supabase.from('forum_posts')
+      .select('*, profiles(username), forum_threads(id, title)')
+      .order('created_at', { ascending: false })
+      .limit(50);
+    
+    if (data) {
+      // Försök identifiera starters genom att jämföra content med title (trimmat) 
+      // eller om is_forum_starter flaggan finns (fallback)
+      const enriched = data.map((p: any) => ({
+        ...p,
+        is_starter: p.is_forum_starter !== undefined ? p.is_forum_starter : (p.content?.trim().toLowerCase() === p.forum_threads?.title?.trim().toLowerCase())
+      }));
+      setForumPosts(enriched);
+    }
   }
 
   async function fetchPosts() {
@@ -976,25 +988,37 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           </div>
         ))}
         {view === 'forum' && forumPosts.map(post => {
-          const isStarter = post.content?.trim().toLowerCase() === post.forum_threads?.title?.trim().toLowerCase();
+          const isStarter = post.is_starter;
           return (
             <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: `4px solid ${isStarter ? 'var(--theme-forum)' : '#94a3b8'}`, padding: '1rem', flexWrap: 'wrap', gap: '1rem' }}>
               <div className="admin-card-content" style={{ flex: 1, minWidth: '200px' }}>
                 <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: isStarter ? 'var(--theme-forum)' : 'var(--text-muted)', marginBottom: '0.5rem' }}>
-                  {isStarter ? '[TRÅDSTART]' : '[KOMMENTAR]'} • {post.profiles?.username || 'Okänd'} i "{post.forum_threads?.title || 'Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}
+                  {isStarter ? '📂 [TRÅDSTART]' : '💬 [KOMMENTAR]'} • {post.profiles?.username || 'Okänd'} i "{post.forum_threads?.title || 'Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}
                 </p>
-                <p style={{ margin: 0, color: 'var(--text-main)', fontStyle: isStarter ? 'italic' : 'normal' }}>{post.content}</p>
+                <p style={{ margin: 0, color: 'var(--text-main)', fontStyle: isStarter ? 'italic' : 'normal', fontSize: '0.9rem' }}>{post.content}</p>
               </div>
-              <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0 }}>
+              <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {isStarter ? (
-                  <button onClick={() => handleDeleteForumThread(post.forum_threads.id, post.forum_threads.title)} style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }} title="Radera HELA Tråden och alla dess svar">
+                  <button 
+                    onClick={() => handleDeleteForumThread(post.forum_threads?.id, post.forum_threads?.title)} 
+                    style={{ color: 'white', backgroundColor: '#ef4444', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.8rem', boxShadow: '0 2px 4px rgba(239,68,68,0.3)' }}
+                  >
                     <Trash2 size={16} /> Radera hela Tråden
                   </button>
                 ) : (
-                  <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title="Radera endast denna kommentar">
+                  <button 
+                    onClick={() => handleDelete('forum_posts', post.id)} 
+                    style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.8rem' }}
+                  >
                     <Trash2 size={16} /> Radera kommentar
                   </button>
                 )}
+                <button 
+                  onClick={() => window.open(`/forum/${post.thread_id}`, '_blank')}
+                  style={{ color: 'var(--text-main)', backgroundColor: 'var(--bg-color)', padding: '0.6rem 1rem', borderRadius: '8px', border: '1px solid var(--border-color)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.8rem' }}
+                >
+                  <Search size={14} /> Visa
+                </button>
               </div>
             </div>
           );

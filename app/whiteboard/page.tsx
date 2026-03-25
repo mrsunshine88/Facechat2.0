@@ -176,8 +176,12 @@ export default function Whiteboard() {
           await supabase.from('whiteboard').update({ shares_count: Math.max(0, (parent.shares_count || 0) - 1) }).eq('id', postToDelete.parent_id);
        }
     }
-    setPosts(prev => prev.filter(p => p.id !== postId))
-    await supabase.from('whiteboard').delete().eq('id', postId)
+    
+    const { error } = await supabase.from('whiteboard').delete().eq('id', postId);
+    if (!error) {
+      setPosts(prev => prev.filter(p => p.id !== postId));
+      await fetchData(); // Force refresh to sync all counters
+    }
   }
   
   const handleDeleteComment = async (commentId: string) => {
