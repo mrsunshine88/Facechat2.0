@@ -77,13 +77,14 @@ export default function AdminPanel() {
   const canManageLogs = isRoot || userProfile.perm_logs === true;
   const canManageStats = isRoot || userProfile.perm_stats === true;
   const canManageDiagnostics = isRoot || userProfile.perm_diagnostics === true;
+  const canManageChat = isRoot || userProfile.perm_chat === true;
 
   const renderContent = () => {
     switch(activeTab) {
       case 'dashboard': return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess/>;
       case 'users': return canManageUsers ? <AdminUsers supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
       case 'reports': return canManageContent ? <AdminReports supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
-      case 'content': return canManageContent ? <AdminContent supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
+      case 'content': return (canManageContent || canManageChat) ? <AdminContent supabase={supabase} currentUser={userProfile} perms={{ content: canManageContent, chat: canManageChat }} /> : <NoAccess/>;
       case 'rooms': return canManageRooms ? <AdminRooms supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
       case 'support': return canManageSupport ? <AdminSupport supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
       case 'permissions': return canManageRoles ? <AdminPermissions supabase={supabase} currentUser={userProfile} /> : <NoAccess/>;
@@ -130,7 +131,7 @@ export default function AdminPanel() {
                  <AlertTriangle size={18} /> Anmälningar
               </button>
             )}
-            {canManageContent && (
+            {(canManageContent || canManageChat) && (
               <button onClick={() => setActiveTab('content')} className={`admin-nav-link ${activeTab === 'content' ? 'active' : ''}`}>
                  <Database size={18} /> Innehåll & Moderering
               </button>
@@ -180,7 +181,7 @@ export default function AdminPanel() {
               {canManageUsers && <option value="users">Användare</option>}
               {canManageUsers && <option value="blocks">Blockeringar</option>}
               {canManageContent && <option value="reports">Anmälningar</option>}
-              {canManageContent && <option value="content">Innehåll & Moderering</option>}
+              {(canManageContent || canManageChat) && <option value="content">Innehåll & Moderering</option>}
               {canManageRooms && <option value="rooms">Hantera Chattrum</option>}
               {canManageSupport && <option value="support">Supportärenden {unreadSupportCount > 0 ? `(${unreadSupportCount})` : ''}</option>}
               {canManageRoles && <option value="permissions">Behörigheter & Roller</option>}
@@ -212,8 +213,9 @@ export default function AdminPanel() {
         .admin-nav-link:hover { background-color: var(--bg-color); color: var(--text-main); }
         .admin-nav-link.active { background-color: rgba(239, 68, 68, 0.1); color: #ef4444; font-weight: 600; }
         .admin-card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 1.5rem; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .admin-input { background-color: var(--bg-color); border: 1px solid var(--border-color); color: var(--text-main); padding: 0.75rem 1rem; border-radius: 8px; outline: none; }
         .admin-input:focus { border-color: #ef4444; background-color: var(--bg-card); }
+        .permission-card-hover { transition: transform 0.2s, box-shadow 0.2s; }
+        .permission-card-hover:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); border-color: #3b82f6 !important; }
       `}</style>
     </div>
   );
@@ -248,13 +250,14 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
       const { count: ticketsCount } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open');
       const { count: bannedCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true);
       const { count: reportsCount } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open');
+      const { count: userBlocksCount } = await supabase.from('user_blocks').select('*', { count: 'exact', head: true });
       
       const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
       const { count: onlineCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_seen', fifteenMinsAgo);
 
       setStats({ 
         users: usersCount || 0, 
-        posts: (wbCount || 0) + (gbCount || 0) + (forumCount || 0), 
+        posts: userBlocksCount || 0, // Temporärt återanvänd för att slippa ändra typen för mycket
         tickets: ticketsCount || 0,
         online: onlineCount || 0,
         banned: bannedCount || 0,
@@ -291,16 +294,16 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           <p style={{ fontSize: '2.5rem', fontWeight: '800', color: '#3b82f6' }}>{stats.users}</p>
         </div>
         <div className="admin-card">
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Totalt Skapade Inlägg</h3>
-          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: '#10b981' }}>{stats.posts}</p>
+          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Antal admin blockat</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.banned > 0 ? '#ef4444' : '#6b7280' }}>{stats.banned}</p>
         </div>
         <div className="admin-card">
           <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Öppna Supportärenden</h3>
           <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.tickets > 0 ? '#ef4444' : '#6b7280' }}>{stats.tickets}</p>
         </div>
         <div className="admin-card">
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Antal Blockade</h3>
-          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.banned > 0 ? '#ef4444' : '#6b7280' }}>{stats.banned}</p>
+          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Antal personer blockat</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.posts > 0 ? '#ef4444' : '#6b7280' }}>{stats.posts}</p>
         </div>
         <div className="admin-card">
           <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Öppna Anmälningar</h3>
@@ -577,6 +580,14 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     fetchReports();
   }
 
+  const handleDeleteReportEntry = async (id: string) => {
+    if (!confirm('Vill du ta bort detta ärende helt från listan?')) return;
+    const { error } = await supabase.from('reports').delete().eq('id', id);
+    if (error) return alert("Kunde inte radera ärende: " + error.message);
+    await logAdminAction(supabase, currentUser.id, `Raderade ett avslutat anmälnings-ärende (ID: ${id})`);
+    fetchReports();
+  };
+
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Anmälningar <span style={{ fontSize: '1rem', backgroundColor: '#ef4444', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', verticalAlign: 'middle' }}>{reports.filter(r => r.status === 'open').length}</span></h2>
@@ -620,7 +631,10 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
                 </button>
               </div>
             ) : (
-               <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>Hanterad</span>
+               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                 <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: '#10b981' }}>Hanterad</span>
+                 <button onClick={() => handleDeleteReportEntry(report.id)} style={{ backgroundColor: '#f9fafb', color: '#ef4444', border: '1px solid #e5e7eb', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Radera Ärende</button>
+               </div>
             )}
           </div>
         ))}
@@ -632,13 +646,15 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 // ==========================================================
 // 3. INNEHÅLL (Whiteboard, Forum, Chattrum)
 // ==========================================================
-const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, currentUser: any, perms: { content: boolean, chat: boolean } }) => {
   const [posts, setPosts] = useState<any[]>([]);
   const [guestbook, setGuestbook] = useState<any[]>([]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
   const [snakeScores, setSnakeScores] = useState<any[]>([]);
   const [chatMessages, setChatMessages] = useState<any[]>([]);
-  const [view, setView] = useState('whiteboard'); // whiteboard, guestbook, forum, snake, chat
+  
+  // Sätt start-vyn till första tillgängliga behörighet
+  const [view, setView] = useState(perms.content ? 'whiteboard' : 'chat');
   const [selectedArcadeGame, setSelectedArcadeGame] = useState('all');
 
   useEffect(() => {
@@ -745,11 +761,17 @@ const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: a
       
       {/* Skrivbord - Knappar som radbryts snyggt */}
       <div className="hide-on-mobile" style={{ display: 'flex', gap: '0.5rem', marginBottom: '1.5rem', flexWrap: 'wrap' }}>
-        <button onClick={() => setView('whiteboard')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'whiteboard' ? 'var(--theme-whiteboard)' : 'var(--bg-card)', color: view === 'whiteboard' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Whiteboard</button>
-        <button onClick={() => setView('guestbook')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'guestbook' ? 'var(--theme-krypin)' : 'var(--bg-card)', color: view === 'guestbook' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Gästböcker</button>
-        <button onClick={() => setView('forum')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'forum' ? 'var(--theme-forum)' : 'var(--bg-card)', color: view === 'forum' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Forum</button>
-        <button onClick={() => setView('snake')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'snake' ? '#10b981' : 'var(--bg-card)', color: view === 'snake' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Arcade Leaderboard</button>
-        <button onClick={() => setView('chat')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'chat' ? '#3b82f6' : 'var(--bg-card)', color: view === 'chat' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Chatten</button>
+        {perms.content && (
+          <>
+            <button onClick={() => setView('whiteboard')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'whiteboard' ? 'var(--theme-whiteboard)' : 'var(--bg-card)', color: view === 'whiteboard' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Whiteboard</button>
+            <button onClick={() => setView('guestbook')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'guestbook' ? 'var(--theme-krypin)' : 'var(--bg-card)', color: view === 'guestbook' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Gästböcker</button>
+            <button onClick={() => setView('forum')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'forum' ? 'var(--theme-forum)' : 'var(--bg-card)', color: view === 'forum' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Forum</button>
+            <button onClick={() => setView('snake')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'snake' ? '#10b981' : 'var(--bg-card)', color: view === 'snake' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Arkad-Scores</button>
+          </>
+        )}
+        {perms.chat && (
+          <button onClick={() => setView('chat')} style={{ padding: '0.6rem 1.2rem', borderRadius: '8px', border: '1px solid var(--border-color)', fontWeight: '600', cursor: 'pointer', backgroundColor: view === 'chat' ? '#3b82f6' : 'var(--bg-card)', color: view === 'chat' ? 'white' : 'var(--text-muted)', transition: 'all 0.2s', flex: '1 1 auto' }}>Chatten</button>
+        )}
       </div>
       
       {/* Mobil - Dropdown */}
@@ -760,11 +782,15 @@ const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: a
           className="admin-input" 
           style={{ width: '100%', padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
         >
-          <option value="whiteboard">Whiteboard</option>
-          <option value="guestbook">Gästbok</option>
-          <option value="forum">Forum</option>
-          <option value="snake">Arcade Leaderboard</option>
-          <option value="chat">Chatten</option>
+          {perms.content && (
+            <>
+              <option value="whiteboard">Whiteboard</option>
+              <option value="guestbook">Gästbok</option>
+              <option value="forum">Forum</option>
+              <option value="snake">Arkad-Scores</option>
+            </>
+          )}
+          {perms.chat && <option value="chat">Chatten</option>}
         </select>
       </div>
 
@@ -1098,27 +1124,34 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
 // ==========================================================
 // 5. BEHÖRIGHETER & ADMINS (Sök upp → Gör till Admin)
 // ==========================================================
+// ==========================================================
 const PermissionCard = ({ icon: Icon, title, desc, checked, onChange, disabled, danger }: any) => (
-  <label style={{
-    display: 'flex', alignItems: 'flex-start', gap: '1rem',
-    padding: '1rem', borderRadius: '8px', 
-    border: checked ? `2px solid ${danger ? '#ef4444' : '#10b981'}` : '1px solid var(--border-color)',
-    backgroundColor: checked ? (danger ? '#fef2f2' : '#f0fdf4') : 'var(--bg-color)',
-    cursor: disabled ? 'not-allowed' : 'pointer',
-    opacity: disabled ? 0.6 : 1, transition: 'all 0.2s'
-  }}>
+  <div 
+    onClick={() => {
+      if (!disabled && onChange) onChange();
+    }}
+    style={{
+      display: 'flex', alignItems: 'flex-start', gap: '1rem',
+      padding: '1rem', borderRadius: '12px', 
+      border: checked ? `2px solid ${danger ? '#ef4444' : '#10b981'}` : '1px solid var(--border-color)',
+      backgroundColor: checked ? (danger ? '#fef2f2' : '#f0fdf4') : 'var(--bg-card)',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1, transition: 'all 0.2s',
+      userSelect: 'none'
+    }}
+    className="permission-card-hover"
+  >
     <div style={{ marginTop: '0.25rem', color: checked ? (danger ? '#ef4444' : '#10b981') : 'var(--text-muted)' }}>
       <Icon size={20} />
     </div>
     <div style={{ flex: 1 }}>
-      <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 'bold', color: checked ? (danger ? '#b91c1c' : '#065f46') : 'var(--text-main)' }}>{title}</h4>
-      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem' }}>{desc}</p>
+      <h4 style={{ margin: 0, fontSize: '0.9rem', fontWeight: 'bold', color: checked ? (danger ? '#b91c1c' : '#065f46') : 'var(--text-main)' }}>{title}</h4>
+      <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.25rem', lineHeight: '1.4' }}>{desc}</p>
     </div>
-    <div style={{ position: 'relative', width: '36px', height: '20px', backgroundColor: checked ? (danger ? '#ef4444' : '#10b981') : '#d1d5db', borderRadius: '10px', transition: 'background-color 0.2s', flexShrink: 0 }}>
-      <div style={{ position: 'absolute', top: '2px', left: checked ? '18px' : '2px', width: '16px', height: '16px', backgroundColor: 'white', borderRadius: '50%', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
-      <input type="checkbox" checked={checked} onChange={onChange} disabled={disabled} style={{ opacity: 0, width: 0, height: 0, position: 'absolute' }} />
+    <div style={{ position: 'relative', width: '40px', height: '22px', backgroundColor: checked ? (danger ? '#ef4444' : '#10b981') : '#d1d5db', borderRadius: '11px', transition: 'background-color 0.2s', flexShrink: 0 }}>
+      <div style={{ position: 'absolute', top: '3px', left: checked ? '21px' : '3px', width: '16px', height: '16px', backgroundColor: 'white', borderRadius: '50%', transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.3)' }} />
     </div>
-  </label>
+  </div>
 );
 
 // ==========================================================
@@ -1219,10 +1252,22 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   }
 
   const handleTogglePermission = async (user: any, column: string, val: boolean) => {
+    // Spara original för att kunna rulla tillbaka vid fel
+    const prevState = { ...activeEditAdmin };
+    
+    // Uppdatera UI omedelbart för snabb känsla
     const updatedUser = { ...user, [column]: val };
     setActiveEditAdmin(updatedUser);
+    
+    // Skicka till servern
     const res = await adminUpdatePermissions(user.id, { [column]: val }, currentUser.id);
-    if (res?.error) return alert('Fel: ' + res.error);
+    
+    if (res?.error) {
+      alert('Kunde inte uppdatera behörighet: ' + res.error);
+      setActiveEditAdmin(prevState); // Rulla tillbaka UI
+      return;
+    }
+
     await logAdminAction(supabase, currentUser.id, `Ändrade ${column} för ${user.username} till ${val}`);
     fetchAdmins();
   };
@@ -1866,11 +1911,28 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
     fetchBlocks();
   }, [supabase]);
 
+  // Sök-loggning (Debounced)
+  useEffect(() => {
+    if (search.trim().length > 1) {
+      const timer = setTimeout(() => {
+        logAdminAction(supabase, currentUser.id, `Sökte i Blockeringar efter: "${search.trim()}"`);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [search, supabase, currentUser.id]);
+
   async function fetchBlocks(query?: string) {
     setLoading(true);
+    // Vi hämtar blockeringar med tydlig koppling till profiltabellens kolumner
     let q = supabase
       .from('user_blocks')
-      .select('*, blocker:blocker_id(username), blocked:blocked_id(username)')
+      .select(`
+        created_at,
+        blocker_id,
+        blocked_id,
+        blocker:profiles!blocker_id(username),
+        blocked:profiles!blocked_id(username)
+      `)
       .order('created_at', { ascending: false });
 
     if (query && query.trim().length > 0) {
@@ -1915,7 +1977,7 @@ const AdminBlocks = ({ supabase, currentUser }: { supabase: any, currentUser: an
         </div>
         {search && blocks.length > 0 && (
           <p style={{ marginTop: '1rem', fontSize: '0.875rem', fontWeight: 'bold', color: 'var(--theme-primary)' }}>
-            Hittade {blocks.length} personer som har blockerat {search}.
+            Hittade {blocks.length} träffar relaterat till "{search}".
           </p>
         )}
       </div>

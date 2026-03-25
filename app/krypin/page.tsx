@@ -1427,8 +1427,14 @@ function MittKrypinContent() {
          {showReportModal && (
             <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
               <div className="card animate-fade-in" style={{ width: '100%', maxWidth: '400px', padding: '2rem' }}>
-                 <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#b91c1c' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
-                 <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.875rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat.</p>
+                 <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#b91c1c' }}>
+                    <AlertTriangle size={24}/> {reportTarget?.type === 'profile' ? 'Anmäl Person' : 'Anmäl Innehåll'}
+                  </h3>
+                  <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.875rem' }}>
+                    {reportTarget?.type === 'profile' 
+                      ? `Varför vill du anmäla ${currentUser.username}? Beskriv händelsen.`
+                      : 'Vad gäller anmälan? Välj en kategori och beskriv kortfattat.'}
+                  </p>
                  
                  <select 
                    value={reportCategory}
@@ -1643,7 +1649,16 @@ function MittKrypinContent() {
                         </>
                       )}
                       <button onClick={handleToggleBlock} style={{ backgroundColor: isBlocked ? '#fca5a5' : '#ef4444', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', flex: '1 1 auto', justifyContent: 'center' }}>
-                        <ShieldAlert size={16} /> {isBlocked ? 'Häv Blockering' : 'Blockera användare'}
+                        <ShieldAlert size={16} /> {isBlocked ? 'Häv Blockering' : 'Blockera'}
+                      </button>
+                      <button 
+                        onClick={() => {
+                          setReportTarget({ id: currentUser.id, type: 'profile', reportedUserId: currentUser.id });
+                          setShowReportModal(true);
+                        }} 
+                        style={{ backgroundColor: '#fff', color: '#b91c1c', padding: '0.6rem 1rem', borderRadius: '8px', border: '2px solid #b91c1c', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', flex: '1 1 auto', justifyContent: 'center' }}
+                      >
+                        <AlertTriangle size={16} /> Anmäl person
                       </button>
                     </div>
                   )}
