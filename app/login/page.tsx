@@ -84,6 +84,12 @@ export default function Login() {
         if (signInError) throw signInError
         
         if (signInData?.user) {
+          if (!signInData.user.email_confirmed_at) {
+            await supabase.auth.signOut();
+            setError('Du måste bekräfta din e-postadress innan du kan logga in.');
+            setLoading(false);
+            return;
+          }
           const { data: profList } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).limit(1);
           const profile = profList && profList.length > 0 ? profList[0] : null;
           if (profile?.is_banned) {

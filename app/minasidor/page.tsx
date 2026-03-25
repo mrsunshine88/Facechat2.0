@@ -60,6 +60,7 @@ export default function MinaSidor() {
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [deletePassword, setDeletePassword] = useState('');
   
   const [supportCategory, setSupportCategory] = useState('');
   const [supportMessage, setSupportMessage] = useState('');
@@ -223,7 +224,23 @@ export default function MinaSidor() {
 
   const handleDeleteMyAccount = async () => {
     if (!currentUser) return;
+    if (!deletePassword.trim()) {
+      setCustomAlert("Du måste ange ditt lösenord för att radera kontot.");
+      return;
+    }
+
     try {
+      // Verifiera lösenordet genom att försöka logga in igen
+      const { error: authError } = await supabase.auth.signInWithPassword({
+        email: currentUser.email,
+        password: deletePassword
+      });
+
+      if (authError) {
+        setCustomAlert("Fel lösenord. Kontot kunde inte raderas.");
+        return;
+      }
+
       // Skriv logg direkt innan vi raderar the creator
       await supabase.from('admin_logs').insert({ 
         admin_id: currentUser.id, 
@@ -536,7 +553,13 @@ export default function MinaSidor() {
                        <div style={{ position: 'absolute', bottom: '100%', right: '0', width: '300px', marginBottom: '1rem', backgroundColor: 'var(--bg-card)', border: '2px solid #ef4444', borderRadius: '8px', padding: '1.5rem', boxShadow: 'var(--shadow-md)', zIndex: 10 }}>
                        <h4 style={{ color: '#ef4444', fontWeight: '700', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><AlertTriangle size={18} /> Är du helt säker?</h4>
                        <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '1rem' }}>All din historik från Facechat kommer att försvinna rakt ner i soptunnan.</p>
-                       <input type="password" placeholder="Beskäfta med lösenord..." style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem', fontSize: '0.875rem' }} />
+                        <input 
+                          type="password" 
+                          value={deletePassword}
+                          onChange={e => setDeletePassword(e.target.value)}
+                          placeholder="Bekräfta med lösenord..." 
+                          style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem', fontSize: '0.875rem' }} 
+                        />
                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                          <button type="button" onClick={() => setShowConfirmDelete(false)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#e5e7eb', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem' }}>Ångra</button>
                          <button type="button" onClick={handleDeleteMyAccount} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '6px', fontWeight: '600', fontSize: '0.875rem' }}>Radera</button>

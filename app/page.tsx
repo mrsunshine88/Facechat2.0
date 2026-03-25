@@ -19,6 +19,11 @@ export default function Dashboard() {
     async function getUser() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        if (!user.email_confirmed_at) {
+          await supabase.auth.signOut();
+          router.push('/login?error=Du måste bekräfta din e-postadress innan du kan logga in.');
+          return;
+        }
         const { data: profList } = await supabase.from('profiles').select('username').eq('id', user.id).limit(1)
         const profile = profList && profList.length > 0 ? profList[0] : null
         if (profile?.username) {

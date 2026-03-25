@@ -1256,7 +1256,8 @@ function MittKrypinContent() {
                             <button onClick={() => setBgColorTarget('.card, .inner-box')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: bgColorTarget === '.card, .inner-box' ? '#a78bfa' : 'transparent', color: bgColorTarget === '.card, .inner-box' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>I Rutorna & Inlägg</button>
                             <button onClick={() => setBgColorTarget('.status-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: bgColorTarget === '.status-badge' ? '#a78bfa' : 'transparent', color: bgColorTarget === '.status-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Status-Känslan</button>
                             <button onClick={() => setBgColorTarget('.interest-badge.interest-badge.interest-badge.interest-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '#a78bfa' : 'transparent', color: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Intresse-bubblorna</button>
-                         </div>
+                            <button onClick={() => setBgColorTarget('.krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? '#a78bfa' : 'transparent', color: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Mottagna Mejl</button>
+                          </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
                          {KIDS_COLORS.map((color, i) => (
@@ -1274,7 +1275,8 @@ function MittKrypinContent() {
                             <button onClick={() => setTextColorTarget('.interest-badge.interest-badge.interest-badge.interest-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '#a78bfa' : 'transparent', color: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Intressen (Bubblorna)</button>
                             <button onClick={() => setTextColorTarget('.krypin-sidebar')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: textColorTarget === '.krypin-sidebar' ? '#a78bfa' : 'transparent', color: textColorTarget === '.krypin-sidebar' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Vänstermeny</button>
                             <button onClick={() => setTextColorTarget('.krypin-sidebar + div .card')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: textColorTarget === '.krypin-sidebar + div .card' ? '#a78bfa' : 'transparent', color: textColorTarget === '.krypin-sidebar + div .card' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Högerspalt</button>
-                         </div>
+                            <button onClick={() => setTextColorTarget('.krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? '#a78bfa' : 'transparent', color: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Mottagna Mejl</button>
+                          </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
                          {KIDS_TEXT_COLORS.map((color, i) => (
@@ -1662,7 +1664,7 @@ function MittKrypinContent() {
                                <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden' }}>
                                   {v.actor?.avatar_url && <img src={v.actor?.avatar_url} style={{width:'100%', height:'100%', objectFit:'cover'}}/>}
                                </div>
-                               <strong style={{ color: 'var(--text-main)' }}></strong>
+                               <strong style={{ color: 'var(--text-main)' }}>{v.actor?.username}</strong>
                             </div>
                             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(v.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}</span>
                          </div>
@@ -2081,7 +2083,7 @@ function MittKrypinContent() {
                                        const isMe = msg.sender_id === viewerUser?.id;
                                        return (
                                           <div key={msg.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-                                             <div style={{ maxWidth: '75%', padding: '0.75rem 1rem', borderRadius: '16px', borderBottomRightRadius: isMe ? '4px' : '16px', borderBottomLeftRadius: !isMe ? '4px' : '16px', backgroundColor: isMe ? 'var(--theme-krypin)' : 'var(--bg-card)', color: isMe ? 'white' : 'var(--text-main)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: isMe ? 'none' : '1px solid var(--border-color)' }}>
+                                             <div className={`krypin-message-bubble ${isMe ? 'is-me' : 'is-other'}`} style={{ maxWidth: '75%', padding: '0.75rem 1rem', borderRadius: '16px', borderBottomRightRadius: isMe ? '4px' : '16px', borderBottomLeftRadius: !isMe ? '4px' : '16px', backgroundColor: isMe ? 'var(--theme-krypin)' : 'var(--bg-card)', color: isMe ? 'white' : 'var(--text-main)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: isMe ? 'none' : '1px solid var(--border-color)', minHeight: '1.5rem' }}>
                                                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4', fontSize: '0.95rem' }}>{msg.content}</div>
                                                 <div style={{ fontSize: '0.7rem', textAlign: 'right', marginTop: '0.4rem', color: isMe ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>
                                                    {new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
