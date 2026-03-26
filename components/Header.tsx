@@ -12,6 +12,8 @@ export default function Header() {
   const router = useRouter()
   const isAdminRoute = pathname?.startsWith('/admin')
   const isLoginRoute = pathname === '/login' || pathname === '/update-password'
+  const isBlockedRoute = pathname === '/blocked'
+
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
@@ -22,6 +24,7 @@ export default function Header() {
   )
 
   useEffect(() => {
+    if (isBlockedRoute) return;
     async function loadUser() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
@@ -88,7 +91,7 @@ export default function Header() {
 
   // Master Realtime Feed
   useEffect(() => {
-    if (!userProfile) return;
+    if (!userProfile || isBlockedRoute) return;
     
     // 1. Fetch alla personliga notiser
     async function fetchPersonligaNotiser() {

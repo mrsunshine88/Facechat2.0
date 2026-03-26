@@ -597,6 +597,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
         {users.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga användare hittades.</p>}
         {users.map(u => {
           const isAutoBanned = u.ban_reason?.startsWith('System:');
+          const isIpBlocked = blockedIps.some(b => b.ip === u.last_ip);
           return (
             <div 
               key={u.id} 
@@ -649,13 +650,19 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                        <CheckCircle size={14} /> Säkert IP ✅
                     </div>
                   ) : (
-                    <button 
-                      onClick={() => handleBlockIP(u.last_ip, u.username)} 
-                      style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                      title="Spärra personens IP-adress helt"
-                    >
-                      <Globe size={14} /> Spärra IP
-                    </button>
+                    isIpBlocked ? (
+                      <div style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(239,68,68,0.05)' }}>
+                         <Lock size={14} /> Redan Spärrad
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => handleBlockIP(u.last_ip, u.username)} 
+                        style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                        title="Spärra personens IP-adress helt"
+                      >
+                        <Globe size={14} /> Spärra IP
+                      </button>
+                    )
                   )
                 )}
 

@@ -2,8 +2,10 @@
 
 import React, { useState, useEffect } from 'react'
 import { X } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 
 export default function InstallPrompt() {
+  const pathname = usePathname()
   const [showInstallPrompt, setShowInstallPrompt] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
@@ -64,7 +66,7 @@ export default function InstallPrompt() {
     localStorage.setItem('pwa_prompt_dismissed', 'true');
   };
 
-  if (!showInstallPrompt) return null;
+  if (!showInstallPrompt || pathname === '/blocked') return null;
 
   return (
     <div className="hide-on-desktop" style={{ position: 'fixed', bottom: '1rem', left: '1rem', right: '1rem', backgroundColor: 'var(--bg-card)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 99999, boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>

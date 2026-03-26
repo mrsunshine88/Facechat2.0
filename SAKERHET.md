@@ -13,9 +13,9 @@ Facechat använder **Supabase Auth** som primär identitetshanterare.
 ---
 
 ## 2. Nätverksnivå & Dynamiskt IP-skydd
-- **Middleware Blacklisting**: `middleware.ts` fungerar som dörrvakt. Varje inkommande request matchas mot tabellen `blocked_ips`. Vid träff blockeras anropet direkt på Edge-nivå (Next.js Middleware).
+- **Middleware Lockdown**: `proxy.ts` fungerar som dörrvakt. Varje inkommande request (utom tillgång till spärrsidan) matchas mot tabellen `blocked_ips`. Vid träff omdirigeras användaren omedelbart till en dedikerad spärrsida (`/blocked`).
 - **IMMUNITET FÖR ROOT-ADMIN**: Systemet skyddar automatiskt den IP-adress som används av kontot `apersson508`. Om en administratör försöker spärra denna IP – oavsett vilken profil de försöker nå den genom – nekas åtgärden automatiskt. Skyddet är dynamiskt och följer Root-Admin om de byter nätverk.
-- **IP-spårning**: Varje lyckad profil-interaktion loggar användarens `last_ip` för forensisk analys och spårbarhet.
+- **IP-spårning**: Varje lyckad profil-interaktion loggar användarens `last_ip` för forensisk analys och spårbarhet. Även blockerade användare spåras via deras IP på spärrsidan.
 
 ---
 
@@ -57,5 +57,19 @@ Facechat har ett proaktivt diagnosverktyg för säkerhetsövervakning:
 
 ---
 
+## 8. Interactive Support & Appeal System 💬
+Facechat 2.0 introducerar en professionell hantering av spärrade användare:
+- **Locked Portal**: Sidan `/blocked` är helt isolerad från resten av plattformen (ingen meny, inga notiser, ingen access till funktioner).
+- **Direktchatt med Admin**: Spärrade användare kan kommunicera direkt med moderatorer via en krypterad chatt-tråd inuti `/blocked`.
+- **Realtime Appeals**: Administratörer ser dessa ärenden i realtid i Admin-panelens Support-flik och kan svara användaren för att diskutera överklagan.
+
+---
+
+## 9. Intelligent Admin UI 🚫🖥️
+För att förenkla arbetet för moderatorer har Admin-panelen inbyggd intelligens:
+- **Dubbelspärrs-skydd**: Systemet detekterar automatiskt om en användares IP redan är spärrad och visar statusen **"Redan Spärrad" 🚫** istället för knappen "Spärra IP".
+
+---
+
 > [!IMPORTANT]
-> Detta dokument representerar den nuvarande säkerhetsstandarden i Facechat 2.0 (utökat mars 2026).
+> Detta dokument representerar den nuvarande säkerhetsstandarden i Facechat 2.0 (slutlig version mars 2026).
