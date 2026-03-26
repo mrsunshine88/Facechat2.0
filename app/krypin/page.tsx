@@ -1149,8 +1149,16 @@ function MittKrypinContent() {
     <>
       <style>{`
         /* Säkrad rendering av CSS instängsel */
-        #krypin-custom-container {
-          ${previewCss !== null ? previewCss : (currentUser.custom_style || '')}
+        ${previewCss !== null ? previewCss : (currentUser.custom_style || '')}
+        
+        /* Standardtemafärger för meddelandebubblor */
+        .krypin-message-bubble.is-me {
+          background-color: var(--theme-krypin) !important;
+          color: white !important;
+        }
+        .krypin-message-bubble.is-other {
+          background-color: var(--bg-card);
+          color: var(--text-main);
         }
         
         .krypin-thread-container { border: none !important; border-radius: 0 !important; }
@@ -1162,6 +1170,24 @@ function MittKrypinContent() {
         .krypin-inbox-list { padding: 0 !important; }
         .krypin-inbox-item { border-radius: 0 !important; border-left: none !important; border-right: none !important; margin-bottom: 0 !important; padding: 1.5rem 2.5rem !important; }
         .krypin-compose-card { padding: 2rem 2.5rem !important; border-radius: 0 !important; border: none !important; }
+
+        /* Flyttade stilar för att tillåta editor-overrides */
+        .status-badge {
+          background-color: #f3e8ff;
+          color: #6b21a8;
+        }
+        .interest-badge {
+          background-color: var(--theme-krypin);
+          color: white;
+        }
+        .profile-frame {
+          border: 4px solid #f3e8ff;
+          background-color: var(--theme-krypin);
+        }
+        .krypin-sidebar-menu button.active {
+          background-color: var(--theme-krypin) !important;
+          color: white !important;
+        }
 
         @media (max-width: 768px) {
            .krypin-layout { padding: 0 !important; gap: 0 !important; }
@@ -1710,7 +1736,7 @@ function MittKrypinContent() {
         <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', position: 'relative' }}>
           
           <div style={{ position: 'relative', width: '100px', height: '100px', marginBottom: '1rem', cursor: 'pointer' }}>
-            <div className="profile-frame" style={{ width: '100%', height: '100%', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', border: '4px solid #f3e8ff', overflow: 'hidden', boxSizing: 'border-box' }}>
+            <div className="profile-frame" style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', boxSizing: 'border-box' }}>
               {currentUser.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : ''}
             </div>
             {isMyProfile && (
@@ -1741,7 +1767,7 @@ function MittKrypinContent() {
             </div>
           )}
           
-          <div className="status-badge" style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#f3e8ff', color: '#6b21a8', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600' }}>
+          <div className="status-badge" style={{ marginTop: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.75rem', borderRadius: '999px', fontSize: '0.75rem', fontWeight: '600' }}>
             {currentUser.status_icon === 'star' && <><Star size={14} /> Sugen på fest!</>}
             {currentUser.status_icon === 'moon' && <><Moon size={14} /> Sömntuta</>}
             {currentUser.status_icon === 'heart' && <><Heart size={14} /> Kär & galen!</>}
@@ -1773,13 +1799,14 @@ function MittKrypinContent() {
             <button
                key={item.id}
                onClick={() => { setActiveTab(item.id); setSelectedMail(null); }}
+               className={`hover-lift ${activeTab === item.id ? 'active' : ''}`}
                style={{
                  display: 'flex', alignItems: 'center', gap: '0.75rem',
                  padding: '0.75rem 1rem', borderRadius: '8px',
-                 backgroundColor: activeTab === item.id ? 'var(--theme-krypin)' : 'transparent',
-                 color: activeTab === item.id ? 'white' : 'var(--text-main)',
                  fontWeight: activeTab === item.id ? '600' : '500',
-                 textAlign: 'left', border: 'none', cursor: 'pointer'
+                 textAlign: 'left', border: 'none', cursor: 'pointer',
+                 backgroundColor: 'transparent',
+                 color: activeTab === item.id ? 'white' : 'var(--text-main)',
                }}
              >
                <item.icon size={18} opacity={activeTab === item.id ? 1 : 0.6} /> {item.id}
@@ -1907,7 +1934,7 @@ function MittKrypinContent() {
                         <strong style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.95rem' }}>Intressen:</strong>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
                           {currentUser.interests.map((interest: string, idx: number) => (
-                            <span key={idx} className="interest-badge" style={{ backgroundColor: 'var(--theme-krypin)', color: 'white', padding: '0.35rem 0.85rem', borderRadius: '999px', fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block' }}>{interest}</span>
+                            <span key={idx} className="interest-badge" style={{ padding: '0.35rem 0.85rem', borderRadius: '999px', fontSize: '0.85rem', fontWeight: 'bold', display: 'inline-block' }}>{interest}</span>
                           ))}
                         </div>
                       </div>
@@ -2092,9 +2119,9 @@ function MittKrypinContent() {
                                        const isMe = msg.sender_id === viewerUser?.id;
                                        return (
                                           <div key={msg.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
-                                             <div className={`krypin-message-bubble ${isMe ? 'is-me' : 'is-other'}`} style={{ maxWidth: '75%', padding: '0.75rem 1rem', borderRadius: '16px', borderBottomRightRadius: isMe ? '4px' : '16px', borderBottomLeftRadius: !isMe ? '4px' : '16px', backgroundColor: isMe ? 'var(--theme-krypin)' : 'var(--bg-card)', color: isMe ? 'white' : 'var(--text-main)', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: isMe ? 'none' : '1px solid var(--border-color)', minHeight: '1.5rem' }}>
+                                             <div className={`krypin-message-bubble ${isMe ? 'is-me' : 'is-other'}`} style={{ maxWidth: '75%', padding: '0.75rem 1rem', borderRadius: '16px', borderBottomRightRadius: isMe ? '4px' : '16px', borderBottomLeftRadius: !isMe ? '4px' : '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: isMe ? 'none' : '1px solid var(--border-color)', minHeight: '1.5rem' }}>
                                                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4', fontSize: '0.95rem' }}>{msg.content}</div>
-                                                <div style={{ fontSize: '0.7rem', textAlign: 'right', marginTop: '0.4rem', color: isMe ? 'rgba(255,255,255,0.7)' : 'var(--text-muted)' }}>
+                                                <div style={{ fontSize: '0.7rem', textAlign: 'right', marginTop: '0.4rem', opacity: 0.7 }}>
                                                    {new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
                                                    {isMe && <span style={{ marginLeft: '4px' }}>{msg.is_read ? '✓✓' : '✓'}</span>}
                                                 </div>
