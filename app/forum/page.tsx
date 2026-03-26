@@ -143,7 +143,7 @@ export default function Forumet() {
           ))
         ) : threads.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-            <p>Inga trådar startade än. Snart kopplas detta mot databasen!</p>
+            <p>Inga trådar startade än. Bli den första att skriva något!</p>
           </div>
         ) : (
           threads.map((thread) => {

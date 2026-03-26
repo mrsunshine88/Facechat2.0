@@ -531,7 +531,7 @@ export default function Whiteboard() {
       {/* Flöde */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
         {loading && <WhiteboardSkeleton />}
-        {!loading && posts.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Inga inlägg hittades i din nätverksson. Bli den första att skriva något!</p>}
+        {!loading && posts.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Inga inlägg hittades i din nätverkszon. Bli den första att skriva något!</p>}
         
         {posts.map(post => {
           const isOwnPost = currentUser?.id === post.author_id;
