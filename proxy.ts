@@ -39,12 +39,21 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  // 2. Kontrollera IP-blockering (Vattentätt skydd)
+  // 2. Kontrollera IP-blockering (Vattentätt skydd + Root-bypass)
   const forwarded = request.headers.get('x-forwarded-for')
   const ip = forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1'
 
   // Undanta kända adresser (localhost)
   if (ip !== '127.0.0.1' && ip !== '::1') {
+    // --- ROOT-BYPASS: Kolla om detta är ägar-IP ---
+    // Vi hämtar den direkt från databas-funktionen we skapade
+    const { data: rootIp } = await supabase.rpc('get_root_admin_ip');
+    
+    // Om det är ägaren, släpp förbi direkt (Immunitet)
+    if (rootIp && ip === rootIp) {
+      return response;
+    }
+
     const { data: isBlocked } = await supabase
       .from('blocked_ips')
       .select('ip, reason')
@@ -52,8 +61,6 @@ export async function proxy(request: NextRequest) {
       .single()
 
     if (isBlocked) {
-      // Omdirigera till en spärrsida eller returnera 403
-      // Vi returnerar en enkel text för snabbhet
       return new NextResponse(
         `Åtkomst nekad: Din IP-adress (${ip}) är spärrad från Facechat. Anledning: ${isBlocked.reason || 'Ingen angiven'}`,
         { status: 403 }
