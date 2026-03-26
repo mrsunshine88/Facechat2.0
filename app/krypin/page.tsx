@@ -469,7 +469,19 @@ function MittKrypinContent() {
     }
   }
 
-  async function fetchMessages(userId: string) {
+     // Lås scroll på body när redigering är öppen
+   useEffect(() => {
+     if (isEditingKrypin) {
+       document.body.style.overflow = 'hidden';
+     } else {
+       document.body.style.overflow = 'unset';
+     }
+     return () => {
+       document.body.style.overflow = 'unset';
+     };
+   }, [isEditingKrypin]);
+
+   async function fetchMessages(userId: string) {
     const { data } = await supabase
       .from('private_messages')
       .select('*, sender:sender_id(id, username, avatar_url), receiver:receiver_id(id, username, avatar_url)')
@@ -1192,6 +1204,15 @@ function MittKrypinContent() {
         }
 
         @media (max-width: 768px) {
+            .krypin-editor-modal {
+               position: fixed !important;
+               top: 0 !important; left: 0 !important; right: 0 !important; bottom: 0 !important;
+               width: 100vw !important;
+               height: 100vh !important;
+               max-height: 100vh !important;
+               border-radius: 0 !important;
+               z-index: 9999 !important;
+            }
            .krypin-layout { padding: 0 !important; gap: 0 !important; }
            .krypin-content-wrapper { padding: 0 !important; }
            .krypin-main-card { padding: 0 !important; border: none !important; border-radius: 0 !important; }
@@ -1220,8 +1241,8 @@ function MittKrypinContent() {
 
       {/* STUNNING 2026 LUNARSTORM EDITOR MODAL */}
       {isEditingKrypin && (
-        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-          <div style={{ backgroundColor: '#0f172a', width: '100%', maxWidth: '1000px', borderRadius: '16px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', maxHeight: '90vh' }}>
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '0' }}>
+          <div className="krypin-editor-modal" style={{ backgroundColor: '#0f172a', width: '95%', maxWidth: '1000px', borderRadius: '16px', border: '1px solid #334155', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.5)', maxHeight: '90vh' }}>
              <div style={{ padding: '1.25rem 1.5rem', borderBottom: '1px solid #1e293b', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                <div>
                  <h2 style={{ color: 'white', margin: 0, fontSize: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><FileEdit size={24} color="#a78bfa" /> Krypin Design</h2>
@@ -1574,7 +1595,7 @@ function MittKrypinContent() {
 
              <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid #1e293b', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
                 <button onClick={() => { setIsEditingKrypin(false); setPreviewCss(null); }} style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid #334155', padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Avbryt</button>
-                <button onClick={handlePreviewCss} style={{ background: '#a78bfa', color: '#4c1d95', border: 'none', padding: '0.75rem 2rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '900', fontSize: '1.1rem', boxShadow: '0 0 15px rgba(167, 139, 250, 0.4)' }}>👉 KÖR FÖRHANDSGRANSKNING</button>
+                <button onClick={handlePreviewCss} style={{ background: '#a78bfa', color: '#4c1d95', border: 'none', padding: '0.75rem 1.25rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '900', fontSize: '1rem', flex: 1, boxShadow: '0 0 15px rgba(167, 139, 250, 0.4)' }}>👉 KÖR FÖRHANDSGRANSKNING</button>
              </div>
           </div>
         </div>

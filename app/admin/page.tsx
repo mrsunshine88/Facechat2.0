@@ -1828,7 +1828,7 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Granskningslogg</h2>
       <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Övervakar varenda exakt handling alla admins utför på sajten.</p>
 
-      <div className="admin-card" style={{ padding: '0', overflowX: 'auto' }}>
+      <div className="admin-card" style={{ padding: '0', overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
           <thead>
             <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)' }}>
@@ -2060,7 +2060,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
-      <div className="admin-card diagnostics-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '1.25rem 1.5rem', backgroundColor: '#f0fdf4', border: '2px solid #10b981' }}>
+      <div className="admin-card diagnostics-header admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '1.25rem 1.5rem', backgroundColor: '#f0fdf4', border: '2px solid #10b981' }}>
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Wrench size={24} /> Vårdcentralen</h2>
           <p style={{ color: '#047857', margin: '0.25rem 0 0 0', fontSize: '0.875rem', fontWeight: '500' }}>Kör en fullständig Deep Scan för att spåra upp fel och lappa ihop trasiga fält automatiskt.</p>
@@ -2102,7 +2102,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         <div className="admin-card" style={{ padding: '1.5rem', borderTop: '4px solid #ef4444' }}>
           <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Trash2 size={20} /> Akut Mass-radera Spam</h3>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Sök upp och radera ALLA inlägg som innehåller ett visst ord eller länk (Whiteboard, Forum, Gästbok, Chatten).</p>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <div style={{ display: 'flex', gap: '0.75rem' }} className="admin-responsive-card">
             <input
               type="text"
               placeholder="Exempel: bit.ly/spam-link"
@@ -2123,7 +2123,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         <div className="admin-card" style={{ padding: '1.5rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
           <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Eraser size={20} /> Nollställ Profil-design</h3>
           <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Om en användare har förstört sitt krypin med dålig CSS kan du rensa den här genom att ange användarnamnet.</p>
-          <div style={{ display: 'flex', gap: '1rem' }}>
+          <div style={{ display: 'flex', gap: '1rem' }} className="admin-responsive-card">
             <input
               type="text"
               placeholder="Fyll i användarnamn (@ behövs ej)..."
