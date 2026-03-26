@@ -504,18 +504,18 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     fetchUsers();
     fetchBlockedIps();
 
-    // Hämta Root-Admins IP för att skydda den i UI
+    // Hämta Root-Admins IP via en säker SQL RPC (för att kringgå RLS)
     const fetchRootIp = async () => {
-      const { data } = await supabase.from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
-      if (data?.last_ip) setProtectedIp(data.last_ip);
+      const { data } = await supabase.rpc('get_root_admin_ip');
+      if (data) setProtectedIp(data);
     };
     fetchRootIp();
 
     const channel = supabase.channel('admin_users_realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
         setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
-        // Om Root-Admin uppdaterar sin IP, hämta den igen
-        if (payload.new.auth_email === 'apersson508@gmail.com') setProtectedIp(payload.new.last_ip);
+        // Om Root-Admin uppdaterar sin IP, hämta den igen via RPC
+        if (payload.new.auth_email === 'apersson508@gmail.com') fetchRootIp();
       })
       .subscribe();
 
