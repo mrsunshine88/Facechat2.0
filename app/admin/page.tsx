@@ -409,7 +409,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           Senaste Inloggningar (Realtid)
         </h3>
         <div style={{ overflowX: 'auto' }} className="hide-on-mobile">
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
+          <table style={{ width: '100%', minWidth: '700px', borderCollapse: 'collapse', fontSize: '0.875rem' }}>
             <thead>
               <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)' }}>
                 <th style={{ padding: '0.75rem' }}>Användarnamn</th>
