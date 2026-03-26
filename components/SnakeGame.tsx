@@ -267,32 +267,67 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
     setIsSubmitting(true);
     if (!viewerUser || finalScore <= 0) { setIsSubmitting(false); return; }
 
-    const oldTopScores = [...topScores];
     const targetGame = gameIdOverwrite || gameState.current.activeGame;
+    const gameName = GAMES.find(g => g.id === targetGame)?.name || targetGame.toUpperCase();
 
-    const { error } = await supabase.from('snake_scores').insert({
+    // 1. Hämta de nuvarande topp-poängen INNAN vi sparar den nya
+    const { data: oldTopScores } = await supabase
+      .from('snake_scores')
+      .select('id, score, user_id, game_id')
+      .eq('game_id', targetGame)
+      .order('score', { ascending: false })
+      .limit(5);
+
+    // 2. Spara den nya poängen
+    const { error: insertError } = await supabase.from('snake_scores').insert({
         user_id: viewerUser.id,
         score: finalScore,
         game_id: targetGame 
     });
 
-    if (!error) {
+    if (!insertError) {
+       // Uppdatera listan i UI:t
        await fetchHighScores(targetGame);
-       let rankStolen = -1;
-       for (let i = 0; i < oldTopScores.length; i++) {
-          if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
-       }
-       
-       if (rankStolen !== -1) {
-          const stolenFrom = oldTopScores[rankStolen];
-          if (stolenFrom.user_id !== viewerUser.id) {
-             const gameName = GAMES.find(g => g.id === targetGame)?.name || targetGame.toUpperCase();
-             const message = rankStolen === 0 
-                 ? `Game over! @${viewerUser.username} krossade just ditt rekord i ${gameName} och snodde 1:a platsen!`
-                 : `Gissa vem som precis snodde din plats i ${gameName}? @${viewerUser.username}! In och ta tillbaka den!`;
+
+       if (oldTopScores) {
+          // 3. Kolla vilken rank vi tog
+          let rankStolen = -1;
+          for (let i = 0; i < oldTopScores.length; i++) {
+             if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
+          }
+          // Om listan inte var full och vi hamnade på en ny plats
+          if (rankStolen === -1 && oldTopScores.length < 5) {
+             rankStolen = oldTopScores.length;
+          }
+
+          if (rankStolen !== -1 && rankStolen < 5) {
+             // A. Notera den person vars rang vi direkt tog (Plats 1, 2, 3, 4 eller 5)
+             if (rankStolen < oldTopScores.length) {
+                const stolenFrom = oldTopScores[rankStolen];
+                if (stolenFrom.user_id !== viewerUser.id) {
+                   const message = rankStolen === 0 
+                       ? `Game over dunderklumpen! @${viewerUser.username} krossade just ditt rekord i ${gameName} och snodde 1:a platsen! 🏆`
+                       : `Gissa vem som precis snodde din ${rankStolen + 1}:e plats i ${gameName}? @${viewerUser.username}! In och ta tillbaka den! 🎮`;
+                   const revengeLink = `/krypin?spela=true&arcade=${targetGame}`;
+                   
+                   await supabase.from('notifications').insert({ receiver_id: stolenFrom.user_id, actor_id: viewerUser.id, type: 'high_score', content: message, link: revengeLink });
+                   await fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: stolenFrom.user_id, title: "🏆 Ny Arkad-Kung!", message: message, url: revengeLink }), headers: {'Content-Type': 'application/json'} });
+                }
+             }
              
-             await supabase.from('notifications').insert({ receiver_id: stolenFrom.user_id, actor_id: viewerUser.id, type: 'high_score', content: message, link: '/krypin?spela=true' });
-             await fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: stolenFrom.user_id, title: "🏆 Ny Arkad-Kung!", message: message, url: '/krypin?spela=true' }) });
+             // B. Notera den person som var 5:a och nu åker UT helt från listan
+             // Detta gäller bara om vi tog en plats BÄTTRE än 5:e plats (rankStolen < 4) 
+             // och listan redan var full (length >= 5)
+             if (oldTopScores.length >= 5 && rankStolen < 4) {
+                const gamlaFemman = oldTopScores[4];
+                // Notify ONLY if it's not the same person we already notified in step A
+                if (gamlaFemman.user_id !== viewerUser.id && (rankStolen >= oldTopScores.length || gamlaFemman.user_id !== oldTopScores[rankStolen].user_id)) {
+                   const message = `Ajtajtaj... @${viewerUser.username} har tyvärr puttat ner dig från Topp-5 listan i ${gameName}! Spela direkt för att ta tillbaka din plats! 📉`;
+                   const revengeLink = `/krypin?spela=true&arcade=${targetGame}`;
+                   await supabase.from('notifications').insert({ receiver_id: gamlaFemman.user_id, actor_id: viewerUser.id, type: 'high_score', content: message, link: revengeLink });
+                   await fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: gamlaFemman.user_id, title: "📉 Utkastad från Topp-5!", message: message, url: revengeLink }), headers: {'Content-Type': 'application/json'} });
+                }
+             }
           }
        }
     }

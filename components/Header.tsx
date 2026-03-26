@@ -116,7 +116,19 @@ export default function Header() {
 
     // 2. Lyssna på Notifications (Master Channel)
     const notifChannel = supabase.channel('header-notifs-' + userProfile.id)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
+         // Spela pling-ljud för alla NYA notiser (utom besök)
+         // VIKTIGT: Spela bara ljud om fliken är AKTIV för att undvika dubbel-pling med push-notiser
+         if (payload.new.type !== 'visit' && document.visibilityState === 'visible') {
+            try {
+               const audio = new Audio('https://shmector.com/_ph/18/843187215.mp3'); // En diskret men tydlig ping
+               audio.volume = 0.4;
+               audio.play().catch(() => {}); // Ignorera om webbläsaren blockerar autoplay
+            } catch (e) {}
+         }
+         fetchPersonligaNotiser();
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
          fetchPersonligaNotiser();
       }).subscribe();
     

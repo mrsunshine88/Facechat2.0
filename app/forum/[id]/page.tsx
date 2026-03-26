@@ -204,7 +204,43 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
       reported_content: posts.find(p => p.id === reportTarget.id)?.content || thread?.title || ''
     });
 
-    alert('Din anmälan har skickat till våra moderatorer. Tack!');
+    // Notifiera alla administratörer om den nya anmälan!
+    try {
+      const { data: admins } = await supabase.from('profiles').select('id')
+        .or('is_admin.eq.true,perm_content.eq.true');
+      
+      if (admins && admins.length > 0) {
+        const filteredAdmins = admins.filter(admin => admin.id !== reportTarget.reportedUserId);
+
+        if (filteredAdmins.length > 0) {
+          const adminNotifs = filteredAdmins.map(admin => ({
+            receiver_id: admin.id,
+            actor_id: currentUser.id,
+            type: 'report',
+            content: 'har skickat in en ny anmälan i forumet.',
+            link: '/admin?tab=reports'
+          }));
+
+          await supabase.from('notifications').insert(adminNotifs);
+
+          // Skicka även push-notiser till admins
+          filteredAdmins.forEach(admin => {
+            fetch('/api/send-push', {
+              method: 'POST', body: JSON.stringify({
+                userId: admin.id,
+                title: 'Ny anmälan i Forum!',
+                message: `${currentUser.username} har anmält ett forum-inlägg.`,
+                url: '/admin?tab=reports'
+              }), headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Misslyckades att notifiera admins:", notifErr);
+    }
+
+    alert('Din anmälan har skickats till våra moderatorer. Tack!');
     setShowReportModal(false);
     setReportReason('');
   };

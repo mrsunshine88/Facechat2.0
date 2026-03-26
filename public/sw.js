@@ -22,11 +22,13 @@ self.addEventListener('push', function (event) {
     
     event.waitUntil(
       clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-        // Kolla om användaren har appen öppen och synlig
-        const isVisible = windowClients.some(client => client.visibilityState === 'visible');
+        // En mer robust kontroll för iOS: Kolla om någon klient är synlig ELLER fokuserad
+        const isAppActive = windowClients.some(client => 
+          client.visibilityState === 'visible' || client.focused
+        );
         
-        if (!isVisible) {
-          // Visa enbart push-notis om ingen app/hemsida är fokuserad
+        if (!isAppActive) {
+          // Visa enbart push-notis om ingen app/hemsida är aktiv i förgrunden
           return self.registration.showNotification(data.title || 'Nytt meddelande', options);
         }
       })

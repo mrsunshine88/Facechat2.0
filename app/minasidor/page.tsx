@@ -334,6 +334,30 @@ export default function MinaSidor() {
     // Refresh list
     const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (data) setMyTickets(data);
+
+    // NOTIFIERA ALLA ADMINS!
+    const { data: adminUsers } = await supabase.from('profiles').select('id').eq('is_admin', true);
+    if (adminUsers && adminUsers.length > 0) {
+       const adminNotifs = adminUsers.map(adm => ({
+          receiver_id: adm.id,
+          actor_id: currentUser.id,
+          type: 'admin_alert',
+          content: `har skapat ett nytt supportärende (${supportCategory}).`,
+          link: '/admin?tab=support'
+       }));
+       await supabase.from('notifications').insert(adminNotifs);
+
+       adminUsers.forEach(adm => {
+          fetch('/api/send-push', {
+             method: 'POST', body: JSON.stringify({
+               userId: adm.id,
+               title: '🆘 Nytt Supportärende!',
+               message: `${currentUser.username}: ${supportMessage.substring(0, 30)}...`,
+               url: '/admin?tab=support'
+             }), headers: { 'Content-Type': 'application/json' }
+          }).catch(console.error);
+       });
+    }
   };
 
   const handleDeleteTicket = async (ticketId: string, e: React.MouseEvent) => {
@@ -379,6 +403,30 @@ export default function MinaSidor() {
 
     const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (data) setMyTickets(data);
+
+    // NOTIFIERA ALLA ADMINS OM SVARET!
+    const { data: adminUsers } = await supabase.from('profiles').select('id').eq('is_admin', true);
+    if (adminUsers && adminUsers.length > 0) {
+       const adminNotifs = adminUsers.map(adm => ({
+          receiver_id: adm.id,
+          actor_id: currentUser.id,
+          type: 'admin_alert',
+          content: `har svarat på ett supportärende.`,
+          link: '/admin?tab=support'
+       }));
+       await supabase.from('notifications').insert(adminNotifs);
+
+       adminUsers.forEach(adm => {
+          fetch('/api/send-push', {
+             method: 'POST', body: JSON.stringify({
+               userId: adm.id,
+               title: '💬 Svar i Support!',
+               message: `${currentUser.username} har svarat på en ticket.`,
+               url: '/admin?tab=support'
+             }), headers: { 'Content-Type': 'application/json' }
+          }).catch(console.error);
+       });
+    }
   };
 
   const markUserRead = async (id: string) => {

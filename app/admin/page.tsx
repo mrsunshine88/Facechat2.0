@@ -905,12 +905,18 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
     }
   };
 
-  const handleDelete = async (table: string, id: string) => {
+  const handleDelete = async (table: string, id: string, threadTitle?: string) => {
     if (confirm('Ska inlägget raderas globalt?')) {
       const res = await adminDeleteContent(table, id, currentUser.id);
       if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
-      const tableName = table === 'whiteboard' ? 'Whiteboard' : (table === 'guestbook' ? 'Gästboken' : (table === 'chat_messages' ? 'Chatten' : 'Forumet'));
-      await logAdminAction(supabase, currentUser.id, `Raderade ett inlägg i ${tableName}`);
+      const tableName = table === 'whiteboard' ? 'Whiteboard' : (table === 'guestbook' ? 'Gästboken' : (table === 'chat_messages' ? 'Chatten' : 'forum'));
+      
+      let actionMsg = `Raderade ett inlägg i ${tableName}`;
+      if (table === 'forum_posts' && threadTitle) {
+        actionMsg = `raderade ett inlägg i forum för tråd: ${threadTitle}`;
+      }
+      
+      await logAdminAction(supabase, currentUser.id, actionMsg);
       if (table === 'whiteboard') fetchPosts();
       else if (table === 'guestbook') fetchGuestbook();
       else if (table === 'chat_messages') fetchChatMessages();
@@ -1007,7 +1013,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                   </button>
                 ) : (
                   <button 
-                    onClick={() => handleDelete('forum_posts', post.id)} 
+                    onClick={() => handleDelete('forum_posts', post.id, post.forum_threads?.title)} 
                     style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.8rem' }}
                   >
                     <Trash2 size={16} /> Radera kommentar
@@ -1359,9 +1365,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
     if (search.trim().length > 0) {
       const timer = setTimeout(() => {
         searchUsers(search.trim());
-        if (search.trim().length > 2) {
-          logAdminAction(supabase, currentUser.id, `Sökte i Behörigheter efter: "${search.trim()}"`);
-        }
+        logAdminAction(supabase, currentUser.id, `Sökte i Behörigheter efter: "${search.trim()}"`);
       }, 400);
       return () => clearTimeout(timer);
     } else {
@@ -1478,7 +1482,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
             className="chat-input"
             style={{ flex: '1 1 100%', minWidth: '150px', backgroundColor: 'white', padding: '0.75rem', borderRadius: '8px', border: '1px solid #bfdbfe' }}
           />
-          <button onClick={() => searchUsers(search)} disabled={isLoading} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', flex: '1 1 auto' }}>
+          <button onClick={() => { searchUsers(search); logAdminAction(supabase, currentUser.id, `Sökte i Behörigheter efter: "${search}"`); }} disabled={isLoading} style={{ backgroundColor: '#2563eb', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', flex: '1 1 auto' }}>
             {isLoading ? 'Söker...' : 'Sök Person'}
           </button>
         </div>
@@ -1590,8 +1594,30 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   const markResolved = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    const ticket = tickets.find(t => t.id === id);
+    if (!ticket) return;
+
     await supabase.from('support_tickets').update({ status: 'closed' }).eq('id', id);
     await logAdminAction(supabase, currentUser.id, `Stängde supportärende (${id})`);
+    
+    // NOTIFIERA ANVÄNDAREN!
+    const msg = `Ditt supportärende #${id.split('-')[0]} har markerats som LÖST av en admin. 🎉`;
+    await supabase.from('notifications').insert({
+       receiver_id: ticket.user_id,
+       actor_id: currentUser.id,
+       type: 'admin_alert',
+       content: msg,
+       link: '/minasidor?tab=Support'
+    });
+    fetch('/api/send-push', {
+       method: 'POST', body: JSON.stringify({
+         userId: ticket.user_id,
+         title: '✅ Supportärende Löst!',
+         message: msg,
+         url: '/minasidor?tab=Support'
+       }), headers: { 'Content-Type': 'application/json' }
+    }).catch(console.error);
+
     fetchTickets();
     if (activeTicketId === id) setActiveTicketId(null);
   };
@@ -1626,6 +1652,24 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
       has_unread_user: true,
       has_unread_admin: false
     }).eq('id', activeTicketId);
+
+    // NOTIFIERA ANVÄNDAREN OM SVARET!
+    const msg = `Du har fått ett nytt svar från Admin i ditt supportärende #${activeTicketId.split('-')[0]}.`;
+    await supabase.from('notifications').insert({
+       receiver_id: ticket.user_id,
+       actor_id: currentUser.id,
+       type: 'admin_alert',
+       content: msg,
+       link: '/minasidor?tab=Support'
+    });
+    fetch('/api/send-push', {
+       method: 'POST', body: JSON.stringify({
+         userId: ticket.user_id,
+         title: '💬 Nytt svar från Support!',
+         message: msg,
+         url: '/minasidor?tab=Support'
+       }), headers: { 'Content-Type': 'application/json' }
+    }).catch(console.error);
 
     setReplyText('');
     await logAdminAction(supabase, currentUser.id, `Svarade på supportärende (${activeTicketId})`);

@@ -366,16 +366,6 @@ function MittKrypinContent() {
            setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
         })
         .subscribe();
-      if (profileToView && profileToView.id !== viewer.id && !iBlocked && !blockedMe) {
-         await supabase.from('notifications').insert({
-            receiver_id: profileToView.id,
-            actor_id: viewer.id,
-            type: 'visit',
-            content: 'har kikat in på din profil.',
-            link: `/krypin?u=${viewer.username}`
-         });
-      }
-      
       // Hämta hemlig data om det är jag själv, eller publik data om det är nån annan
       if (profileToView) {
          if (profileToView.id === viewer.id) {
@@ -675,11 +665,21 @@ function MittKrypinContent() {
     if(!error) {
        setHasSentRequest(true);
        
-       // TRING! Send Web Push Notification to Receiver
+       const targetId = id1 === viewerUser.id ? id2 : id1;
+
+       // Lägg in i ringklockan (notiser)
+       await supabase.from('notifications').insert({
+          receiver_id: targetId,
+          actor_id: viewerUser.id,
+          type: 'friend_request',
+          content: 'vill bli din vän på Facechat.',
+          link: `/krypin?tab=Vänner`
+       });
+       
        // TRING! Send Web Push Notification to Receiver
        fetch('/api/send-push', {
          method: 'POST', body: JSON.stringify({
-           userId: id1 === viewerUser.id ? id2 : id1,
+           userId: targetId,
            title: 'Ny vänförfrågan!',
            message: `${viewerUser.username} vill bli din vän på Facechat.`,
            url: `/krypin?tab=Vänner`
@@ -725,7 +725,15 @@ function MittKrypinContent() {
       // IMMEDIATE UI CLEANUP - Remove the friend from pending list manually
       setPendingRequests(prev => prev.filter(req => req.id !== friendId));
       
-      // SQL TRIGGER SKÖTER NOTISEN NU!
+      // SQL TRIGGER SKÖTER DB-NOTISEN, MEN VI SKICKAR PUSH HÄR
+      fetch('/api/send-push', {
+        method: 'POST', body: JSON.stringify({
+          userId: friendId,
+          title: 'Vänförfrågan accepterad! 🎉',
+          message: `${viewerUser.username} har accepterat din vänförfrågan! Ni är nu vänner.`,
+          url: `/krypin?tab=Vänner`
+        }), headers: { 'Content-Type': 'application/json' }
+      }).catch(console.error);
       
       setCustomAlert("Vänförfrågan accepterad!");
       await fetchFriends(currentUser.id, viewerUser.id);
