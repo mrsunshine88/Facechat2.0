@@ -251,7 +251,7 @@ export async function adminRunDeepScan(requestingUserId: string) {
 
     // 8. Dubbelkoll: Root-Admin IP Spärrad (Säkerhetsnät)
     try {
-      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
       if (rootData?.last_ip) {
         const { count: isBlocked } = await supabaseAdmin.from('blocked_ips').select('*', { count: 'exact', head: true }).eq('ip', rootData.last_ip);
         if (isBlocked && isBlocked > 0) {
@@ -298,7 +298,7 @@ export async function adminFixDeepScanIssue(issueId: string, requestingUserId: s
       await supabaseAdmin.from('guestbook').delete().eq('content', '');
       fixedMsg = 'Rensade bort tomma gästboksinlägg.';
     } else if (issueId === 'cleanup_root_ip') {
-      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
       if (rootData?.last_ip) {
         await supabaseAdmin.from('blocked_ips').delete().eq('ip', rootData.last_ip);
       }

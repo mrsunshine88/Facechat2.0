@@ -506,7 +506,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
     // Hämta Root-Admins IP för att skydda den i UI
     const fetchRootIp = async () => {
-      const { data } = await supabase.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      const { data } = await supabase.from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
       if (data?.last_ip) setProtectedIp(data.last_ip);
     };
     fetchRootIp();
@@ -515,7 +515,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
         setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
         // Om Root-Admin uppdaterar sin IP, hämta den igen
-        if (payload.new.username === 'apersson508') setProtectedIp(payload.new.last_ip);
+        if (payload.new.auth_email === 'apersson508@gmail.com') setProtectedIp(payload.new.last_ip);
       })
       .subscribe();
 
@@ -645,8 +645,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
                 {u.last_ip && (
                   u.last_ip === protectedIp ? (
-                    <div style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                       <Shield size={14} /> Skyddad IP
+                    <div style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(22,163,74,0.1)' }}>
+                       <CheckCircle size={14} /> Säkert IP ✅
                     </div>
                   ) : (
                     <button 

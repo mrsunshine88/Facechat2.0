@@ -93,12 +93,12 @@ export async function adminBlockIP(ip: string, reason: string, adminId: string) 
     // --- ROOT IP IMMUNITY CHECK ---
     const { data: rootProfile } = await supabaseAdmin
       .from('profiles')
-      .select('username, last_ip')
-      .eq('username', 'apersson508')
+      .select('auth_email, last_ip')
+      .eq('auth_email', 'apersson508@gmail.com')
       .single();
 
     if (rootProfile && rootProfile.last_ip === ip) {
-      throw new Error(`Denna IP-adress (${ip}) är skyddad eftersom den används av ett Root-konto.`);
+      throw new Error(`Denna IP-adress (${ip}) är skyddad eftersom den används av Root-ägaren.`);
     }
 
     const { error } = await supabaseAdmin.from('blocked_ips').insert({ ip, reason });
