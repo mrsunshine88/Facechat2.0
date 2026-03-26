@@ -517,13 +517,14 @@ function MittKrypinContent() {
     setPrivateMessages(prev => prev.filter(m => m.sender_id !== otherUserId && m.receiver_id !== otherUserId));
     if (selectedThreadUserId === otherUserId) setSelectedThreadUserId(null);
 
-    for (const msg of msgsToDelete) {
-       const isSender = msg.sender_id === viewerUser.id;
-       if (isSender) {
-          await supabase.from('private_messages').update({ sender_deleted: true }).eq('id', msg.id);
-       } else {
-          await supabase.from('private_messages').update({ receiver_deleted: true }).eq('id', msg.id);
-       }
+    const senderMsgIds = msgsToDelete.filter(m => m.sender_id === viewerUser.id).map(m => m.id);
+    const receiverMsgIds = msgsToDelete.filter(m => m.receiver_id === viewerUser.id).map(m => m.id);
+
+    if (senderMsgIds.length > 0) {
+       await supabase.from('private_messages').update({ sender_deleted: true }).in('id', senderMsgIds);
+    }
+    if (receiverMsgIds.length > 0) {
+       await supabase.from('private_messages').update({ receiver_deleted: true }).in('id', receiverMsgIds);
     }
   }
 
@@ -1945,7 +1946,7 @@ function MittKrypinContent() {
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                           {new Date(post.created_at).toLocaleDateString('sv-SE')}
                         </span>
-                        {(isMyProfile || viewerUser?.is_admin) && (
+                        {(isMyProfile || viewerUser?.id === post.sender_id) && (
                           <button onClick={() => handleDeleteGuestbookPost(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }} title="Radera inlägg"><Trash2 size={18} /></button>
                         )}
                         {!isMyProfile && viewerUser?.id !== post.sender_id && (

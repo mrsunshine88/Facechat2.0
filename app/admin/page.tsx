@@ -332,7 +332,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           supabase.from('whiteboard').select('*', { count: 'exact', head: true }),
           supabase.from('guestbook').select('*', { count: 'exact', head: true }),
           supabase.from('forum_posts').select('*', { count: 'exact', head: true }),
-          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open'),
+          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('admin_deleted', false),
           supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
           supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
           supabase.from('user_blocks').select('*', { count: 'exact', head: true })
@@ -1588,7 +1588,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   async function fetchTickets() {
     // Hide tickets soft-deleted by admin!
-    const { data } = await supabase.from('support_tickets').select('*, profiles(username)').neq('status', 'hidden').order('created_at', { ascending: false });
+    const { data } = await supabase.from('support_tickets').select('*, profiles(username)').eq('admin_deleted', false).order('created_at', { ascending: false });
     if (data) setTickets(data);
   }
 

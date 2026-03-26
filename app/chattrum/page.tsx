@@ -386,7 +386,7 @@ function ChattrumContent() {
           {messages.map(msg => {
              const timeStr = new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
              const isOwn = msg.author_id === currentUser?.id;
-             const canModerate = currentUser?.perm_rooms || currentUser?.auth_email?.toLowerCase() === 'apersson508@gmail.com' || isOwn;
+             const canModerate = isOwn;
 
              return (
                <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>

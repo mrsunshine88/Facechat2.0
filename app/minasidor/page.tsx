@@ -150,7 +150,7 @@ export default function MinaSidor() {
   useEffect(() => {
     if (currentUser?.id) {
       const fetchMyTickets = async () => {
-        const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+        const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false });
         if (data) setMyTickets(data);
       };
       
@@ -362,13 +362,13 @@ export default function MinaSidor() {
 
   const handleDeleteTicket = async (ticketId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if(!confirm('Är du säker på att du vill ta bort det här ärendet för gott? Det försvinner även för Admin.')) return;
+    if(!confirm('Är du säker på att du vill ta bort det här ärendet från din lista? Det försvinner endast för dig.')) return;
     
     // Add optimistic UI filter
     setMyTickets(myTickets.filter((t: any) => t.id !== ticketId));
     if (activeUserTicketId === ticketId) setActiveUserTicketId(null);
     
-    const { error } = await supabase.from('support_tickets').delete().eq('id', ticketId);
+    const { error } = await supabase.from('support_tickets').update({ user_deleted: true }).eq('id', ticketId);
     if(error){
       setCustomAlert(`Fel vid borttagning: ${error.message}`);
     }
@@ -723,13 +723,13 @@ export default function MinaSidor() {
                       </div>
                       
                       {ticket.status === 'open' ? (
-                        <form onSubmit={handleUserReply} style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', gap: '1rem' }}>
-                          <input type="text" value={userReplyText} onChange={e => setUserReplyText(e.target.value)} placeholder="Skriv ett svar..." style={{ flex: 1, padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }} />
-                          <button type="submit" style={{ backgroundColor: 'var(--theme-forum)', color: 'white', fontWeight: '600', padding: '0 1.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Skicka</button>
-                        </form>
+                        <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: 'var(--text-muted)' }}>
+                           <HelpCircle size={48} opacity={0.2} />
+                           <p>Ingen har svarat än. Vi återkommer så snart vi kan!</p>
+                        </div>
                       ) : (
-                        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: ticket.status === 'hidden' ? '#fef2f2' : '#ecfdf5', color: ticket.status === 'hidden' ? '#ef4444' : '#059669', fontWeight: 'bold', borderTop: `1px solid ${ticket.status === 'hidden' ? '#ef4444' : '#10b981'}` }}>
-                          {ticket.status === 'hidden' ? 'Ärendet har rensats från Admin-panelen. Du kan kasta det själv via Papperskorgen.' : 'Ärendet har blivit löst av en Admin och är nu stängt.'}
+                        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: '#ecfdf5', color: '#059669', fontWeight: 'bold', borderTop: '1px solid #10b981' }}>
+                          Ärendet har blivit löst av en Admin och är nu stängt.
                         </div>
                       )}
                     </>
@@ -782,7 +782,7 @@ export default function MinaSidor() {
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
                             <span style={{ fontWeight: 'bold', fontSize: '0.875rem' }}>#{ticket.id.split('-')[0]} - {ticket.category}</span>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ticket.status === 'open' ? 'Öppet' : (ticket.status === 'hidden' ? 'Borttagen av Admin' : 'Löst')}</span>
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{ticket.status === 'open' ? 'Öppet' : 'Löst'}</span>
                               <button onClick={(e) => handleDeleteTicket(ticket.id, e)} style={{ background: 'none', border: 'none', color: '#ef4444', opacity: 0.7, cursor: 'pointer', display: 'flex', alignItems: 'center' }} title="Radera ärendet">
                                 <Trash2 size={16} />
                               </button>

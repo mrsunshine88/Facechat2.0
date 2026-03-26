@@ -170,7 +170,7 @@ export async function adminDeleteSnakeScore(scoreId: string | null, requestingUs
 export async function adminDeleteSupportTicket(ticketId: string, requestingUserId: string) {
   try {
     await verifyAdminPermission(requestingUserId, 'perm_support');
-    const { error } = await supabaseAdmin.from('support_tickets').update({ status: 'hidden' }).eq('id', ticketId);
+    const { error } = await supabaseAdmin.from('support_tickets').update({ admin_deleted: true }).eq('id', ticketId);
     if (error) throw error;
     return { success: true };
   } catch (err: any) {

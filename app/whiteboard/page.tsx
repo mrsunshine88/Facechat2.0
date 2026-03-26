@@ -548,7 +548,7 @@ export default function Whiteboard() {
                         <Edit2 size={14} />
                       </button>
                     )}
-                    {(isOwnPost || isAdmin) && (
+                    {isOwnPost && (
                       <button onClick={() => handleDelete(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
                         <Trash2 size={16} />
                       </button>
@@ -698,7 +698,7 @@ export default function Whiteboard() {
                                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.1rem' }}><Heart size={10} fill="#65676b" color="#65676b" /> {comment.likes.length}</span>
                                       )}
                                       {cOwn && <span onClick={() => setEditingItem({ id: comment.id, type: 'comment', content: comment.content })} style={{ cursor: 'pointer' }}>Ändra</span>}
-                                      {(cOwn || isAdmin) && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
+                                      {(cOwn) && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
                                    </div>
                                 </div>
                              </div>

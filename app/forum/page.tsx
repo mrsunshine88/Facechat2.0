@@ -84,20 +84,6 @@ export default function Forumet() {
       setShowNewThread(false);
       setNewTitle('');
       fetchThreads();
-
-      // NOTIFIERA ADMINS OM NY TRÅD!
-      const { data: adminUsers } = await supabase.from('profiles').select('id').eq('is_admin', true);
-      if (adminUsers && adminUsers.length > 0) {
-         const adminNotifs = adminUsers.map(adm => ({
-            receiver_id: adm.id,
-            actor_id: currentUser.id,
-            type: 'admin_alert',
-            content: `har startat en ny tråd i forumet: "${newTitle.substring(0, 30)}..."`,
-            link: `/forum/${threadData.id}`
-         }));
-         await supabase.from('notifications').insert(adminNotifs);
-      }
-
       router.push(`/forum/${threadData.id}`);
     }
   };

@@ -362,7 +362,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                         <Edit2 size={14} /> Ändra
                       </button>
                     )}
-                    {(currentUser?.id === posts[0].author_id || currentUser?.is_admin) && (
+                    {(currentUser?.id === posts[0].author_id) && (
                       <button 
                         onClick={() => handleDeleteThread()}
                         style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
