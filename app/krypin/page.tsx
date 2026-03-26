@@ -74,7 +74,7 @@ const KIDS_THEMES = [
   { name: 'Neon Hacker', css: '.krypin-layout { background-color: #000; } .card { background-color: #111 !important; border: 1px solid #0f0 !important; color: #0f0 !important; box-shadow: 0 0 10px #0f0; } .krypin-layout, .krypin-layout * { font-family: "Courier New", monospace !important; } button { background-color: #000 !important; color: #0f0 !important; border: 1px solid #0f0 !important; }' },
   { name: 'Minecraft', css: '.krypin-layout { background-color: #3f1dcb; background-image: repeating-linear-gradient(45deg, #16a085 25%, transparent 25%, transparent 75%, #16a085 75%, #16a085), repeating-linear-gradient(45deg, #16a085 25%, #2ecc71 25%, #2ecc71 75%, #16a085 75%, #16a085); background-position: 0 0, 20px 20px; background-size: 40px 40px; } .card { background-color: #8b4513 !important; border: 4px solid #5c3a21 !important; color: white !important; border-radius: 0 !important; } button { background-color: #7f8c8d !important; border: 2px solid #bdc3c7 !important; color: white !important; border-radius: 0 !important; font-family: monospace; }' },
   { name: 'Sommarstrand', css: '.krypin-layout { background: linear-gradient(to bottom, #87CEEB 0%, #fef08a 100%); } .card { background-color: rgba(255,255,255,0.8) !important; border: 2px solid #fbbf24 !important; border-radius: 16px !important; color: #b45309 !important; } h1, h2, h3, button { color: #ea580c !important; } button { background-color: #fef08a !important; border: 1px solid #f59e0b !important; }' },
-  { name: 'Goth / Emo', css: '.krypin-layout { background-color: #18181b; } .card { background-color: #000 !important; border: 1px solid #52525b !important; color: #a1a1aa !important; border-radius: 4px !important; box-shadow: 0 0 15px rgba(255,0,0,0.1); } h1, h2, h3, p, span, strong, .user-link { color: #9f1239 !important; } button { background-color: #4c0519 !important; color: #f43f5e !important; border-radius: 2px !important; border: 1px solid #9f1239 !important; }' },
+  { name: 'Goth / Emo', css: '.krypin-layout { background-color: #18181b; } .card { background-color: #000 !important; border: 1px solid #52525b !important; color: #a1a1aa !important; border-radius: 4px !important; box-shadow: 0 0 15px rgba(255,0,0,0.1); } .krypin-layout h1, .krypin-layout h2, .krypin-layout h3, .krypin-layout p, .krypin-layout span, .krypin-layout strong, .krypin-layout .user-link { color: #9f1239 !important; } button { background-color: #4c0519 !important; color: #f43f5e !important; border-radius: 2px !important; border: 1px solid #9f1239 !important; }' },
   { name: 'Polkagris', css: '.krypin-layout { background-color: #fff; background-image: repeating-linear-gradient(45deg, #ef4444, #ef4444 20px, #ffffff 20px, #ffffff 40px); } .card { background-color: rgba(255,255,255,0.95) !important; border: 3px solid #ef4444 !important; color: #7f1d1d !important; border-radius: 24px !important; } button { background-color: #fee2e2 !important; color: #b91c1c !important; border: 2px solid #ef4444 !important; border-radius: 20px !important; }' },
   { name: 'Skogen', css: '.krypin-layout { background-color: #064e3b; background-image: radial-gradient(circle at 20% 20%, #10b981 0%, transparent 50%), radial-gradient(circle at 80% 80%, #059669 0%, transparent 50%); } .card { background-color: rgba(6, 78, 59, 0.8) !important; border: 2px solid #34d399 !important; color: #d1fae5 !important; border-radius: 12px !important; } h1, h2, h3, button { color: #a7f3d0 !important; } button { background-color: #065f46 !important; border: 1px solid #10b981 !important; }' }
 ];
@@ -246,6 +246,46 @@ function MittKrypinContent() {
   // Visitors & Global Modal
   const [showVisitorsModal, setShowVisitorsModal] = useState(false);
   const [recentVisitors, setRecentVisitors] = useState<any[]>([]);
+  
+  // SELECTION STATES FOR HIGHLIGHTING
+  const [selectedThemeName, setSelectedThemeName] = useState<string | null>(null);
+  const [selectedBgColorName, setSelectedBgColorName] = useState<string | null>(null);
+  const [selectedTextColorName, setSelectedTextColorName] = useState<string | null>(null);
+  const [selectedPatternName, setSelectedPatternName] = useState<string | null>(null);
+  const [selectedFontName, setSelectedFontName] = useState<string | null>(null);
+  const [selectedEffectName, setSelectedEffectName] = useState<string | null>(null);
+  const [selectedFrameName, setSelectedFrameName] = useState<string | null>(null);
+  const [selectedNeonName, setSelectedNeonName] = useState<string | null>(null);
+
+  // Initialize selection highlights when editor opens
+  useEffect(() => {
+    if (isEditingKrypin && currentUser?.custom_style) {
+      const style = currentUser.custom_style;
+      
+      // Themes
+      const matchedTheme = KIDS_THEMES.find(t => style.includes(t.css.slice(0, 50)));
+      if (matchedTheme) setSelectedThemeName(matchedTheme.name);
+      
+      // Try mapping common colors (simple heuristic)
+      if (!matchedTheme) {
+        const lastBg = [...KIDS_COLORS].reverse().find(c => style.includes(c.css.slice(0, 30)));
+        if (lastBg) setSelectedBgColorName(lastBg.name);
+        
+        const lastTxt = [...KIDS_TEXT_COLORS].reverse().find(c => style.includes(c.css.slice(0, 30)));
+        if (lastTxt) setSelectedTextColorName(lastTxt.name);
+      }
+      
+      const lastFont = KIDS_FONTS.find(f => style.includes(f.css.slice(0, 30)));
+      if (lastFont) setSelectedFontName(lastFont.name);
+
+      const lastPattern = KIDS_PATTERNS.find(p => style.includes(p.css.slice(0, 30)));
+      if (lastPattern) setSelectedPatternName(lastPattern.name);
+      
+      const lastFrame = KIDS_AVATAR_FRAMES.find(f => style.includes(f.css.slice(0, 30)));
+      if (lastFrame) setSelectedFrameName(lastFrame.name);
+    }
+  }, [isEditingKrypin, currentUser]);
+
   const [customAlert, setCustomAlert] = useState<string | null>(null);
 
   // Auto-hide custom alert toast
@@ -1290,6 +1330,14 @@ function MittKrypinContent() {
                                   setCssHistory(prev => [...prev, draftCss]);
                                   setDraftCss('');
                                   setPreviewCss('');
+                                  setSelectedThemeName(null);
+                                  setSelectedBgColorName(null);
+                                  setSelectedTextColorName(null);
+                                  setSelectedPatternName(null);
+                                  setSelectedFontName(null);
+                                  setSelectedEffectName(null);
+                                  setSelectedFrameName(null);
+                                  setSelectedNeonName(null);
                                }
                             }}
                             disabled={!draftCss}
@@ -1301,7 +1349,38 @@ function MittKrypinContent() {
                       <h3 style={{ color: '#a78bfa', marginBottom: '1rem', fontSize: '1.1rem', marginTop: '1rem' }}>Färdiga Teman (Startpaket)</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                          {KIDS_THEMES.map((theme, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); setDraftCss(theme.css); setPreviewCss(theme.css); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: 'white', border: '2px solid #334155', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'border-color 0.2s', textAlign: 'center' }} onMouseOver={e=>e.currentTarget.style.borderColor='#a78bfa'} onMouseOut={e=>e.currentTarget.style.borderColor='#334155'} title="Klicka för att ladda detta tema!">
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  setDraftCss(theme.css); 
+                                  setPreviewCss(theme.css);
+                                  setSelectedThemeName(theme.name);
+                                  // Nollställ andra val när tema byts helt
+                                  setSelectedBgColorName(null);
+                                  setSelectedTextColorName(null);
+                                  setSelectedPatternName(null);
+                                  setSelectedFontName(null);
+                                  setSelectedEffectName(null);
+                                  setSelectedFrameName(null);
+                                  setSelectedNeonName(null);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: 'white', 
+                                  border: selectedThemeName === theme.name ? '2px solid white' : '2px solid #334155', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s', 
+                                  textAlign: 'center',
+                                  boxShadow: selectedThemeName === theme.name ? '0 0 15px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.borderColor='#a78bfa'} 
+                               onMouseOut={e=>e.currentTarget.style.borderColor=selectedThemeName === theme.name ? 'white' : '#334155'} 
+                               title="Klicka för att ladda detta tema!"
+                            >
                                {theme.name}
                             </button>
                          ))}
@@ -1314,12 +1393,35 @@ function MittKrypinContent() {
                             <button onClick={() => setBgColorTarget('.card, .inner-box')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: bgColorTarget === '.card, .inner-box' ? '#8b5cf6' : 'transparent', color: bgColorTarget === '.card, .inner-box' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: bgColorTarget === '.card, .inner-box' ? '2px solid white' : '1px solid #334155', boxShadow: bgColorTarget === '.card, .inner-box' ? '0 0 15px #a78bfa' : 'none' }}>I Rutorna & Inlägg</button>
                             <button onClick={() => setBgColorTarget('.status-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: bgColorTarget === '.status-badge' ? '#8b5cf6' : 'transparent', color: bgColorTarget === '.status-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: bgColorTarget === '.status-badge' ? '2px solid white' : '1px solid #334155', boxShadow: bgColorTarget === '.status-badge' ? '0 0 15px #a78bfa' : 'none' }}>Status-Känslan</button>
                             <button onClick={() => setBgColorTarget('.interest-badge.interest-badge.interest-badge.interest-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '#8b5cf6' : 'transparent', color: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '2px solid white' : '1px solid #334155', boxShadow: bgColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '0 0 15px #a78bfa' : 'none' }}>Intresse-bubblorna</button>
-                            <button onClick={() => setBgColorTarget('.krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? '#8b5cf6' : 'transparent', color: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? '2px solid white' : '1px solid #334155', boxShadow: bgColorTarget === '.krypin-message-bubble:not(.is-me)' ? '0 0 15px #a78bfa' : 'none' }}>Mottagna Mejl</button>
+                            <button onClick={() => setBgColorTarget('.krypin-layout .krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: bgColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '#8b5cf6' : 'transparent', color: bgColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: bgColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '2px solid white' : '1px solid #334155', boxShadow: bgColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '0 0 15px #a78bfa' : 'none' }}>Mottagna Mejl</button>
                           </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
                          {KIDS_COLORS.map((color, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const targetedCss = color.css.replace(/\.krypin-layout/g, bgColorTarget); const newCss = draftCss + '\n' + targetedCss; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '0.75rem', backgroundColor: '#1e293b', color: 'white', border: '1px solid #475569', borderRadius: '8px', cursor: 'pointer', fontSize: '0.875rem' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const targetedCss = color.css.replace(/\.krypin-layout/g, bgColorTarget); 
+                                  const newCss = draftCss + '\n' + targetedCss; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedBgColorName(color.name);
+                               }} 
+                               style={{ 
+                                  padding: '0.75rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: 'white', 
+                                  border: selectedBgColorName === color.name ? '2px solid white' : '1px solid #475569', 
+                                  borderRadius: '8px', 
+                                  cursor: 'pointer', 
+                                  fontSize: '0.875rem',
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedBgColorName === color.name ? '0 0 10px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {color.name}
                             </button>
                          ))}
@@ -1333,12 +1435,35 @@ function MittKrypinContent() {
                             <button onClick={() => setTextColorTarget('.interest-badge.interest-badge.interest-badge.interest-badge')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '#8b5cf6' : 'transparent', color: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '2px solid white' : '1px solid #334155', boxShadow: textColorTarget === '.interest-badge.interest-badge.interest-badge.interest-badge' ? '0 0 15px #a78bfa' : 'none' }}>Intressen (Bubblorna)</button>
                             <button onClick={() => setTextColorTarget('.krypin-sidebar')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: textColorTarget === '.krypin-sidebar' ? '#8b5cf6' : 'transparent', color: textColorTarget === '.krypin-sidebar' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: textColorTarget === '.krypin-sidebar' ? '2px solid white' : '1px solid #334155', boxShadow: textColorTarget === '.krypin-sidebar' ? '0 0 15px #a78bfa' : 'none' }}>Vänstermeny</button>
                             <button onClick={() => setTextColorTarget('.krypin-sidebar + div .card')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: textColorTarget === '.krypin-sidebar + div .card' ? '#8b5cf6' : 'transparent', color: textColorTarget === '.krypin-sidebar + div .card' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: textColorTarget === '.krypin-sidebar + div .card' ? '2px solid white' : '1px solid #334155', boxShadow: textColorTarget === '.krypin-sidebar + div .card' ? '0 0 15px #a78bfa' : 'none' }}>Högerspalt</button>
-                            <button onClick={() => setTextColorTarget('.krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? '#8b5cf6' : 'transparent', color: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? '2px solid white' : '1px solid #334155', boxShadow: textColorTarget === '.krypin-message-bubble:not(.is-me)' ? '0 0 15px #a78bfa' : 'none' }}>Mottagna Mejl</button>
+                            <button onClick={() => setTextColorTarget('.krypin-layout .krypin-message-bubble:not(.is-me)')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: textColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '#8b5cf6' : 'transparent', color: textColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: textColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '2px solid white' : '1px solid #334155', boxShadow: textColorTarget === '.krypin-layout .krypin-message-bubble:not(.is-me)' ? '0 0 15px #a78bfa' : 'none' }}>Mottagna Mejl</button>
                           </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', gap: '0.75rem', marginBottom: '2rem' }}>
                          {KIDS_TEXT_COLORS.map((color, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const targetedCss = color.css.replace(/TARGET/g, textColorTarget); const newCss = draftCss + '\n' + targetedCss; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '0.75rem', backgroundColor: '#1e293b', color: 'white', border: '1px solid #475569', borderRadius: '8px', cursor: 'pointer', fontSize: '0.875rem' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const targetedCss = color.css.replace(/TARGET/g, textColorTarget); 
+                                  const newCss = draftCss + '\n' + targetedCss; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedTextColorName(color.name);
+                               }} 
+                               style={{ 
+                                  padding: '0.75rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: 'white', 
+                                  border: selectedTextColorName === color.name ? '2px solid white' : '1px solid #475569', 
+                                  borderRadius: '8px', 
+                                  cursor: 'pointer', 
+                                  fontSize: '0.875rem',
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedTextColorName === color.name ? '0 0 10px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {color.name}
                             </button>
                          ))}
@@ -1348,12 +1473,35 @@ function MittKrypinContent() {
                          <h3 style={{ color: '#a78bfa', margin: 0, fontSize: '1.1rem' }}>Roliga Mönster & Emojis</h3>
                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#1e293b', padding: '0.25rem', borderRadius: '12px', border: '1px solid #334155', flexWrap: 'wrap' }}>
                             <button onClick={() => setPatternTarget('.krypin-layout')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: patternTarget === '.krypin-layout' ? '#a78bfa' : 'transparent', color: patternTarget === '.krypin-layout' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>För Bakgrunden</button>
-                            <button onClick={() => setPatternTarget('.card, .inner-box')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: patternTarget === '.card, .inner-box' ? '#a78bfa' : 'transparent', color: patternTarget === '.card, .inner-box' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>I Rutorna & Inlägg</button>
+                            <button onClick={() => setPatternTarget('.card, .inner-box')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: patternTarget === '.card, .inner-box' ? '#a78bfa' : 'transparent', color: patternTarget === '.card, .inner-box' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: patternTarget === '.card, .inner-box' ? '2px solid white' : '1px solid #334155', boxShadow: patternTarget === '.card, .inner-box' ? '0 0 15px #a78bfa' : 'none' }}>I Rutorna & Inlägg</button>
                          </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                          {KIDS_PATTERNS.map((pattern, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const targetedCss = pattern.css.replace(/\.krypin-layout/g, patternTarget); const newCss = draftCss + '\n' + targetedCss; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: 'white', border: '2px dashed #475569', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'background-color 0.2s' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const targetedCss = pattern.css.replace(/\.krypin-layout/g, patternTarget); 
+                                  const newCss = draftCss + '\n' + targetedCss; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedPatternName(pattern.name);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: 'white', 
+                                  border: selectedPatternName === pattern.name ? '2px solid white' : '2px dashed #475569', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedPatternName === pattern.name ? '0 0 10px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#334155'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {pattern.name}
                             </button>
                          ))}
@@ -1362,7 +1510,29 @@ function MittKrypinContent() {
                       <h3 style={{ color: '#a78bfa', marginBottom: '1rem', fontSize: '1.1rem' }}>Häftiga Effekter & Animationer</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                          {KIDS_EFFECTS.map((eff, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const newCss = draftCss + '\n' + eff.css; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: '#6ee7b7', border: '2px solid #059669', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'background-color 0.2s' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#064e3b'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const newCss = draftCss + '\n' + eff.css; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedEffectName(eff.name);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: '#6ee7b7', 
+                                  border: selectedEffectName === eff.name ? '2px solid white' : '2px solid #059669', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedEffectName === eff.name ? '0 0 10px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#064e3b'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {eff.name}
                             </button>
                          ))}
@@ -1371,7 +1541,29 @@ function MittKrypinContent() {
                       <h3 style={{ color: '#a78bfa', marginBottom: '1rem', fontSize: '1.1rem' }}>🖼️ Ram Runt Profilbilden</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                          {KIDS_AVATAR_FRAMES.map((frame, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const newCss = draftCss + '\n' + frame.css; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: '#e879f9', border: '2px solid #86198f', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'background-color 0.2s' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#4a044e'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const newCss = draftCss + '\n' + frame.css; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedFrameName(frame.name);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: '#e879f9', 
+                                  border: selectedFrameName === frame.name ? '2px solid white' : '2px solid #86198f', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedFrameName === frame.name ? '0 0 10px #a78bfa' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#4a044e'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {frame.name}
                             </button>
                          ))}
@@ -1382,12 +1574,36 @@ function MittKrypinContent() {
                          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center', backgroundColor: '#1e293b', padding: '0.25rem', borderRadius: '12px', border: '1px solid #334155', flexWrap: 'wrap' }}>
                             <button onClick={() => setNeonTextTarget('.krypin-layout *')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: neonTextTarget === '.krypin-layout *' ? '#a78bfa' : 'transparent', color: neonTextTarget === '.krypin-layout *' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Överallt</button>
                             <button onClick={() => setNeonTextTarget('h1, h2, h3, .user-link, .username-display')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: neonTextTarget === 'h1, h2, h3, .user-link, .username-display' ? '#a78bfa' : 'transparent', color: neonTextTarget === 'h1, h2, h3, .user-link, .username-display' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Rubriker & Länkar</button>
-                            <button onClick={() => setNeonTextTarget('.username-display')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', border: 'none', background: neonTextTarget === '.username-display' ? '#a78bfa' : 'transparent', color: neonTextTarget === '.username-display' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s' }}>Bara Användarnamnet</button>
+                            <button onClick={() => setNeonTextTarget('.username-display')} style={{ padding: '0.4rem 0.8rem', borderRadius: '8px', background: neonTextTarget === '.username-display' ? '#a78bfa' : 'transparent', color: neonTextTarget === '.username-display' ? 'white' : '#94a3b8', fontWeight: 'bold', cursor: 'pointer', fontSize: '0.8rem', transition: 'all 0.2s', border: neonTextTarget === '.username-display' ? '2px solid white' : '1px solid #334155', boxShadow: neonTextTarget === '.username-display' ? '0 0 15px #a78bfa' : 'none' }}>Bara Användarnamnet</button>
                          </div>
                       </div>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem', marginBottom: '2rem' }}>
                          {KIDS_NEON_TEXT.map((target, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const targetedCss = target.css.replace(/TARGET/g, neonTextTarget); const newCss = draftCss + '\n' + targetedCss; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: '#ff7eb3', border: '2px solid #ff7eb3', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'background-color 0.2s', textShadow: '0 0 5px #ff7eb3' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#ff7eb333'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const targetedCss = target.css.replace(/TARGET/g, neonTextTarget); 
+                                  const newCss = draftCss + '\n' + targetedCss; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedNeonName(target.name);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: '#ff7eb3', 
+                                  border: selectedNeonName === target.name ? '2px solid white' : '2px solid #ff7eb3', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s', 
+                                  textShadow: '0 0 5px #ff7eb3',
+                                  boxShadow: selectedNeonName === target.name ? '0 0 10px #ff7eb3' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#ff7eb333'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {target.name}
                             </button>
                          ))}
@@ -1396,7 +1612,29 @@ function MittKrypinContent() {
                       <h3 style={{ color: '#a78bfa', marginBottom: '1rem', fontSize: '1.1rem' }}>Typsnitt (Textstil)</h3>
                       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', gap: '1rem' }}>
                          {KIDS_FONTS.map((font, i) => (
-                            <button key={i} onClick={() => { setCssHistory(prev => [...prev, draftCss]); const newCss = draftCss + '\n' + font.css; setDraftCss(newCss); setPreviewCss(newCss); }} style={{ padding: '1rem', backgroundColor: '#1e293b', color: '#fcd34d', border: '2px solid #b45309', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', transition: 'background-color 0.2s' }} onMouseOver={e=>e.currentTarget.style.backgroundColor='#78350f'} onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}>
+                            <button 
+                               key={i} 
+                               onClick={() => { 
+                                  setCssHistory(prev => [...prev, draftCss]); 
+                                  const newCss = draftCss + '\n' + font.css; 
+                                  setDraftCss(newCss); 
+                                  setPreviewCss(newCss); 
+                                  setSelectedFontName(font.name);
+                               }} 
+                               style={{ 
+                                  padding: '1rem', 
+                                  backgroundColor: '#1e293b', 
+                                  color: '#fcd34d', 
+                                  border: selectedFontName === font.name ? '2px solid white' : '2px solid #b45309', 
+                                  borderRadius: '12px', 
+                                  cursor: 'pointer', 
+                                  fontWeight: 'bold', 
+                                  transition: 'all 0.2s',
+                                  boxShadow: selectedFontName === font.name ? '0 0 10px #fcd34d' : 'none'
+                               }} 
+                               onMouseOver={e=>e.currentTarget.style.backgroundColor='#78350f'} 
+                               onMouseOut={e=>e.currentTarget.style.backgroundColor='#1e293b'}
+                            >
                                {font.name}
                             </button>
                          ))}
