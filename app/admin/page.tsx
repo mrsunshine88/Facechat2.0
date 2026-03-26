@@ -1834,7 +1834,7 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
             <tr style={{ textAlign: 'left', color: 'var(--text-muted)', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-color)' }}>
               <th style={{ padding: '1rem' }}>Admin</th>
               <th style={{ padding: '1rem' }}>Händelse</th>
-              <th style={{ padding: '1rem' }}>Tid</th>
+              <th style={{ padding: '1rem', minWidth: '160px' }}>Tid</th>
             </tr>
           </thead>
           <tbody>
@@ -1842,7 +1842,7 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
               <tr key={log.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '1rem', fontWeight: '600', color: '#ef4444' }}>{log.profiles?.username || 'System'}</td>
                 <td style={{ padding: '1rem', color: 'var(--text-main)' }}>{log.action}</td>
-                <td style={{ padding: '1rem', color: 'var(--text-muted)' }}>{new Date(log.created_at).toLocaleString('sv-SE')}</td>
+                <td style={{ padding: '1rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>{new Date(log.created_at).toLocaleString('sv-SE')}</td>
               </tr>
             ))}
             {logs.length === 0 && <tr><td colSpan={3} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Inga loggar finns ännu.</td></tr>}
