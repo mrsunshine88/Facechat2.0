@@ -472,6 +472,12 @@ function ChattrumContent() {
              border: none !important;
              box-shadow: none !important;
           }
+
+          @keyframes modalBounce {
+            0% { transform: scale(0.8); opacity: 0; }
+            70% { transform: scale(1.05); }
+            100% { transform: scale(1); opacity: 1; }
+          }
         }
       `}</style>
 
@@ -493,13 +499,6 @@ function ChattrumContent() {
               Jag fattar!
             </button>
           </div>
-          <style jsx>{`
-            @keyframes modalBounce {
-              0% { transform: scale(0.8); opacity: 0; }
-              70% { transform: scale(1.05); }
-              100% { transform: scale(1); opacity: 1; }
-            }
-          `}</style>
         </div>
       )}
     </div>
