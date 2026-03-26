@@ -43,8 +43,8 @@ export async function proxy(request: NextRequest) {
   const forwarded = request.headers.get('x-forwarded-for')
   const ip = forwarded ? forwarded.split(',')[0].trim() : '127.0.0.1'
 
-  // Undanta kända adresser (localhost)
-  if (ip !== '127.0.0.1' && ip !== '::1') {
+  // Undanta kända adresser (localhost) och den nya spärrsidan
+  if (ip !== '127.0.0.1' && ip !== '::1' && !request.nextUrl.pathname.startsWith('/blocked')) {
     // --- ROOT-BYPASS: Kolla om detta är ägar-IP ---
     // Vi hämtar den direkt från databas-funktionen we skapade
     const { data: rootIp } = await supabase.rpc('get_root_admin_ip');
@@ -61,10 +61,8 @@ export async function proxy(request: NextRequest) {
       .single()
 
     if (isBlocked) {
-      return new NextResponse(
-        `Åtkomst nekad: Din IP-adress (${ip}) är spärrad från Facechat. Anledning: ${isBlocked.reason || 'Ingen angiven'}`,
-        { status: 403 }
-      )
+      // Skicka till vår snygga spärrsida istället för att bara visa text
+      return NextResponse.redirect(new URL('/blocked', request.url))
     }
   }
 
@@ -83,6 +81,6 @@ export const config = {
      * - _next/image (bildoptimering)
      * - favicon.ico (favicon)
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!_next/static|_next/image|blocked|favicon.ico).*)',
   ],
 }
