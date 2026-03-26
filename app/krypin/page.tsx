@@ -1149,7 +1149,9 @@ function MittKrypinContent() {
     <>
       <style>{`
         /* Säkrad rendering av CSS instängsel */
-        ${previewCss !== null ? previewCss : (currentUser.custom_style || '')}
+        #krypin-custom-container {
+          ${previewCss !== null ? previewCss : (currentUser.custom_style || '')}
+        }
         
         /* Standardtemafärger för meddelandebubblor */
         .krypin-message-bubble.is-me {
@@ -1570,8 +1572,8 @@ function MittKrypinContent() {
                 )}
              </div>
 
-             <div style={{ padding: '1.5rem', borderTop: '1px solid #1e293b', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
-                <button onClick={() => { setIsEditingKrypin(false); setPreviewCss(null); }} style={{ background: 'transparent', color: '#94a3b8', border: 'none', padding: '0.75rem 1.5rem', cursor: 'pointer', fontWeight: 'bold', fontSize: '1rem' }}>Avbryt allt</button>
+             <div style={{ padding: '1.25rem 1.5rem', borderTop: '1px solid #1e293b', backgroundColor: '#0f172a', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <button onClick={() => { setIsEditingKrypin(false); setPreviewCss(null); }} style={{ background: 'rgba(255,255,255,0.05)', color: 'white', border: '1px solid #334155', padding: '0.6rem 1.2rem', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}>Avbryt</button>
                 <button onClick={handlePreviewCss} style={{ background: '#a78bfa', color: '#4c1d95', border: 'none', padding: '0.75rem 2rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '900', fontSize: '1.1rem', boxShadow: '0 0 15px rgba(167, 139, 250, 0.4)' }}>👉 KÖR FÖRHANDSGRANSKNING</button>
              </div>
           </div>
