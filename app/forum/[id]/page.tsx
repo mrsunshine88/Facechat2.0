@@ -218,9 +218,8 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
     )
   }
 
-  if (!thread) return <div style={{ padding: '2rem', textAlign: 'center' }}>Tråden hittades inte.</div>
-
   const threadDateStr = thread.created_at ? new Date(thread.created_at).toLocaleString('sv-SE', { dateStyle: 'long', timeStyle: 'short' }) : '...';
+  const isMobile = windowWidth < 768;
 
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto', padding: '1rem' }}>
@@ -238,13 +237,14 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
         backgroundColor: 'var(--bg-card)', 
         borderRadius: '12px', 
         border: '1px solid var(--border-color)', 
-        padding: '2rem',
+        padding: isMobile ? '1.5rem 1rem' : '2rem',
         marginBottom: '2rem',
         boxShadow: 'var(--shadow-md)',
         display: 'flex',
+        flexDirection: isMobile ? 'column' : 'row',
         justifyContent: 'space-between',
-        alignItems: 'flex-start',
-        gap: '2rem',
+        alignItems: isMobile ? 'stretch' : 'flex-start',
+        gap: isMobile ? '1.5rem' : '2rem',
         position: 'relative',
         overflow: 'hidden'
       }}>
@@ -305,7 +305,13 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                 </div>
                 
                 {posts[0] && (
-                  <div style={{ display: 'flex', gap: '1rem', marginLeft: 'auto' }}>
+                  <div style={{ 
+                    display: 'flex', 
+                    flexWrap: 'wrap',
+                    gap: isMobile ? '0.75rem' : '1rem', 
+                    marginTop: isMobile ? '1rem' : '0',
+                    marginLeft: isMobile ? '0' : 'auto'
+                  }}>
                     <button 
                       onClick={() => { setNewReply(`[citat]${thread.title}[/citat]\n`); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}
                       style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
@@ -362,8 +368,6 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
             );
             const avatarSrc = post.uses_alias ? null : post.profiles?.avatar_url;
             const timeStr = new Date(post.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' });
-
-            const isMobile = windowWidth < 768;
 
             return (
               <div id={`post-${post.id}`} key={post.id} className="forum-post-row" style={{ display: 'flex', flexDirection: isMobile ? 'column' : 'row', border: isFirst ? '3px solid var(--theme-forum)' : '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)', boxShadow: isFirst ? '0 10px 30px rgba(0,0,0,0.1)' : 'var(--shadow-sm)' }}>
