@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -21,6 +21,7 @@ function ChattrumContent() {
   const [rooms, setRooms] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
   const [inputVal, setInputVal] = useState('');
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [onlineUsers, setOnlineUsers] = useState<any[]>([]);
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState(false);
@@ -211,11 +212,20 @@ function ChattrumContent() {
     if (!inputVal.trim() || !activeRoom || !currentUser) return;
     const txt = inputVal.trim();
     setInputVal('');
-    await supabase.from('chat_messages').insert({
+    const { error } = await supabase.from('chat_messages').insert({
       room_id: activeRoom.id,
       author_id: currentUser.id,
       content: txt
     });
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       alert('Kunde inte skicka meddelande: ' + error.message);
+       return;
+    }
 
     const { data: participants } = await supabase.from('chat_messages').select('author_id').eq('room_id', activeRoom.id);
     if (participants) {
@@ -464,6 +474,34 @@ function ChattrumContent() {
           }
         }
       `}</style>
+
+      {/* DUPLICATE WARNING MODAL */}
+      {showDuplicateModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowDuplicateModal(false)}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem 2rem', textAlign: 'center', borderRadius: '24px', position: 'relative', border: '2px solid #ef4444', animation: 'modalBounce 0.4s ease-out' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '80px', height: '80px', backgroundColor: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+              <ShieldAlert size={40} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text-main)' }}>Hoppsan! 👋</h2>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', fontSize: '1.1rem', marginBottom: '2rem' }}>
+              Du verkar skicka samma sak många gånger. <br/><strong>Vänta lite eller skriv något nytt istället!</strong>
+            </p>
+            <button 
+              onClick={() => setShowDuplicateModal(false)}
+              style={{ width: '100%', backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '1rem', borderRadius: '14px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(239,68,68,0.3)' }}
+            >
+              Jag fattar!
+            </button>
+          </div>
+          <style jsx>{`
+            @keyframes modalBounce {
+              0% { transform: scale(0.8); opacity: 0; }
+              70% { transform: scale(1.05); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   );
 }

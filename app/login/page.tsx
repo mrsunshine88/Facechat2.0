@@ -5,6 +5,8 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare } from 'lucide-react'
 
+import { prepareNewSignup } from '@/app/actions/userActions'
+
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -60,6 +62,9 @@ export default function Login() {
           setLoading(false);
           return;
         }
+
+        // Rensa gamla obekräftade försök med samma mejl (GDPR/UX)
+        await prepareNewSignup(email);
 
         const { error: signUpError } = await supabase.auth.signUp({
           email,

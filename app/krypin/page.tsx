@@ -202,6 +202,7 @@ function MittKrypinContent() {
   const [pmContent, setPmContent] = useState('');
   const [replyingTo, setReplyingTo] = useState<any>(null);
   const [replyContent, setReplyContent] = useState('');
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
 
   // Sök & Skicka PM States
   const [composeModalOpen, setComposeModalOpen] = useState(false);
@@ -586,11 +587,20 @@ function MittKrypinContent() {
        setCustomAlert('Du kan inte skicka meddelanden till en person som är blockerad.');
        return;
     }
-    await supabase.from('private_messages').insert({
+    const { error } = await supabase.from('private_messages').insert({
        sender_id: viewerUser.id,
        receiver_id: receiverId,
        content: content.trim()
     });
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       setCustomAlert('Kunde inte skicka mejl: ' + error.message);
+       return;
+    }
     
     await supabase.from('notifications').insert({
        receiver_id: receiverId,
@@ -631,11 +641,20 @@ function MittKrypinContent() {
   
   const handleSendComposedPM = async () => {
     if(!composeSelectedUser || !composeContent.trim() || !viewerUser) return;
-    await supabase.from('private_messages').insert({
+    const { error } = await supabase.from('private_messages').insert({
        sender_id: viewerUser.id,
        receiver_id: composeSelectedUser.id,
        content: composeContent.trim()
     });
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       setCustomAlert('Kunde inte skicka mejl: ' + error.message);
+       return;
+    }
 
     await supabase.from('notifications').insert({
        receiver_id: composeSelectedUser.id,
@@ -668,11 +687,20 @@ function MittKrypinContent() {
        setCustomAlert('Du kan inte skriva i gästboken när en blockering är aktiv.');
        return;
     }
-    await supabase.from('guestbook').insert({
+    const { error } = await supabase.from('guestbook').insert({
       receiver_id: currentUser.id, 
       sender_id: viewerUser.id,
       content: newGuestbookPost
     });
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       setCustomAlert('Kunde inte skriva i gästboken: ' + error.message);
+       return;
+    }
 
     if (viewerUser.id !== currentUser.id) {
        await supabase.from('notifications').insert({
@@ -904,7 +932,10 @@ function MittKrypinContent() {
        const fileName = `${currentUser.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
        const filePath = `${fileName}`;
 
-       // Upload to Supabase Storage Bucket 'avatars'
+       // 1. Spara undan gammal bild-URL för radering efter lyckad uppladdning
+       const oldAvatarUrl = currentUser.avatar_url;
+
+       // 2. Upload to Supabase Storage Bucket 'avatars'
        const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
        
        if (uploadError) {
@@ -920,8 +951,21 @@ function MittKrypinContent() {
 
        const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(filePath);
 
-       // Update DB
+       // 3. Update DB
        await supabase.from('profiles').update({ avatar_url: publicUrl }).eq('id', currentUser.id);
+       
+       // 4. RADERA GAMMAL BILD (Optimering / GDPR)
+       if (oldAvatarUrl && oldAvatarUrl.includes('/avatars/')) {
+          try {
+             const oldFileName = oldAvatarUrl.split('/').pop()?.split('?')[0];
+             if (oldFileName && oldFileName.includes(currentUser.id)) {
+                await supabase.storage.from('avatars').remove([oldFileName]);
+             }
+          } catch (delErr) {
+             console.error("Kunde inte radera gammal profilbild:", delErr);
+          }
+       }
+
        setCurrentUser({ ...currentUser, avatar_url: publicUrl });
        setCustomAlert('Snyggt! Bilden komprimerades till Jpeg och lades upp blixtsnabbt! 📸');
     } catch(err: any) {
@@ -2522,6 +2566,33 @@ function MittKrypinContent() {
           )}
         </div>
       </div>
+      {/* DUPLICATE WARNING MODAL */}
+      {showDuplicateModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowDuplicateModal(false)}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem 2rem', textAlign: 'center', borderRadius: '24px', position: 'relative', border: '2px solid #ef4444', animation: 'modalBounce 0.4s ease-out', backgroundColor: 'white', display: 'flex', flexDirection: 'column' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '80px', height: '80px', backgroundColor: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+              <ShieldAlert size={40} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text-main)' }}>Hoppsan! 👋</h2>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', fontSize: '1.1rem', marginBottom: '2rem' }}>
+              Du verkar posta samma sak många gånger. <br/><strong>Vänta lite eller skriv något nytt istället!</strong>
+            </p>
+            <button 
+              onClick={() => setShowDuplicateModal(false)}
+              style={{ width: '100%', backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '1rem', borderRadius: '14px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(239,68,68,0.3)' }}
+            >
+              Jag fattar!
+            </button>
+          </div>
+          <style jsx>{`
+            @keyframes modalBounce {
+              0% { transform: scale(0.8); opacity: 0; }
+              70% { transform: scale(1.05); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
     </div>
     </>

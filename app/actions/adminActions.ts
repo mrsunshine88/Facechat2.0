@@ -245,12 +245,20 @@ export async function adminRunDeepScan(requestingUserId: string) {
       const whiteboardOrphans = await supabaseAdmin.from('whiteboard').select('id, profiles(id)').limit(200);
       totalOrphans += whiteboardOrphans.data?.filter((p: any) => !p.profiles).length || 0;
 
-      if (totalOrphans > 0) {
-        issues.push({ id: 'cleanup_orphans', title: 'GDPR: Föräldralösa inlägg', message: `Hittade föräldralös data (Forum, Gästbok m.m.). Kör "Fixa Auto" för komplett sanering.` });
-      }
     } catch(e) {
       console.error("Scan error:", e);
     }
+
+    // 8. Dubbelkoll: Root-Admin IP Spärrad (Säkerhetsnät)
+    try {
+      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      if (rootData?.last_ip) {
+        const { count: isBlocked } = await supabaseAdmin.from('blocked_ips').select('*', { count: 'exact', head: true }).eq('ip', rootData.last_ip);
+        if (isBlocked && isBlocked > 0) {
+          issues.push({ id: 'cleanup_root_ip', title: 'KRITISK: Root-IP Spärrad', status: 'warning', message: `Din nuvarande hem-IP (${rootData.last_ip}) är listad som spärrad. Detta kan orsaka problem!` });
+        }
+      }
+    } catch(e) {}
 
     return { success: true, issues };
   } catch (err: any) {
@@ -289,6 +297,12 @@ export async function adminFixDeepScanIssue(issueId: string, requestingUserId: s
     } else if (issueId === 'cleanup_guests') {
       await supabaseAdmin.from('guestbook').delete().eq('content', '');
       fixedMsg = 'Rensade bort tomma gästboksinlägg.';
+    } else if (issueId === 'cleanup_root_ip') {
+      const { data: rootData } = await supabaseAdmin.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      if (rootData?.last_ip) {
+        await supabaseAdmin.from('blocked_ips').delete().eq('ip', rootData.last_ip);
+      }
+      fixedMsg = 'Tog bort spärren för din nuvarande Root-IP.';
     } else if (issueId === 'cleanup_forum') {
       await supabaseAdmin.from('forum_posts').delete().eq('content', '');
       fixedMsg = 'Rensade bort tomma foruminlägg.';
@@ -302,7 +316,18 @@ export async function adminFixDeepScanIssue(issueId: string, requestingUserId: s
         { name: 'guestbook', rel: 'sender:sender_id(id)' },
         { name: 'guestbook', rel: 'receiver:receiver_id(id)' },
         { name: 'private_messages', rel: 'sender:sender_id(id)' },
-        { name: 'private_messages', rel: 'receiver:receiver_id(id)' }
+        { name: 'private_messages', rel: 'receiver:receiver_id(id)' },
+        { name: 'notifications', rel: 'actor:actor_id(id)' },
+        { name: 'notifications', rel: 'receiver:receiver_id(id)' },
+        { name: 'user_blocks', rel: 'blocker:blocker_id(id)' },
+        { name: 'user_blocks', rel: 'blocked:blocked_id(id)' },
+        { name: 'snake_scores', rel: 'profiles:user_id(id)' },
+        { name: 'user_secrets', rel: 'profiles:user_id(id)' },
+        { name: 'reports', rel: 'reporter:reporter_id(id)' },
+        { name: 'reports', rel: 'reported:reported_user_id(id)' },
+        { name: 'support_tickets', rel: 'profiles:user_id(id)' },
+        { name: 'admin_logs', rel: 'admin:admin_id(id)' },
+        { name: 'whiteboard_likes', rel: 'profiles:user_id(id)' }
       ];
       let totalDeleted = 0;
       let tablesProcessed = 0;

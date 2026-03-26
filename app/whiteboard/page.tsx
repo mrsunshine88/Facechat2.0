@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
-import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, AlertTriangle, Edit2 } from 'lucide-react'
+import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, AlertTriangle, Edit2, ShieldAlert } from 'lucide-react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
 
@@ -46,6 +46,7 @@ export default function Whiteboard() {
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({}) // Track which posts show all comments
   const [showLikersPostId, setShowLikersPostId] = useState<string | null>(null) // Track which post's likers list is visible
   const [isExpanded, setIsExpanded] = useState(false)
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -154,6 +155,15 @@ export default function Whiteboard() {
       author_id: currentUser.id,
       content: newPostContent
     })
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       alert('Kunde inte posta på Whiteboarden: ' + error.message);
+       return;
+    }
     if (!error) setNewPostContent('')
     await fetchData();
   }
@@ -247,11 +257,20 @@ export default function Whiteboard() {
     const txt = commentInputs[postId];
     if(!txt?.trim() || !currentUser) return;
     
-    await supabase.from('whiteboard_comments').insert({
+    const { error } = await supabase.from('whiteboard_comments').insert({
        post_id: postId,
        author_id: currentUser.id,
        content: txt.trim()
     });
+
+    if (error) {
+       if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
+          setShowDuplicateModal(true);
+          return;
+       }
+       alert('Kunde inte posta kommentar: ' + error.message);
+       return;
+    }
     
     const post = posts.find(p => p.id === postId);
     if (post) {
@@ -766,6 +785,35 @@ export default function Whiteboard() {
          </div>
       )}
 
+
+
+      {/* DUPLICATE WARNING MODAL */}
+      {showDuplicateModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowDuplicateModal(false)}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem 2rem', textAlign: 'center', borderRadius: '24px', position: 'relative', border: '2px solid #ef4444', animation: 'modalBounce 0.4s ease-out', backgroundColor: 'white' }} onClick={e => e.stopPropagation()}>
+            <div style={{ width: '80px', height: '80px', backgroundColor: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
+              <ShieldAlert size={40} />
+            </div>
+            <h2 style={{ fontSize: '1.5rem', fontWeight: '800', marginBottom: '1rem', color: 'var(--text-main)' }}>Hoppsan! 👋</h2>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', fontSize: '1.1rem', marginBottom: '2rem' }}>
+              Du verkar posta samma sak många gånger. <br/><strong>Vänta lite eller skriv något nytt istället!</strong>
+            </p>
+            <button 
+              onClick={() => setShowDuplicateModal(false)}
+              style={{ width: '100%', backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '1rem', borderRadius: '14px', fontSize: '1.1rem', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 12px rgba(239,68,68,0.3)' }}
+            >
+              Jag fattar!
+            </button>
+          </div>
+          <style jsx>{`
+            @keyframes modalBounce {
+              0% { transform: scale(0.8); opacity: 0; }
+              70% { transform: scale(1.05); }
+              100% { transform: scale(1); opacity: 1; }
+            }
+          `}</style>
+        </div>
+      )}
     </div>
   )
 }

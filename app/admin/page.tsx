@@ -2,10 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff } from 'lucide-react';
+import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { deleteUserAccount } from '../actions/userActions';
 import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom } from '../actions/adminActions';
+import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
 
 export const logAdminAction = async (supabase: any, adminId: string, action: string) => {
   try {
@@ -463,31 +464,9 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
 // ==========================================================
 const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
   const [users, setUsers] = useState<any[]>([]);
+  const [blockedIps, setBlockedIps] = useState<any[]>([]);
   const [search, setSearch] = useState('');
-
-  useEffect(() => {
-    fetchUsers();
-
-    const channel = supabase.channel('admin_users_realtime')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
-        setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
-      })
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [supabase]);
-
-  // Sök-loggning (Debounced)
-  useEffect(() => {
-    if (search.trim().length > 1) {
-      const timer = setTimeout(() => {
-        logAdminAction(supabase, currentUser.id, `Sökte efter användare: "${search.trim()}"`);
-      }, 900);
-      return () => clearTimeout(timer);
-    }
-  }, [search, supabase, currentUser.id]);
+  const [protectedIp, setProtectedIp] = useState<string | null>(null);
 
   async function fetchUsers(query?: string) {
     let q = supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(50);
@@ -516,6 +495,47 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     }
   }
 
+  async function fetchBlockedIps() {
+    const { data } = await supabase.from('blocked_ips').select('*').order('created_at', { ascending: false });
+    if (data) setBlockedIps(data);
+  }
+
+  useEffect(() => {
+    fetchUsers();
+    fetchBlockedIps();
+
+    // Hämta Root-Admins IP för att skydda den i UI
+    const fetchRootIp = async () => {
+      const { data } = await supabase.from('profiles').select('last_ip').eq('username', 'apersson508').single();
+      if (data?.last_ip) setProtectedIp(data.last_ip);
+    };
+    fetchRootIp();
+
+    const channel = supabase.channel('admin_users_realtime')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
+        setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
+        // Om Root-Admin uppdaterar sin IP, hämta den igen
+        if (payload.new.username === 'apersson508') setProtectedIp(payload.new.last_ip);
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [supabase]);
+
+  // Sök-loggning (Debounced)
+  useEffect(() => {
+    if (search.trim().length > 1) {
+      const timer = setTimeout(() => {
+        logAdminAction(supabase, currentUser.id, `Sökte efter användare: "${search.trim()}"`);
+      }, 900);
+      return () => clearTimeout(timer);
+    }
+  }, [search, supabase, currentUser.id]);
+
+
+
   const handleToggleBlock = async (user: any) => {
     if (user.username?.toLowerCase() === 'apersson508' || user.id === currentUser.id) return alert('Detta konto är skyddat som Super-Admin.');
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte blockeras.');
@@ -524,6 +544,29 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `${newStatus ? 'Blockerade' : 'Avblockerade'} ${user.username}`);
     fetchUsers(search);
+  };
+
+
+
+  const handleBlockIP = async (ip: string, username: string) => {
+    if (!ip || ip === '127.0.0.1') return alert('Kunde inte identifiera giltig IP för denna användare.');
+    const reason = prompt(`Ange anledning för att spärra IP ${ip} (${username}):`, 'Spam/Missbruk');
+    if (reason === null) return;
+
+    const res = await adminBlockIP(ip, reason, currentUser.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    
+    await logAdminAction(supabase, currentUser.id, `Spärrade IP-adress ${ip} (${username})`);
+    fetchBlockedIps();
+  };
+
+  const handleUnblockIP = async (ip: string) => {
+    if (confirm(`Vill du ta bort spärren för IP ${ip}?`)) {
+      const res = await adminUnblockIP(ip, currentUser.id);
+      if (res?.error) return alert('Fel: ' + res.error);
+      await logAdminAction(supabase, currentUser.id, `Tog bort IP-spärr för ${ip}`);
+      fetchBlockedIps();
+    }
   };
 
   const handleDeleteUser = async (user: any) => {
@@ -552,36 +595,102 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {users.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga användare hittades.</p>}
-        {users.map(u => (
-          <div key={u.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 1.5rem', flexWrap: 'wrap', gap: '1rem', borderLeft: u.is_banned ? '4px solid #ef4444' : '4px solid transparent', backgroundColor: u.is_banned ? '#fef2f2' : 'var(--bg-card)' }}>
-            <div className="admin-card-content" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden' }}>
-                {u.avatar_url && <img src={u.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+        {users.map(u => {
+          const isAutoBanned = u.ban_reason?.startsWith('System:');
+          return (
+            <div 
+              key={u.id} 
+              className="admin-card admin-responsive-card" 
+              style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                padding: '1rem 1.5rem', 
+                flexWrap: 'wrap', 
+                gap: '1rem', 
+                borderLeft: isAutoBanned ? '4px solid #fb923c' : (u.is_banned ? '4px solid #ef4444' : '4px solid transparent'), 
+                backgroundColor: isAutoBanned ? '#fff7ed' : (u.is_banned ? '#fef2f2' : 'var(--bg-card)') 
+              }}
+            >
+              <div className="admin-card-content" style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                <div style={{ width: '40px', height: '40px', backgroundColor: '#e2e8f0', borderRadius: '50%', overflow: 'hidden' }}>
+                  {u.avatar_url && <img src={u.avatar_url} alt="av" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                </div>
+                <div>
+                  <p style={{ margin: 0, fontWeight: '700', color: 'var(--text-main)' }}>
+                    {u.username} 
+                    {u.is_admin && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginLeft: '0.5rem' }}>(ADMIN)</span>}
+                    {isAutoBanned && <span style={{ color: '#fb923c', fontSize: '0.75rem', fontWeight: 'bold', marginLeft: '0.5rem' }}>[AUTOMATISKT SPÄRRAD]</span>}
+                  </p>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Ort: {u.city || 'Ej angiven'} • Gick med {new Date(u.created_at).toLocaleDateString()}
+                  </p>
+                  <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: '#6366f1', fontWeight: 'bold' }}>
+                    IP: {u.last_ip || 'Okänd'}
+                  </p>
+                  {u.ban_reason && <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.75rem', color: isAutoBanned ? '#c2410c' : '#b91c1c', fontWeight: '600' }}>Anledning: {u.ban_reason}</p>}
+                </div>
               </div>
-              <div>
-                <p style={{ margin: 0, fontWeight: '700', color: 'var(--text-main)' }}>{u.username} {u.is_admin && <span style={{ color: '#ef4444', fontSize: '0.75rem', marginLeft: '0.5rem' }}>(ADMIN)</span>}</p>
-                <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Ort: {u.city || 'Ej angiven'} • Gick med {new Date(u.created_at).toLocaleDateString()}</p>
+
+              <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem' }}>
+                {u.is_banned ? (
+                  <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <PlayCircle size={14} /> Avblocka
+                  </button>
+                ) : (
+                  <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Ban size={14} /> Blocka
+                  </button>
+                )}
+
+                {u.last_ip && (
+                  u.last_ip === protectedIp ? (
+                    <div style={{ backgroundColor: '#ecfdf5', color: '#059669', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: 'bold', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                       <Shield size={14} /> Skyddad IP
+                    </div>
+                  ) : (
+                    <button 
+                      onClick={() => handleBlockIP(u.last_ip, u.username)} 
+                      style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
+                      title="Spärra personens IP-adress helt"
+                    >
+                      <Globe size={14} /> Spärra IP
+                    </button>
+                  )
+                )}
+
+                <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <Trash2 size={14} /> Radera Konto
+                </button>
               </div>
             </div>
-
-            <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem' }}>
-              {u.is_banned ? (
-                <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <PlayCircle size={14} /> Avblocka
-                </button>
-              ) : (
-                <button onClick={() => handleToggleBlock(u)} style={{ backgroundColor: '#fcf8e3', color: '#8a6d3b', border: '1px solid #faebcc', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <Ban size={14} /> Blocka
-                </button>
-              )}
-
-              <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                <Trash2 size={14} /> Radera Konto
-              </button>
-            </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
+
+      {blockedIps.length > 0 && (
+        <div style={{ marginTop: '3rem' }}>
+          <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Shield size={20} color="#ef4444" /> Spärrade IP-nummer
+          </h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+            {blockedIps.map(item => (
+              <div key={item.ip} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', borderLeft: '4px solid #1e293b', gap: '1rem', flexWrap: 'wrap' }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--text-main)' }}>{item.ip}</p>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Orsak: {item.reason || 'Ingen'}</p>
+                </div>
+                <button 
+                  onClick={() => handleUnblockIP(item.ip)}
+                  style={{ backgroundColor: '#f1f5f9', color: '#0f172a', border: '1px solid #cbd5e1', padding: '0.4rem 0.8rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}
+                >
+                  Ta bort spärr
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -1861,9 +1970,42 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   const [cssWipeTarget, setCssWipeTarget] = useState('');
   const [massDeleteQuery, setMassDeleteQuery] = useState('');
   const [massDeleting, setMassDeleting] = useState(false);
+  const [forbiddenWords, setForbiddenWords] = useState<any[]>([]);
+  const [newForbiddenWord, setNewForbiddenWord] = useState('');
+  const [orphanedFiles, setOrphanedFiles] = useState<string[]>([]);
+
+  useEffect(() => {
+    fetchForbiddenWords();
+  }, [supabase]);
+
+  async function fetchForbiddenWords() {
+    const { data } = await supabase.from('forbidden_words').select('*').order('word', { ascending: true });
+    if (data) setForbiddenWords(data);
+  }
+
+  const handleAddWord = async () => {
+    if (!newForbiddenWord.trim()) return;
+    const res = await adminAddForbiddenWord(newForbiddenWord, currentUser.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    await logAdminAction(supabase, currentUser.id, `Lade till förbjudet ord: "${newForbiddenWord}"`);
+    setNewForbiddenWord('');
+    fetchForbiddenWords();
+    alert(res.message || 'Ordet tillagt!');
+  };
+
+  const handleRemoveWord = async (id: string, word: string) => {
+    if (confirm(`Vill du ta bort "${word}" från filtret?`)) {
+      const res = await adminRemoveForbiddenWord(id, currentUser.id);
+      if (res?.error) return alert('Fel: ' + res.error);
+      await logAdminAction(supabase, currentUser.id, `Tog bort förbjudet ord: "${word}"`);
+      fetchForbiddenWords();
+    }
+  };
+
   const [results, setResults] = useState<{ id: string, title: string, status: 'idle' | 'running' | 'ok' | 'warning', message: string, fixAction?: () => void }[]>([
     { id: 'latency', title: 'Databasens Responstid (Ping)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'storage', title: 'Lagringsutrymme (Max 50 MB)', status: 'idle', message: 'Väntar på diagnos...' },
+    { id: 'orphaned_avatars', title: 'Oanvända Profilbilder (Rensning)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'sync', title: 'Databashälsa (Profiler vs Auth)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'links', title: 'Innehållshälsa (Döda länkar)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'images', title: 'Bild-optimering (800px Max)', status: 'idle', message: 'Väntar på diagnos...' },
@@ -1905,6 +2047,40 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         message: isFull ? `Varning: ${sizeMB} MB använt av 50 MB (${percent}%). Närmar sig bristningsgränsen!` : `✅ ${sizeMB} MB använt av 50 MB (${percent}%).`
       };
     }));
+
+    // 1.5. Oanvända Profilbilder (Cleanup)
+    try {
+      const { data: storageFiles } = await supabase.storage.from('avatars').list('', { limit: 1000 });
+      const { data: activeProfiles } = await supabase.from('profiles').select('avatar_url');
+      
+      if (storageFiles && activeProfiles) {
+        const activeFileNames = new Set(
+          activeProfiles
+            .map((p: any) => p.avatar_url?.split('/').pop()?.split('?')[0])
+            .filter(Boolean)
+        );
+        
+        const orphans = storageFiles
+          .map((f: any) => f.name)
+          .filter((name: string) => name !== '.emptyFolderPlaceholder' && !activeFileNames.has(name));
+          
+        setOrphanedFiles(orphans);
+        
+        setResults(prev => prev.map(p => p.id === 'orphaned_avatars' ? {
+          ...p,
+          status: orphans.length > 0 ? 'warning' : 'ok',
+          message: orphans.length > 0 ? `Hittade ${orphans.length} profilbilder som inte används av någon användare längre.` : '✅ Inga oanvända profilbilder hittades. Snyggt!',
+          fixAction: orphans.length > 0 ? async () => {
+             if (!confirm(`Vill du verkligen radera ${orphans.length} gamla profilbilder permanent?`)) return;
+             await supabase.storage.from('avatars').remove(orphans);
+             await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${orphans.length} oanvända profilbilder.`);
+             runDiagnostics();
+          } : undefined
+        } : p));
+      }
+    } catch (err) {
+      console.error("Orphaned avatars check failed:", err);
+    }
 
     // 2. Sync PWA/DB Profiles
     const { data: syncData, error: syncError } = await supabase.rpc('diagnose_missing_profiles');
@@ -2118,6 +2294,43 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
               {massDeleting ? 'RADERAR...' : 'RADERA ALLT'}
             </button>
           </div>
+        </div>
+
+        <div className="admin-card" style={{ padding: '1.5rem', borderTop: '4px solid #6366f1' }}>
+          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <Globe size={20} /> Globalt Ord-filter (Stjärnmarkerar ****)
+          </h3>
+          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+            Lägg till ord som automatiskt ska bytas ut mot stjärnor i alla inlägg (Chatt, Forum, PM, etc.).
+          </p>
+          <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }} className="admin-responsive-card">
+            <input
+              type="text"
+              placeholder="Exempel: fultord123"
+              value={newForbiddenWord}
+              onChange={e => setNewForbiddenWord(e.target.value)}
+              style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }}
+            />
+            <button
+              onClick={handleAddWord}
+              style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+            >
+              <Plus size={18} /> LÄGG TILL ORD
+            </button>
+          </div>
+
+          {forbiddenWords.length > 0 && (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+              {forbiddenWords.map(w => (
+                <div key={w.id} style={{ backgroundColor: '#f1f5f9', color: '#1e293b', padding: '0.4rem 0.75rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid #cbd5e1' }}>
+                  {w.word}
+                  <button onClick={() => handleRemoveWord(w.id, w.word)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="admin-card" style={{ padding: '1.5rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>

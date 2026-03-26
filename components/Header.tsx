@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
+import { updateUserIP } from '@/app/actions/securityActions'
 
 export default function Header() {
   const pathname = usePathname()
@@ -24,6 +25,15 @@ export default function Header() {
     async function loadUser() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        // VATTENTÄTT: Om mejlen INTE är bekräftad och kontot är nytt (från och med idag), sparka ut dem direkt!
+        // Detta är en extra spärr ifall de lyckas lura någon klientsida.
+        const CUTOFF_DATE = new Date('2026-03-26');
+        if (!user.email_confirmed_at && new Date(user.created_at) >= CUTOFF_DATE) {
+          await supabase.auth.signOut();
+          window.location.href = '/login?error=' + encodeURIComponent('Du måste bekräfta din e-postadress via länken vi skickade innan du kan bli medlem.');
+          return;
+        }
+
         const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
         
         if (profile?.is_banned) {
@@ -44,6 +54,7 @@ export default function Header() {
         
         // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE
         supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+        updateUserIP(user.id);
         
         // Fetch unread support tickets
         const currentProfile = profile || { is_admin: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_support: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_roles: user.email?.toLowerCase() === 'apersson508@gmail.com' };
