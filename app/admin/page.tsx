@@ -688,27 +688,51 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                   </button>
                 )}
 
-                {u.last_ip && (
-                  u.last_ip === protectedIp ? (
-                    <div style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(22,163,74,0.1)' }}>
-                       <CheckCircle size={14} /> Säkert IP ✅
-                    </div>
-                  ) : (
-                    isIpBlocked ? (
-                      <div style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(239,68,68,0.05)' }}>
-                         <Lock size={14} /> Redan Spärrad
+                {(() => {
+                  const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
+                  const isCurrentAdmin = u.id === currentUser.id;
+                  const isProtected = isRootUser || (u.last_ip && u.last_ip === protectedIp);
+
+                  if (isProtected || isCurrentAdmin) {
+                    return (
+                      <div style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(22,163,74,0.1)' }}>
+                        <CheckCircle size={14} /> Säkert IP ✅
                       </div>
-                    ) : (
-                      <button 
-                        onClick={() => handleBlockIP(u.last_ip, u.username)} 
-                        style={{ backgroundColor: '#1e293b', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                        title="Spärra personens IP-adress helt"
-                      >
-                        <Globe size={14} /> Spärra IP
-                      </button>
-                    )
-                  )
-                )}
+                    );
+                  }
+
+                  if (isIpBlocked) {
+                    return (
+                      <div style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(239,68,68,0.05)' }}>
+                        <Lock size={14} /> Redan Spärrad
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <button 
+                      onClick={() => handleBlockIP(u.last_ip, u.username)} 
+                      disabled={!u.last_ip || u.last_ip === 'Okänd'}
+                      style={{ 
+                        backgroundColor: '#1e293b', 
+                        color: 'white', 
+                        border: 'none', 
+                        padding: '0.5rem 1rem', 
+                        borderRadius: '6px', 
+                        cursor: (!u.last_ip || u.last_ip === 'Okänd') ? 'not-allowed' : 'pointer', 
+                        fontWeight: '600', 
+                        fontSize: '0.75rem', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        gap: '0.25rem',
+                        opacity: (!u.last_ip || u.last_ip === 'Okänd') ? 0.5 : 1
+                      }}
+                      title={(!u.last_ip || u.last_ip === 'Okänd') ? "Går ej att spärra (IP saknas)" : "Spärra personens IP-adress helt"}
+                    >
+                      <Globe size={14} /> Spärra IP
+                    </button>
+                  );
+                })()}
 
                 <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Trash2 size={14} /> Radera Konto
@@ -2258,28 +2282,27 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     fetchLatestScanResult();
   }, [supabase]);
 
-  const handleSearchDiagUsers = async (term: string) => {
-    setDiagSearch(term);
-    if (!term || term.length < 2) {
-      setDiagSearchResults([]);
-      return;
-    }
-
-    // LOGGA SÖKNINGEN!
-    if (term.trim().length > 0) {
-      const timer = setTimeout(() => {
+  // Sök-loggning & Auto-Sök (Debounced)
+  useEffect(() => {
+    const term = diagSearch.trim();
+    if (term.length >= 2) {
+      const timer = setTimeout(async () => {
+        // Logga sökningen
         logAdminAction(supabase, currentUser.id, `Sökte efter användarprofil i Diagnosverktyget: "${term}"`);
-      }, 1000);
+        
+        // Utför sökningen
+        const { data } = await supabase
+          .from('profiles')
+          .select('id, username, avatar_url, presentation, custom_style')
+          .ilike('username', `%${term}%`)
+          .limit(5);
+        if (data) setDiagSearchResults(data);
+      }, 400);
       return () => clearTimeout(timer);
+    } else {
+      setDiagSearchResults([]);
     }
-
-    const { data } = await supabase
-      .from('profiles')
-      .select('id, username, avatar_url, presentation, custom_style')
-      .ilike('username', `%${term}%`)
-      .limit(5);
-    if (data) setDiagSearchResults(data);
-  };
+  }, [diagSearch, supabase, currentUser.id]);
 
   async function fetchForbiddenWords() {
     const { data } = await supabase.from('forbidden_words').select('*').order('word', { ascending: true });
@@ -2670,7 +2693,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
         <div className="admin-card" style={{ padding: '2rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
           <h3 style={{ margin: 0, marginBottom: '1rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={22} /> Hitta Användarprofil (för rensning)</h3>
-          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Sök fram en användare för att nollställa deras design eller biografi. Skriv t.ex. "mr" för att hitta "mrsunshine88".</p>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Sök fram en användare för att nollställa deras design eller biografi. Skriv in början på ett namn för att få förslag.</p>
           
           <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
             <div style={{ position: 'relative' }}>
@@ -2678,7 +2701,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
                 type="text"
                 placeholder="Sök på användarnamn..."
                 value={diagSearch}
-                onChange={(e) => handleSearchDiagUsers(e.target.value)}
+                onChange={(e) => setDiagSearch(e.target.value)}
                 className="chat-input"
                 style={{ width: '100%', backgroundColor: 'white', border: '1px solid #fca5a5', padding: '0.75rem', paddingRight: '2.5rem', borderRadius: '8px', outline: 'none' }}
               />
