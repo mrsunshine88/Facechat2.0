@@ -2414,7 +2414,9 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         updateOne('orphaned_avatars', { status: 'warning', message: `Hittade ${orphans.length} bilder. Rensar via Storage...` });
         
         // Radera alla via Storage API (Detta är den "rätta" porten)
-        const { error: storageErr } = await supabase.storage.from('avatars').remove(orphans);
+        // Vi mappar objekten från RPC:n till en lista med bara filnamn
+        const orphanNames = orphans.map((o: any) => o.file_name);
+        const { error: storageErr } = await supabase.storage.from('avatars').remove(orphanNames);
         
         if (!storageErr) {
           await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade ${orphans.length} herrelösa bilder via Storage API.`);
