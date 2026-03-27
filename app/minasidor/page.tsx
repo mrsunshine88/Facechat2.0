@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { Book, Shield, HelpCircle, User, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
-import { deleteUserAccount } from '../actions/userActions';
+import { deleteUserAccount, updateUserProfile } from '../actions/userActions';
 
 const INTERESTS = [
   "Bakning", "Bilar och meckande", "Brädspel", "Båtliv och segling", "Camping",
@@ -184,21 +184,12 @@ export default function MinaSidor() {
   const handleSaveKonto = async (e: React.FormEvent) => {
     e.preventDefault();
     setUsernameError('');
+
     if (newUsername.trim() !== currentUser.username) {
-      if (newUsername.trim().length < 3) {
-        setUsernameError('Användarnamnet måste vara minst 3 tecken.');
-        return;
-      }
-      // Check collision safely
-      const { data: existing } = await supabase.from('profiles').select('id').ilike('username', newUsername.trim()).limit(1)
-      if (existing && existing.length > 0) {
-        setUsernameError('Detta användarnamn är redan upptaget!');
-        return;
-      }
-      // Update Username
-      const { error } = await supabase.from('profiles').update({ username: newUsername.trim() }).eq('id', currentUser.id);
-      if (error) {
-        setUsernameError('Ett fel uppstod i Psql update: ' + error.message);
+      // Update Username via Secure Server Action
+      const res = await updateUserProfile({ username: newUsername.trim() });
+      if (res.error) {
+        setUsernameError(res.error);
         return;
       }
       setCurrentUser({ ...currentUser, username: newUsername.trim() });
@@ -246,8 +237,8 @@ export default function MinaSidor() {
         admin_id: currentUser.id, 
         action: `SYSTEM: Användaren ${currentUser.username} skrotade sitt eget konto.` 
       });
-      // Radera kontot från databasen och Auth via Server Action
-      const res = await deleteUserAccount(currentUser.id, currentUser.id, false);
+      // Radera kontot från databasen och Auth via Server Action (Session valideras på servern)
+      const res = await deleteUserAccount(currentUser.id);
       if (res?.error) {
          setCustomAlert("Fel vid radering: " + res.error);
          return;
@@ -265,16 +256,16 @@ export default function MinaSidor() {
     if (!currentUser) return;
     const formData = new FormData(e.target as HTMLFormElement);
     const publicPayload = {
-      city: formData.get('city') || null,
+      city: (formData.get('city') as string) || undefined,
       show_interests: showInterests,
       interests: userInterests
     };
     
-    // Save public parts to 'profiles'
-    const { error: error1 } = await supabase.from('profiles').update(publicPayload).eq('id', currentUser.id);
+    // Save public parts to 'profiles' via Secure Server Action
+    const res = await updateUserProfile(publicPayload);
     
-    if (error1) {
-       setCustomAlert('Kunde inte spara profilen (Fel: ' + error1.message + ')');
+    if (res.error) {
+       setCustomAlert('Kunde inte spara profilen: ' + res.error);
        return;
     }
 

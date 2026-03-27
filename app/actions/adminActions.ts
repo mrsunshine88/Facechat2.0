@@ -1,6 +1,9 @@
 "use server";
 
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
+
+const ROOT_EMAIL = 'apersson508@gmail.com';
 
 // Setup Supabase Admin Client
 const supabaseAdmin = createClient(
@@ -14,24 +17,39 @@ const supabaseAdmin = createClient(
   }
 );
 
-// Helper to verify permissions
-async function verifyAdminPermission(requestingUserId: string, permissionRequired: string) {
-  const { data: profList } = await supabaseAdmin.from('profiles').select('*').eq('id', requestingUserId).limit(1);
-  const profile = profList && profList.length > 0 ? profList[0] : null;
-  if (!profile) throw new Error('User not found');
+// Helper to verify permissions via server session
+async function verifyAdminPermission(permissionRequired: string) {
+  const serverSupabase = await createServerClient();
+  const { data: { user } } = await serverSupabase.auth.getUser();
+
+  if (!user) throw new Error('Du måste vara inloggad.');
+
+  const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).single();
+  if (!profile) throw new Error('Profil saknas');
   
-  if (profile.auth_email === 'apersson508@gmail.com' || profile.is_admin || profile.perm_roles) {
-     return true; 
+  const isRoot = profile.auth_email === ROOT_EMAIL;
+
+  if (isRoot || profile.is_admin || profile.perm_roles) {
+     return { userId: user.id, isRoot }; 
   }
+  
   if (!profile[permissionRequired]) {
      throw new Error(`Behörighet saknas (${permissionRequired})`);
   }
-  return true;
+  
+  return { userId: user.id, isRoot: false };
 }
 
-export async function toggleBlockUser(userId: string, requestingUserId: string, newStatus: boolean) {
+export async function toggleBlockUser(userId: string, newStatus: boolean) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_users');
+    const { isRoot } = await verifyAdminPermission('perm_users');
+
+    // Root Protection
+    const { data: targetProfile } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', userId).single();
+    if (targetProfile?.auth_email === ROOT_EMAIL) {
+      throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
+    }
+
     const { error } = await supabaseAdmin.from('profiles').update({ is_banned: newStatus }).eq('id', userId);
     if (error) throw error;
     return { success: true };
@@ -40,13 +58,26 @@ export async function toggleBlockUser(userId: string, requestingUserId: string, 
   }
 }
 
-export async function adminDeleteContent(table: string, id: string, requestingUserId: string) {
+export async function adminDeleteContent(table: string, id: string) {
   try {
-    if (table === 'chat_messages') {
-      await verifyAdminPermission(requestingUserId, 'perm_chat');
-    } else {
-      await verifyAdminPermission(requestingUserId, 'perm_content');
+    const perm = table === 'chat_messages' ? 'perm_chat' : 'perm_content';
+    const { isRoot } = await verifyAdminPermission(perm);
+
+    // Hardened Whitelist
+    const ALLOWED_TABLES = [
+      'forum_posts', 'forum_threads', 'chat_messages', 
+      'whiteboard', 'whiteboard_comments', 'guestbook', 
+      'private_messages', 'reports', 'snake_scores'
+    ];
+
+    if (!ALLOWED_TABLES.includes(table)) {
+      throw new Error(`Otillåten tabell för radering: ${table}`);
     }
+
+    // Protection for root admin content (if applicable)
+    // For simplicity we check if the table has an author_id/sender_id/user_id we want to protect
+    // But mostly we just care that they don't delete from profiles/auth.users here.
+
     const { error } = await supabaseAdmin.from(table).delete().eq('id', id);
     if (error) throw error;
     return { success: true };
@@ -55,17 +86,13 @@ export async function adminDeleteContent(table: string, id: string, requestingUs
   }
 }
 
-export async function adminResolveReport(reportId: string, status: string, requestingUserId: string) {
+export async function adminResolveReport(reportId: string, status: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_content');
-    const { data: profList } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', requestingUserId).limit(1);
-    const profile = profList && profList.length > 0 ? profList[0] : null;
-    const isRoot = profile?.auth_email === 'apersson508@gmail.com';
+    const { userId: executorId, isRoot } = await verifyAdminPermission('perm_content');
 
     // Kolla om anmälningen rör admin själv (jäv)
-    const { data: repList } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).limit(1);
-    const report = repList && repList.length > 0 ? repList[0] : null;
-    if (report && report.reported_user_id === requestingUserId && !isRoot) {
+    const { data: report } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).single();
+    if (report && report.reported_user_id === executorId && !isRoot) {
       throw new Error('Jäv: Du kan inte hantera anmälningar som rör dig själv.');
     }
 
@@ -77,9 +104,9 @@ export async function adminResolveReport(reportId: string, status: string, reque
   }
 }
 
-export async function adminRoomAction(action: string, roomId: string | null, payload: any, requestingUserId: string) {
+export async function adminRoomAction(action: string, roomId: string | null, payload: any) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_rooms');
+    await verifyAdminPermission('perm_rooms');
     let error = null;
     
     if (action === 'insert') {
@@ -100,11 +127,10 @@ export async function adminRoomAction(action: string, roomId: string | null, pay
   }
 }
 
-export async function adminAddSecretUserToRoom(roomId: string, targetUserId: string, requestingUserId: string) {
+export async function adminAddSecretUserToRoom(roomId: string, targetUserId: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_rooms');
-    const { data: roomList, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).limit(1);
-    const room = roomList && roomList.length > 0 ? roomList[0] : null;
+    await verifyAdminPermission('perm_rooms');
+    const { data: room, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).single();
     if (fetchErr) throw fetchErr;
     let users = room?.allowed_users || [];
     if (!users.includes(targetUserId)) {
@@ -118,11 +144,10 @@ export async function adminAddSecretUserToRoom(roomId: string, targetUserId: str
   }
 }
 
-export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId: string, requestingUserId: string) {
+export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_rooms');
-    const { data: roomList, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).limit(1);
-    const room = roomList && roomList.length > 0 ? roomList[0] : null;
+    await verifyAdminPermission('perm_rooms');
+    const { data: room, error: fetchErr } = await supabaseAdmin.from('chat_rooms').select('allowed_users').eq('id', roomId).single();
     if (fetchErr) throw fetchErr;
     let users = room?.allowed_users || [];
     users = users.filter((id: string) => id !== targetUserId);
@@ -134,9 +159,16 @@ export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId
   }
 }
 
-export async function adminUpdatePermissions(userId: string, payload: any, requestingUserId: string) {
+export async function adminUpdatePermissions(userId: string, payload: any) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_roles');
+    await verifyAdminPermission('perm_roles');
+
+    // Root Protection
+    const { data: targetProfile } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', userId).single();
+    if (targetProfile?.auth_email === ROOT_EMAIL) {
+      throw new Error('Säkerhetsspärr: Root-administratörens roller kan aldrig ändras.');
+    }
+
     const { error } = await supabaseAdmin.from('profiles').update(payload).eq('id', userId);
     if (error) throw error;
     return { success: true };
@@ -145,9 +177,9 @@ export async function adminUpdatePermissions(userId: string, payload: any, reque
   }
 }
 
-export async function adminDeleteSnakeScore(scoreId: string | null, requestingUserId: string, deleteAll: boolean = false, gameId: string | null = null) {
+export async function adminDeleteSnakeScore(scoreId: string | null, deleteAll: boolean = false, gameId: string | null = null) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_content');
+    await verifyAdminPermission('perm_content');
     if (deleteAll) {
       if (gameId && gameId !== 'all') {
          const { error } = await supabaseAdmin.from('snake_scores').delete().eq('game_id', gameId);
@@ -167,9 +199,9 @@ export async function adminDeleteSnakeScore(scoreId: string | null, requestingUs
 }
 
 // SOFT DELETE for Support tickets (Döljs för admin, men finns kvar för användaren på Mina Sidor)
-export async function adminDeleteSupportTicket(ticketId: string, requestingUserId: string) {
+export async function adminDeleteSupportTicket(ticketId: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_support');
+    await verifyAdminPermission('perm_support');
     const { error } = await supabaseAdmin.from('support_tickets').update({ admin_deleted: true }).eq('id', ticketId);
     if (error) throw error;
     return { success: true };
@@ -178,9 +210,63 @@ export async function adminDeleteSupportTicket(ticketId: string, requestingUserI
   }
 }
 
-export async function adminRunDeepScan(requestingUserId: string) {
+export async function adminResetAvatar(targetUserId: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_diagnostics');
+    const { isRoot } = await verifyAdminPermission('perm_content');
+    
+    // Root-skydd
+    const { data: target } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', targetUserId).single();
+    if (target?.auth_email === ROOT_EMAIL) {
+       throw new Error('Säkerhetsspärr: Root-administratörens bild kan inte nollställas här.');
+    }
+
+    const { error } = await supabaseAdmin.from('profiles').update({ avatar_url: null }).eq('id', targetUserId);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function adminResetPresentation(targetUserId: string) {
+  try {
+    const { isRoot } = await verifyAdminPermission('perm_content');
+    
+    // Root-skydd
+    const { data: target } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', targetUserId).single();
+    if (target?.auth_email === ROOT_EMAIL) {
+       throw new Error('Säkerhetsspärr: Root-administratörens bio kan inte nollställas här.');
+    }
+
+    const { error } = await supabaseAdmin.from('profiles').update({ presentation: '' }).eq('id', targetUserId);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function adminResetTheme(targetUserId: string) {
+  try {
+    await verifyAdminPermission('perm_content');
+    
+    // Root-skydd
+    const { data: target } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', targetUserId).single();
+    if (target?.auth_email === ROOT_EMAIL) {
+       throw new Error('Säkerhetsspärr: Root-administratörens tema kan inte nollställas här.');
+    }
+
+    const { error } = await supabaseAdmin.from('profiles').update({ custom_style: null }).eq('id', targetUserId);
+    if (error) throw error;
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
+export async function adminRunDeepScan() {
+  try {
+    await verifyAdminPermission('perm_diagnostics');
     let issues: any[] = [];
     
     // 1. Spökpoäng i Snake
@@ -266,9 +352,9 @@ export async function adminRunDeepScan(requestingUserId: string) {
   }
 }
 
-export async function adminFixDeepScanIssue(issueId: string, requestingUserId: string) {
+export async function adminFixDeepScanIssue(issueId: string) {
   try {
-    await verifyAdminPermission(requestingUserId, 'perm_diagnostics');
+    await verifyAdminPermission('perm_diagnostics');
     let fixedMsg = '';
 
     if (issueId === 'cleanup_snake') {

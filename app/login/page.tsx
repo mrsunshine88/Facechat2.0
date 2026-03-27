@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
 import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare } from 'lucide-react'
 
-import { prepareNewSignup } from '@/app/actions/userActions'
+import { prepareNewSignup, isUserConfirmed } from '@/app/actions/userActions'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -132,6 +132,14 @@ export default function Login() {
     setLoading(true)
     setError('')
     try {
+      // SÄKERHETSKONTROLL: Blockera återställning om kontot inte är aktiverat
+      const active = await isUserConfirmed(email);
+      if (!active) {
+        setError('Ditt konto är ej aktiverat. Vänligen aktivera det via ditt välkomstmejl först, eller registrera dig på nytt.');
+        setLoading(false);
+        return;
+      }
+
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
         redirectTo: 'https://facechat.se/update-password',
       })

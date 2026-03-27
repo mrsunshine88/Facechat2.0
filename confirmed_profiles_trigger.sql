@@ -10,13 +10,20 @@ RETURNS trigger AS $$
 BEGIN
   -- Skapa profilen ENDAST om email_confirmed_at precis blev satt (inte var satt förut)
   IF NEW.email_confirmed_at IS NOT NULL AND (OLD.email_confirmed_at IS NULL OR OLD.email_confirmed_at IS DISTINCT FROM NEW.email_confirmed_at) THEN
+    
+    -- SÄKERHET: Om användarnamn saknas i metadatan, avbryt profilskapandet.
+    -- Detta förhindrar att "Glömt lösenord"-flödet på obekräftade konton skapar tomma profiler.
+    IF (NEW.raw_user_meta_data->>'username') IS NULL OR (NEW.raw_user_meta_data->>'username') = '' THEN
+      RETURN NEW;
+    END IF;
+
     -- Kolla om profilen redan finns för att undvika dubbletter
     IF NOT EXISTS (SELECT 1 FROM public.profiles WHERE id = NEW.id) THEN
       INSERT INTO public.profiles (id, username, avatar_url)
       VALUES (
         NEW.id, 
-        COALESCE(NEW.raw_user_meta_data->>'username', 'Medlem_' || substr(NEW.id::text, 1, 5)), 
-        NEW.raw_user_meta_data->>'avatar_url'
+        NEW.raw_user_meta_data->>'username', 
+        COALESCE(NEW.raw_user_meta_data->>'avatar_url', '')
       );
     END IF;
   END IF;

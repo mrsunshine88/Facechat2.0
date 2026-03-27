@@ -1,14 +1,27 @@
 "use server";
 
 import { createClient } from '@supabase/supabase-js';
+import { createClient as createServerClient } from '@/utils/supabase/server';
+import { sanitizeCSS } from '@/utils/securityUtils';
 
-export async function deleteUserAccount(userId: string, requestingUserId: string, isAdmin: boolean) {
+export async function deleteUserAccount(userId: string) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return { error: 'Serverkonfiguration saknas (SUPABASE_SERVICE_ROLE_KEY saknas i .env.local).' };
   }
 
+  const serverSupabase = await createServerClient();
+  const { data: { user: requestingUser } } = await serverSupabase.auth.getUser();
+
+  if (!requestingUser) {
+    return { error: 'Du måste vara inloggad för att utföra denna åtgärd.' };
+  }
+
   // Enkel behörighetskontroll: Man får radera sig själv, eller så måste man vara admin
-  if (userId !== requestingUserId && !isAdmin) {
+  // Vi kollar faktiskt isAdmin på servern via profilen
+  const { data: requestingProfile } = await serverSupabase.from('profiles').select('is_admin').eq('id', requestingUser.id).single();
+  const isActualAdmin = requestingProfile?.is_admin || requestingUser.email === 'apersson508@gmail.com';
+
+  if (userId !== requestingUser.id && !isActualAdmin) {
     return { error: 'Behörighet saknas för att radera detta konto.' };
   }
 
@@ -151,5 +164,134 @@ export async function prepareNewSignup(email: string) {
   } catch (err: any) {
     console.error("Fel i prepareNewSignup:", err);
     return { error: err.message };
+  }
+}
+
+/**
+ * Kontrollerar om ett konto är bekräftat/aktiverat.
+ * Används för att stoppa lösenordsåterställning för icke-existerande/obekräftade konton.
+ */
+export async function isUserConfirmed(email: string) {
+  if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    return false;
+  }
+
+  const supabaseAdmin = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL,
+    process.env.SUPABASE_SERVICE_ROLE_KEY,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  try {
+    // Vi hämtar användaren via admin-API för att se email_confirmed_at
+    const { data: { users }, error } = await supabaseAdmin.auth.admin.listUsers();
+    if (error) throw error;
+
+    const user = users.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    
+    // Om användaren finns OCH är bekräftad
+    return !!(user && user.email_confirmed_at);
+  } catch (err) {
+    console.error("Fel vid verifiering av användarstatus:", err);
+    return false;
+  }
+}
+
+/**
+ * Sparar användarens Krypin-design och presentation på ett säkert sätt.
+ * Inkluderar strikt CSS-sanering (Fortnox Standard).
+ */
+export async function saveKrypinDesign(draftCss: string, presentationText: string) {
+  try {
+    const serverSupabase = await createServerClient();
+    const { data: { user } } = await serverSupabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'Du måste vara inloggad för att spara din design.' };
+    }
+
+    // 1. Sanera CSS-koden (Skydd mot CSS-exfiltrering och XSS)
+    const cleanedCss = sanitizeCSS(draftCss);
+
+    // 2. Sanera presentationen (Enkel trim och längdkontroll)
+    const cleanedPresentation = presentationText?.substring(0, 10000) || "";
+
+    // 3. Uppdatera databasen via Admin (för att bypassa eventuella RLS-hinder för design-fältet)
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { error } = await supabaseAdmin.from('profiles').update({
+      custom_style: cleanedCss,
+      presentation: cleanedPresentation
+    }).eq('id', user.id);
+
+    if (error) throw error;
+
+    return { 
+      success: true, 
+      message: 'Din design har sparats och säkerhetskontrollerats! 🛡️',
+      cleanedCss 
+    };
+  } catch (err: any) {
+    console.error("Error saving design:", err);
+    return { error: err.message || 'Kunde inte spara designen.' };
+  }
+}
+
+/**
+ * Uppdaterar användarens profil (username, city, intressen) på ett säkert sätt.
+ */
+export async function updateUserProfile(payload: { username?: string, city?: string, interests?: string[], show_interests?: boolean }) {
+  try {
+    const serverSupabase = await createServerClient();
+    const { data: { user } } = await serverSupabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'Du måste vara inloggad för att ändra din profil.' };
+    }
+
+    const updateData: any = {};
+    
+    // 1. Sanera och validera Användarnamn
+    if (payload.username !== undefined) {
+      const cleanUsername = payload.username.trim().replace(/[<>\"\'\&]/g, '').substring(0, 30);
+      if (cleanUsername.length < 3) {
+        return { error: 'Användarnamnet måste vara minst 3 tecken.' };
+      }
+      // Kolla kollision (ignorerar nuvarande)
+      const { data: existing } = await serverSupabase.from('profiles').select('id').ilike('username', cleanUsername).neq('id', user.id).limit(1);
+      if (existing && existing.length > 0) {
+        return { error: 'Detta användarnamn är tyvärr redan upptaget.' };
+      }
+      updateData.username = cleanUsername;
+    }
+
+    // 2. City & Intressen
+    if (payload.city !== undefined) {
+      updateData.city = payload.city.substring(0, 50).replace(/[<>\"\'\&]/g, '');
+    }
+    if (payload.interests !== undefined) {
+      updateData.interests = payload.interests;
+    }
+    if (payload.show_interests !== undefined) {
+      updateData.show_interests = payload.show_interests;
+    }
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { error } = await supabaseAdmin.from('profiles').update(updateData).eq('id', user.id);
+    if (error) throw error;
+
+    return { success: true, message: 'Din profil har uppdaterats säkert!' };
+  } catch (err: any) {
+    console.error("Error updating profile:", err);
+    return { error: err.message || 'Kunde inte uppdatera profilen.' };
   }
 }

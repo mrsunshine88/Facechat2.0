@@ -6,6 +6,8 @@ import { Mail, Book, Users, Star, Settings, User, FileEdit, Search, Shield, Help
 import { PROFILE_SONGS } from './songs';
 import { createBrowserClient } from '@supabase/ssr';
 import SnakeGame from '@/components/SnakeGame';
+import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
+import { sanitizeCSS } from '@/utils/securityUtils';
 
 // ... (PrivacyToggle and SettingsDashboard remain similar but simplified for now)
 const PrivacyToggle = ({ label }: { label: string }) => {
@@ -1135,19 +1137,28 @@ function MittKrypinContent() {
   };
 
   const handlePreviewCss = () => {
-    const safeRegexCss = draftCss.replace(/<\/?[^>]+(>|$)/g, "").replace(/javascript:/gi, "").replace(/expression\(/gi, "").substring(0, 10000);
-    setPreviewCss(safeRegexCss);
+    // Säkrad förhandsgranskning inuti webbläsaren (Fortnox Standard)
+    const safeCss = sanitizeCSS(draftCss);
+    setPreviewCss(safeCss);
     setIsEditingKrypin(false);
   };
 
   const handleSaveLiveCss = async () => {
     if (previewCss === null) return;
-    const { error } = await supabase.from('profiles').update({ custom_style: previewCss, presentation: presentationText }).eq('id', currentUser.id);
-    if (!error) {
-      setCurrentUser({ ...currentUser, custom_style: previewCss, presentation: presentationText });
+    
+    // Vi använder nu den säkra Server Actionen istället för direkt DB-uppdatering
+    const result = await saveKrypinDesign(previewCss, presentationText);
+    
+    if (result.success) {
+      setCurrentUser({ 
+        ...currentUser, 
+        custom_style: result.cleanedCss || previewCss, 
+        presentation: presentationText 
+      });
       setPreviewCss(null);
+      setCustomAlert(result.message);
     } else {
-      alert("Fel vid sparande: " + error.message);
+      setCustomAlert("Fel vid sparande: " + result.error);
     }
   };
 

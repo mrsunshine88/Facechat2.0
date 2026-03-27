@@ -5,8 +5,20 @@ import { useRouter } from 'next/navigation';
 import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { deleteUserAccount } from '../actions/userActions';
-import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom } from '../actions/adminActions';
+import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme } from '../actions/adminActions';
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
+
+const ADMIN_TABS = [
+  { id: 'dashboard', label: 'Översikt', icon: Activity },
+  { id: 'users', label: 'Användare', icon: Users },
+  { id: 'bilder', label: 'Bilder', icon: Shield },
+  { id: 'reports', label: 'Anmälningar', icon: AlertTriangle },
+  { id: 'security', label: 'Säkerhet', icon: ShieldAlert },
+  { id: 'rooms', label: 'Rum', icon: Database },
+  { id: 'support', label: 'Support', icon: LifeBuoy },
+  { id: 'diagnostics', label: 'Hälsokontroll', icon: Wrench },
+  { id: 'audit', label: 'Loggar', icon: History }
+];
 
 export const logAdminAction = async (supabase: any, adminId: string, action: string) => {
   try {
@@ -143,6 +155,7 @@ export default function AdminPanel() {
     switch (activeTab) {
       case 'dashboard': return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess />;
       case 'users': return canManageUsers ? <AdminUsers supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'bilder': return canManageContent ? <AdminBilder supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
       case 'reports': return canManageContent ? <AdminReports supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
       case 'content': return (canManageContent || canManageChat) ? <AdminContent supabase={supabase} currentUser={userProfile} perms={{ content: canManageContent, chat: canManageChat }} /> : <NoAccess />;
       case 'rooms': return canManageRooms ? <AdminRooms supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
@@ -540,7 +553,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     if (user.username?.toLowerCase() === 'apersson508' || user.id === currentUser.id) return alert('Detta konto är skyddat som Super-Admin.');
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte blockeras.');
     const newStatus = !user.is_banned;
-    const res = await toggleBlockUser(user.id, currentUser.id, newStatus);
+    const res = await toggleBlockUser(user.id, newStatus);
     if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `${newStatus ? 'Blockerade' : 'Avblockerade'} ${user.username}`);
     fetchUsers(search);
@@ -553,7 +566,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     const reason = prompt(`Ange anledning för att spärra IP ${ip} (${username}):`, 'Spam/Missbruk');
     if (reason === null) return;
 
-    const res = await adminBlockIP(ip, reason, currentUser.id);
+    const res = await adminBlockIP(ip, reason);
     if (res?.error) return alert('Fel: ' + res.error);
     
     await logAdminAction(supabase, currentUser.id, `Spärrade IP-adress ${ip} (${username})`);
@@ -562,7 +575,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
   const handleUnblockIP = async (ip: string) => {
     if (confirm(`Vill du ta bort spärren för IP ${ip}?`)) {
-      const res = await adminUnblockIP(ip, currentUser.id);
+      const res = await adminUnblockIP(ip);
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Tog bort IP-spärr för ${ip}`);
       fetchBlockedIps();
@@ -573,7 +586,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     if (user.username?.toLowerCase() === 'apersson508' || user.id === currentUser.id) return alert('Inkorrekt, du kan inte radera the creator.');
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');
     if (confirm(`VARNING: Detta tar bort ${user.username} och allt deras innehåll för alltid. Är du helt säker?`)) {
-      const res = await deleteUserAccount(user.id, currentUser.id, true);
+      const res = await deleteUserAccount(user.id);
       if (res?.error) {
         alert('Ett fel uppstod vid radering: ' + res.error);
         return;
@@ -581,6 +594,30 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       await logAdminAction(supabase, currentUser.id, `Raderade kontot ${user.username} permanent från systemet`);
       fetchUsers(search);
     }
+  };
+
+  const handleResetAvatar = async (user: any) => {
+    if (!confirm(`Vill du verkligen ta bort profilbilden för ${user.username}?`)) return;
+    const res = await adminResetAvatar(user.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    await logAdminAction(supabase, currentUser.id, `Raderade profilbild för ${user.username}`);
+    fetchUsers(search);
+  };
+
+  const handleResetPresentation = async (user: any) => {
+    if (!confirm(`Vill du verkligen rensa presentationstexten för ${user.username}?`)) return;
+    const res = await adminResetPresentation(user.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    await logAdminAction(supabase, currentUser.id, `Rensade presentation för ${user.username}`);
+    fetchUsers(search);
+  };
+
+  const handleResetTheme = async (user: any) => {
+    if (!confirm(`Vill du verkligen nollställa designtemat för ${user.username}?`)) return;
+    const res = await adminResetTheme(user.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    await logAdminAction(supabase, currentUser.id, `Nollställde tema/CSS för ${user.username}`);
+    fetchUsers(search);
   };
 
   return (
@@ -669,6 +706,18 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Trash2 size={14} /> Radera Konto
                 </button>
+
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', width: '100%', marginTop: '0.25rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
+                  <button onClick={() => handleResetAvatar(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Eraser size={12} /> Nollställ Bild
+                  </button>
+                  <button onClick={() => handleResetPresentation(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Edit2 size={12} /> Rensa Bio
+                  </button>
+                  <button onClick={() => handleResetTheme(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                    <Wrench size={12} /> Rensa Tema
+                  </button>
+                </div>
               </div>
             </div>
           );
@@ -696,6 +745,69 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
               </div>
             ))}
           </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ==========================================================
+// 2.3 BILDER (Avatar Review Gallery)
+// ==========================================================
+const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+  const [usersWithAvatars, setUsersWithAvatars] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAvatars = async () => {
+    setLoading(true);
+    const { data } = await supabase.from('profiles').select('*').not('avatar_url', 'is', null).order('created_at', { ascending: false });
+    if (data) setUsersWithAvatars(data);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    fetchAvatars();
+  }, [supabase]);
+
+  const handleResetAvatar = async (user: any) => {
+    if (!confirm(`Vill du verkligen ta bort profilbilden för ${user.username}?`)) return;
+    const res = await adminResetAvatar(user.id);
+    if (res?.error) return alert('Fel: ' + res.error);
+    await logAdminAction(supabase, currentUser.id, `Raderade profilbild för ${user.username} (via Galleri)`);
+    fetchAvatars();
+  };
+
+  return (
+    <div style={{ maxWidth: '1200px', margin: '0 auto', width: '100%' }}>
+      <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '0.5rem', color: 'var(--text-main)' }}>Bilder</h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Här ser du alla aktiva profilbilder för att snabbt kunna rensa bort olämpligt innehåll.</p>
+
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: '3rem' }}>Laddar galleri...</div>
+      ) : (
+        <div style={{ 
+          display: 'grid', 
+          gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', 
+          gap: '1.5rem' 
+        }}>
+          {usersWithAvatars.length === 0 && <p>Inga profilbilder hittades.</p>}
+          {usersWithAvatars.map(u => (
+            <div key={u.id} className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+               <div style={{ width: '150px', height: '150px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '1px solid var(--border-color)' }}>
+                  <img src={u.avatar_url} alt={u.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+               </div>
+               <div style={{ textAlign: 'center' }}>
+                  <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--text-main)' }}>{u.username}</p>
+                  <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>{u.city || 'Ingen ort'}</p>
+               </div>
+               <button 
+                  onClick={() => handleResetAvatar(u)}
+                  style={{ width: '100%', backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.6rem', borderRadius: '8px', cursor: 'pointer', fontWeight: '700', fontSize: '0.85rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+               >
+                  <Trash2 size={16} /> Radera Bild
+               </button>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -780,10 +892,10 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
       if (report.item_type === 'whiteboard_comment') table = 'whiteboard_comments';
 
       if (table) {
-        const res = await adminDeleteContent(table, report.item_id, currentUser.id);
+        const res = await adminDeleteContent(table, report.item_id);
         if (res?.error) return alert('Kunde inte radera: ' + res.error);
       }
-      await adminResolveReport(report.id, 'resolved', currentUser.id);
+      await adminResolveReport(report.id, 'resolved');
       await logAdminAction(supabase, currentUser.id, `Hanterade en anmälan och raderade ${table}-inlägg.`);
       fetchReports();
     }
@@ -799,11 +911,11 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
         }
 
         // 2. Radera hela tråden (cascadar till posts i DB)
-        const res = await adminDeleteContent('forum_threads', post.thread_id, currentUser.id);
+        const res = await adminDeleteContent('forum_threads', post.thread_id);
         if (res?.error) return alert('Kunde inte radera tråd: ' + res.error);
 
         // 3. Markera rapporten som löst
-        await adminResolveReport(reportId, 'resolved', currentUser.id);
+        await adminResolveReport(reportId, 'resolved');
         await logAdminAction(supabase, currentUser.id, `Hanterade en anmälan och raderade en hel forumtråd (Tråd-ID: ${post.thread_id}).`);
         fetchReports();
       } catch (err: any) {
@@ -814,16 +926,16 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   const handleBanUser = async (report: any) => {
     if (confirm(`Ska användare ${report.reported?.username || 'Okänd'} bannas globalt från sajten?`)) {
-      const res = await toggleBlockUser(report.reported_user_id, currentUser.id, true);
+      const res = await toggleBlockUser(report.reported_user_id, true);
       if (res?.error) return alert('Behörighet saknas: ' + res.error);
-      await adminResolveReport(report.id, 'resolved', currentUser.id);
+      await adminResolveReport(report.id, 'resolved');
       await logAdminAction(supabase, currentUser.id, `Bannade användare ${report.reported?.username} pga en anmälan.`);
       fetchReports();
     }
   };
 
   const handleDismiss = async (id: string) => {
-    await adminResolveReport(id, 'dismissed', currentUser.id);
+    await adminResolveReport(id, 'dismissed');
     await logAdminAction(supabase, currentUser.id, `Avvisade anmälan (ID: ${id}) utan åtgärd.`);
     fetchReports();
   }
@@ -1023,7 +1135,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
 
   const handleDelete = async (table: string, id: string, threadTitle?: string) => {
     if (confirm('Ska inlägget raderas globalt?')) {
-      const res = await adminDeleteContent(table, id, currentUser.id);
+      const res = await adminDeleteContent(table, id);
       if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
       const tableName = table === 'whiteboard' ? 'Whiteboard' : (table === 'guestbook' ? 'Gästboken' : (table === 'chat_messages' ? 'Chatten' : 'forum'));
       
@@ -1187,7 +1299,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                     ? 'ÄR DU HELT SÄKER? Detta kommer radera HELA topplistan permanent för ALLA spel!'
                     : `ÄR DU SÄKER? Detta nollställer topplistan för ${selectedArcadeGame.toUpperCase()}!`;
                   if (confirm(confirmMsg)) {
-                    const res = await adminDeleteSnakeScore(null, currentUser.id, true, selectedArcadeGame);
+                    const res = await adminDeleteSnakeScore(null, true, selectedArcadeGame);
                     if (res?.error) alert('Det gick fel: ' + res.error);
                     else {
                       alert(`Arkadens topplistor raderades (${selectedArcadeGame})!`);
@@ -1212,7 +1324,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                   <span style={{ fontSize: '1.5rem', fontWeight: '800', color: '#10b981' }}>{score.score}</span>
                   <button onClick={async () => {
                     if (confirm('Radera just detta rekord?')) {
-                      const res = await adminDeleteSnakeScore(score.id, currentUser.id, false);
+                      const res = await adminDeleteSnakeScore(score.id, false);
                       if (res?.error) return alert('Kunde inte radera: ' + res.error);
                       await logAdminAction(supabase, currentUser.id, `Raderade ett fusk-rekord (${score.score} poäng) av ${score.profiles?.username || 'Okänd'}`);
                       fetchSnakeScores();
@@ -1257,7 +1369,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
   };
 
   const handleAdd = async (userId: string, username: string) => {
-    const res = await adminAddSecretUserToRoom(room.id, userId, currentUser.id);
+    const res = await adminAddSecretUserToRoom(room.id, userId);
     if (res.error) return alert("Fel: " + res.error);
     await logAdminAction(supabase, currentUser.id, `Lade till  i hemligt rum "${room.name}"`);
     setSearch('');
@@ -1267,7 +1379,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
 
   const handleRemove = async (userId: string, username: string) => {
     if (!confirm(`Ta bort  från ${room.name}?`)) return;
-    const res = await adminRemoveSecretUserFromRoom(room.id, userId, currentUser.id);
+    const res = await adminRemoveSecretUserFromRoom(room.id, userId);
     if (res.error) return alert("Fel: " + res.error);
     await logAdminAction(supabase, currentUser.id, `Tog bort  från hemligt rum "${room.name}"`);
     onRefresh();
@@ -1329,7 +1441,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
     e.preventDefault();
     if (!newRoomName) return;
     const { data: { user } } = await supabase.auth.getUser();
-    const res = await adminRoomAction('insert', null, { name: newRoomName, created_by: user.id, is_secret: isSecret, allowed_users: [] }, currentUser.id);
+    const res = await adminRoomAction('insert', null, { name: newRoomName, created_by: user.id, is_secret: isSecret, allowed_users: [] });
     if (res?.error) return alert('Fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `Skapade ${isSecret ? 'hemliga ' : ''}chattrummet "${newRoomName}"`);
     setNewRoomName('');
@@ -1338,7 +1450,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
   const handleDeleteRoom = async (id: string, name: string) => {
     if (confirm(`Är du säker på att du vill radera chattrummet "${name}"? Det kommer kasta ut alla som är där inne.`)) {
-      const res = await adminRoomAction('delete', id, null, currentUser.id);
+      const res = await adminRoomAction('delete', id, null);
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Raderade chattrummet "${name}"`);
       fetchRooms();
@@ -1349,7 +1461,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
     const rm = rooms.find(r => r.id === id);
     const pw = prompt(`Ange ett nytt lösenord för rummet ${rm?.name} (lämna tomt för att ta bort lösenordskravet):`);
     if (pw !== null) {
-      const res = await adminRoomAction('update', id, { password: pw === '' ? null : pw }, currentUser.id);
+      const res = await adminRoomAction('update', id, { password: pw === '' ? null : pw });
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Satte ett lösenord på chattrummet "${rm?.name}"`);
       fetchRooms();
@@ -1358,7 +1470,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
   const handleRemovePassword = async (id: string, name: string) => {
     if (confirm(`Säker på att du vill ta bort lösenordet för "${name}"?`)) {
-      const res = await adminRoomAction('update', id, { password: null }, currentUser.id);
+      const res = await adminRoomAction('update', id, { password: null });
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Tog bort lösenordet på chattrum (${name})`);
       fetchRooms();
@@ -1368,7 +1480,7 @@ const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any
   const handleRename = async (id: string, currentName: string) => {
     const fresh = prompt('Skriv nytt namn för rummet:', currentName);
     if (fresh && fresh.trim() !== currentName) {
-      const res = await adminRoomAction('update', id, { name: fresh.trim() }, currentUser.id);
+      const res = await adminRoomAction('update', id, { name: fresh.trim() });
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Döpte om rum "${currentName}" till "${fresh}"`);
       fetchRooms();
@@ -1538,7 +1650,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   }
 
   const handleMakeAdmin = async (userId: string, username: string) => {
-    const res = await adminUpdatePermissions(userId, { is_admin: true }, currentUser.id);
+    const res = await adminUpdatePermissions(userId, { is_admin: true });
     if (res?.error) return alert('Fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `Befordrade ${username} till Admin`);
     setSearch('');
@@ -1554,7 +1666,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
       is_admin: false, perm_users: false, perm_content: false, perm_rooms: false,
       perm_roles: false, perm_support: false, perm_logs: false, perm_chat: false,
       perm_diagnostics: false, perm_stats: false
-    }, currentUser.id);
+    });
     if (res?.error) return alert('Fel: ' + res.error);
 
     await logAdminAction(supabase, currentUser.id, `Tog bort Admin-status från ${user.username}`);
@@ -1570,7 +1682,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
     setActiveEditAdmin(updatedUser);
 
     // Skicka till servern
-    const res = await adminUpdatePermissions(user.id, { [column]: val }, currentUser.id);
+    const res = await adminUpdatePermissions(user.id, { [column]: val });
 
     if (res?.error) {
       alert('Kunde inte uppdatera behörighet: ' + res.error);
@@ -1741,7 +1853,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
   const handleDeleteTicket = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm('Är du säker på att du vill radera detta supportärende permanent?')) {
-      const res = await adminDeleteSupportTicket(id, currentUser.id);
+      const res = await adminDeleteSupportTicket(id);
       if (res?.error) return alert('Kunde inte radera: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Raderade ett supportärende (${id})`);
       fetchTickets();
@@ -1992,7 +2104,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
   const handleAddWord = async () => {
     if (!newForbiddenWord.trim()) return;
-    const res = await adminAddForbiddenWord(newForbiddenWord, currentUser.id);
+    const res = await adminAddForbiddenWord(newForbiddenWord);
     if (res?.error) return alert('Fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `Lade till förbjudet ord: "${newForbiddenWord}"`);
     setNewForbiddenWord('');
@@ -2002,7 +2114,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
   const handleRemoveWord = async (id: string, word: string) => {
     if (confirm(`Vill du ta bort "${word}" från filtret?`)) {
-      const res = await adminRemoveForbiddenWord(id, currentUser.id);
+      const res = await adminRemoveForbiddenWord(id);
       if (res?.error) return alert('Fel: ' + res.error);
       await logAdminAction(supabase, currentUser.id, `Tog bort förbjudet ord: "${word}"`);
       fetchForbiddenWords();
@@ -2164,7 +2276,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     } : p));
 
     // 8. KÖR DEEP SCAN (Server Actions för resten av systemet)
-    const scanRes = await adminRunDeepScan(currentUser.id);
+    const scanRes = await adminRunDeepScan();
     if (scanRes?.success && scanRes.issues) {
       if (scanRes.issues.length > 0) {
         const newItems = scanRes.issues.map((iss: any) => ({
@@ -2173,7 +2285,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
           status: 'warning' as const,
           message: iss.message,
           fixAction: async () => {
-            const fixRes = await adminFixDeepScanIssue(iss.id, currentUser.id);
+            const fixRes = await adminFixDeepScanIssue(iss.id);
             if (fixRes?.error) alert('Det gick inte att laga: ' + fixRes.error);
             else {
               await logAdminAction(supabase, currentUser.id, `Vårdcentralen Deep-Lösning: ${fixRes.message}`);

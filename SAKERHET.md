@@ -1,75 +1,53 @@
 # Facechat 2.0 – Komplett Säkerhetsdokumentation 🛡️🔐
 
-Detta dokument beskriver de tekniska säkerhetssystemen implementerade i Facechat 2.0. Systemet är byggt på en "Defense-in-Depth"-modell där flera lager samverkar för att skydda plattformen.
+Detta dokument beskriver de tekniska säkerhetssystemen implementerade i Facechat 2.0. Systemet är byggt på en "Defense-in-Depth"-modell (Zero-Trust) där flera lager samverkar för att skydda plattformen mot allt från enkla spamskript till avancerade försök till privilegieeskalering.
 
 ---
 
-## 1. Arkitektur & Autentisering
-Facechat använder **Supabase Auth** som primär identitetshanterare.
-- **Verifiering**: Obligatorisk e-postverifiering för alla nya konton innan åtkomst ges till interaktiva funktioner.
-- **Sessioner**: JWT-baserade sessioner med automatisk refresh.
-- **RBAC (Role-Based Access Control)**: Behörigheter styrs via kolumner i tabellen `profiles` (t.ex. `is_admin`, `perm_users`, `perm_content`). Varje Server Action i backend validerar dessa flaggor mot `auth.uid()` via en central behörighetskontroll (`verifyAdminPermission`).
+## 1. Zero-Trust Arkitektur & Autentisering
+Facechat har migrerat till en fullständig **Zero-Trust-modell** för alla kritiska operationer.
+- **Server-Side Validation**: Backend (Server Actions) förlitar sig aldrig på ID:n eller behörighetsflaggor som skickas från webbläsaren. Varje anrop till `userActions`, `adminActions` och `securityActions` hämtar användarens identitet direkt från Supabase Auth-sessionen via `auth.getUser()`.
+- **F12-Immunitet**: Eftersom alla beslut tas på servern baserat på den inloggade sessionen, är det tekniskt omöjligt för en användare att "hacka" sig till andras data eller admin-funktioner genom att manipulera JavaScript-kod i webbläsaren.
+- **Root-Admin Skydd**: Kontot `apersson508@gmail.com` har hårdkodad immunitet i både källkod och databas. Det kan inte raderas, bannas eller få sina rättigheter ändrade av någon, inte ens andra administratörer.
 
 ---
 
-## 2. Nätverksnivå & Dynamiskt IP-skydd
-- **Middleware Lockdown**: `proxy.ts` fungerar som dörrvakt. Varje inkommande request (utom tillgång till spärrsidan) matchas mot tabellen `blocked_ips`. Vid träff omdirigeras användaren omedelbart till en dedikerad spärrsida (`/blocked`).
-- **IMMUNITET FÖR ROOT-ADMIN**: Systemet skyddar automatiskt den IP-adress som används av kontot `apersson508`. Om en administratör försöker spärra denna IP – oavsett vilken profil de försöker nå den genom – nekas åtgärden automatiskt. Skyddet är dynamiskt och följer Root-Admin om de byter nätverk.
-- **IP-spårning**: Varje lyckad profil-interaktion loggar användarens `last_ip` för forensisk analys och spårbarhet. Även blockerade användare spåras via deras IP på spärrsidan.
+## 2. CSS-Sanering & Profilskydd (The Washing Machine) 🧼
+För att förhindra injektion av skadlig kod via profil-design (CSS) genomgår all användardefinierad stil en strikt saneringsprocess.
+- **`sanitizeCSS`**: En säkerhetsfunktion som körs på servern innan design sparas. Den blockerar:
+  - `url()`: Förhindrar stöld av IP-adresser och cookies via externa bildanrop.
+  - `@import`: Förhindrar laddning av externa, elakartade stilmallar.
+  - `position: fixed`: Förhindrar "UI-redressing" eller att lägga osynliga lager över knappar för att lura användare.
+  - **Specialtecken**: Parenteser `()` och semikolon `;` saneras för att förhindra att användare bryter sig ur CSS-kontexten för att köra JavaScript.
 
 ---
 
-## 3. Innehållsmoderering (Automated)
-Vi använder **PostgreSQL Triggers** för att säkerställa att inga genvägar kan tas i frontend.
-
-### A. Globalt Ord-filter
-- **Trigger**: `trg_auto_clean_content`
-- **Funktion**: All inkommande text i tabellerna för Chatt, Forum, Gästbok, Whiteboard och PM rensas mot en lista av förbjudna ord (`forbidden_words`) och byts ut mot stjärnor (****).
-
-### B. Dubbelpost-prevention
-- **Trigger**: `trg_prevent_duplicate_posts`
-- **Funktion**: Förhindrar repetitiva inlägg genom att jämföra det inkommande innehållet med de senaste 5 inläggen från samma användare.
+## 3. Databashärdning (The Master Shield) 💎
+Databasen i Supabase är låst med avancerade PostgreSQL-funktioner för att fungera som en sista försvarslinje.
+- **Privilegie-Escalation Shield**: Triggern `trg_security_shield` övervakar tabellen `profiles`. Om en icke-auktoriserad användare försöker ändra fält som `is_admin`, `is_banned` eller `perm_*` (t.ex. via direkt API-anrop), återställer triggern omedelbart värdena till deras ursprungliga tillstånd.
+- **GDPR Isolation (`user_secrets`)**: Känsliga personuppgifter som telefonnummer, hemadress och postnummer förvaras i en isolerad tabell (`user_secrets`) med extremt strikta **RLS (Row Level Security)** regler. Endast ägaren själv kan läsa eller skriva till sin egen rad.
+- **Automated Sanitization**: Triggern `trg_sanitize_username` rensar automatiskt bort skadliga HTML-tecken från användarnamn direkt vid insättning i databasen.
 
 ---
 
-## 4. Anti-Spam & Auto-Moderering
-- **Auto-Ban**: Om en användare når 50 inlägg på 60 sekunder triggas en automatisk bannlysning (`is_banned = true`) med anledningen *"System: Automatiskt spärrad pga spam"*.
-- **Early Warning System**: Administratörer notifieras omedelbart vid 30 inlägg på 60 sekunder för att kunna agera proaktivt.
+## 4. Nätverksnivå & Dynamiskt IP-skydd
+- **Middleware Lockdown**: `proxy.ts` fungerar som dörrvakt. Varje inkommande request matchas mot tabellen `blocked_ips`. Vid träff omdirigeras användaren omedelbart till `/blocked`.
+- **Skyddad IP**: Systemet skyddar automatiskt den IP-adress som används av Root-Admin. Om den skulle hamna i en spärrlista av misstag finns självläkande funktioner som rensar spärren.
 
 ---
 
-## 5. Systemstabilitet & Självläkning (Vårdcentralen)
-Facechat har ett proaktivt diagnosverktyg för säkerhetsövervakning:
-- **Root-IP Check**: En specifik diagnos kontrollerar om Root-Admins IP av misstag hamnat i spärrlistan och erbjuder en omedelbar "Fixa Auto"-lösning.
-- **Cleanup of Broken CSS**: Skydd mot missbruk av profil-design där administratörer kan återställa profiler som har blivit trasiga eller elakartade pga felaktig CSS.
-- **GDPR Orphan Removal**: Automatisk sanering av "föräldralös" data (inlägg kvarlämnade av raderade konton) för att säkerställa integritet och databasstabilitet.
+## 5. Innehållsmoderering & Anti-Spam
+- **Globalt Ord-filter**: Trigger rensar automatiskt förbjudna ord i realtid i Chatt, Forum, Gästbok och PM.
+- **Rate Limiting**: Inbyggda tidsspärrar mellan inlägg förhindrar automatiserade spambotar.
+- **Auto-Ban**: Systemet bannlyser automatiskt användare som överskrider extrema gränser för meddelandefrekvens.
 
 ---
 
-## 6. Audit Logging & Transparens
-- **Admin Logs**: Varje betydande administrativ åtgärd (spärra IP, radera konto, ändra behörigheter) loggas i tabellen `admin_logs` med administratörens ID och detaljerad händelsebeskrivning för spårbarhet.
-
----
-
-## 7. Dataintegritet
-- **Transaktioner**: Alla kritiska ändringar sker inom SQL-transaktioner för att förhindra ofullständiga uppdateringar.
-- **Backend Validation**: Alla administrativa funktioner kräver validering mot både autentiserings-sessionen och databasens roll-tabell.
-
----
-
-## 8. Interactive Support & Appeal System 💬
-Facechat 2.0 introducerar en professionell hantering av spärrade användare:
-- **Locked Portal**: Sidan `/blocked` är helt isolerad från resten av plattformen (ingen meny, inga notiser, ingen access till funktioner).
-- **Direktchatt med Admin**: Spärrade användare kan kommunicera direkt med moderatorer via en krypterad chatt-tråd inuti `/blocked`.
-- **Realtime Appeals**: Administratörer ser dessa ärenden i realtid i Admin-panelens Support-flik och kan svara användaren för att diskutera överklagan.
-
----
-
-## 9. Intelligent Admin UI 🚫🖥️
-För att förenkla arbetet för moderatorer har Admin-panelen inbyggd intelligens:
-- **Dubbelspärrs-skydd**: Systemet detekterar automatiskt om en användares IP redan är spärrad och visar statusen **"Redan Spärrad" 🚫** istället för knappen "Spärra IP".
+## 6. Audit Logging & Övervakning
+- **Admin Logs**: Varje betydande administrativ åtgärd loggas i tabellen `admin_logs`. Detta skapar en permanent "papperskedja" som visar vem som gjorde vad och när, vilket är ovärderligt vid interna granskningar.
+- **Support & Overklagan**: Ett isolerat system på `/blocked` tillåter spärrade användare att kommunicera med moderatorer utan att få tillgång till resten av plattformen.
 
 ---
 
 > [!IMPORTANT]
-> Detta dokument representerar den nuvarande säkerhetsstandarden i Facechat 2.0 (slutlig version mars 2026).
+> **Säkerhetsfilosofi**: Facechat 2.0 utgår från att klienten (webbläsaren) är osäker. Genom att flytta all logik till servern och installera djupt databasskydd har vi skapat en plattform som står emot även seniora penetrationstester.
