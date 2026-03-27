@@ -1,5 +1,5 @@
 -- =========================================================================
--- COMPLETE PERFORMANCE & BUGFIX OPTIMIZATIONS v3.0 🏎️💨🩺
+-- COMPLETE PERFORMANCE & BUGFIX OPTIMIZATIONS v3.1 🏎️💨🩺
 -- =========================================================================
 
 -- 1. Funktionellt index för blixtsnabb bildrensning
@@ -11,13 +11,9 @@ WHERE avatar_url IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_user_secrets_user_id 
 ON public.user_secrets (user_id);
 
--- 3. Hämta Root-Admins IP (Fixar 400 Bad Request-felet)
-CREATE OR REPLACE FUNCTION public.get_root_admin_ip(target_email text)
-RETURNS text AS $$
-BEGIN
-    RETURN (SELECT last_ip FROM public.profiles WHERE auth_email = target_email LIMIT 1);
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
+-- 3. Städa bort gamla versioner av IP-kontrollen (denna logik flyttas till koden)
+DROP FUNCTION IF EXISTS public.get_root_admin_ip();
+DROP FUNCTION IF EXISTS public.get_root_admin_ip(text);
 
 -- 4. Uppdaterad get_orphan_avatars som använder det nya indexet
 CREATE OR REPLACE FUNCTION public.get_orphan_avatars()
@@ -38,8 +34,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 5. Ge rättigheter till funktionerna
 GRANT EXECUTE ON FUNCTION public.get_orphan_avatars() TO authenticated, service_role;
-GRANT EXECUTE ON FUNCTION public.get_root_admin_ip() TO authenticated, service_role;
 
 -- =========================================================================
--- KLART! Kör detta i din SQL Editor så försvinner 400-felet och segheten.
+-- KLART! Kopiera och kör detta i din SQL Editor.
 -- =========================================================================
