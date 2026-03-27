@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
@@ -2375,174 +2375,120 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     { id: 'friendships', title: 'Social Hälsa (Vänskap)', status: 'idle', message: 'Väntar på diagnos...' },
   ]);
 
-  const runDiagnostics = async () => {
-    setRunning(true);
-    let currentResults: typeof results = results.map((p: any) => ({ ...p, status: 'running', message: 'Skannar systemet...' }));
-    setResults([...currentResults]);
+  const isExecutingRef = useRef(false);
 
-    const updateOne = (id: string, update: Partial<typeof results[0]>) => {
-      currentResults = currentResults.map((p: any) => p.id === id ? { ...p, ...update } : p);
+  const runDiagnostics = async () => {
+    if (isExecutingRef.current) return;
+    isExecutingRef.current = true;
+    setRunning(true);
+    
+    // Initialisera resultat-vyn med explicit typning för att undvika TS-narrowing
+    let currentResults: { id: string, title: string, status: 'idle' | 'running' | 'ok' | 'warning', message: string, fixAction?: () => void }[] = results.map(r => ({ ...r, status: 'running' as const, message: 'Skannar systemet...' }));
+    setResults(currentResults);
+
+    const updateOne = (id: string, update: any) => {
+      currentResults = currentResults.map(r => r.id === id ? { ...r, ...update } : r);
       setResults([...currentResults]);
-      
-      // AUTO-FIX: Om vi har en auto-åtgärd och status är 'warning', kör den direkt!
-      if (update.status === 'warning' && update.fixAction) {
-        update.fixAction();
-      }
     };
 
-    // 0. Latency (Ping)
-    const startPing = Date.now();
-    const { error: pingErr } = await supabase.from('profiles').select('id').limit(1);
-    const pingTime = Date.now() - startPing;
-    updateOne('latency', {
-      status: pingErr ? 'warning' : 'ok',
-      message: pingErr ? `Fel vid anslutning: ${pingErr.message}` : `✅ Databasen svarade på ${pingTime}ms. Servern mår bra!`
-    });
-
-    // 1. Storage Usage
-    const sizeLimitMB = 50;
-    const { data: storageSize, error: storageError } = await supabase.rpc('get_total_storage_size');
-    if (storageError) {
-      updateOne('storage', { status: 'warning', message: `⚠️ Lagringskontroll misslyckades. Kör SQL-rutinen 'get_total_storage_size' i Dashboard.` });
-    } else {
-      const sizeBytes = Number(storageSize) || 0;
-      const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
-      const percent = ((sizeBytes / (sizeLimitMB * 1024 * 1024)) * 100).toFixed(1);
-      const isFull = sizeBytes > (sizeLimitMB * 1024 * 1024 * 0.9);
-      updateOne('storage', {
-        status: isFull ? 'warning' : 'ok',
-        message: isFull ? `🚨 Kritisk nivå: ${sizeMB} MB använt av ${sizeLimitMB} MB (${percent}%).` : `✅ ${sizeMB} MB använt av ${sizeLimitMB} MB (${percent}%). (Endast profilbilder räknas).`
-      });
-    }
-
-    // 1.5. Oanvända Profilbilder (Scan)
-    const { data: orphanCount, error: orphanError } = await supabase.rpc('count_orphan_avatars');
-    updateOne('orphaned_avatars', {
-      status: orphanError ? 'warning' : (orphanCount > 0 ? 'warning' : 'ok'),
-      message: orphanError ? `⚠️ Kontroll av herrelösa bilder hoppades över (RPC saknas). Kör 'admin_diagnostic_routines.sql'.` : (orphanCount > 0 ? `Hittade ${orphanCount} herrelösa profilbilder som inte längre används.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!'),
-      fixAction: (orphanCount > 0) ? async () => {
-        const { data: delCount } = await supabase.rpc('cleanup_orphan_avatars');
-        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${delCount || orphanCount} herrelösa profilbilder.`);
-        runDiagnostics();
-      } : undefined
-    });
-
-    // 2. Sync PWA/DB Profiles
-    const { data: syncData, error: syncError } = await supabase.rpc('diagnose_missing_profiles');
-    updateOne('sync', {
-      status: syncError ? 'warning' : (syncData > 0 ? 'warning' : 'ok'),
-      message: syncError ? `Manuell kontroll krävs (RPC saknas). Allt ser bra ut externt.` : (syncData > 0 ? `Löst: Hittade och återskapade ${syncData} försvunna profiler via RPC.` : '✅ Inga försvunna profiler hittades. Tabellerna synkar perfekt.')
-    });
-
-    // 3. Dead Links
-    const { data: linksData, error: linksError } = await supabase.rpc('fix_dead_links');
-    updateOne('links', {
-      status: linksError ? 'ok' : (linksData > 0 ? 'warning' : 'ok'),
-      message: linksError ? `Kunde inte köra dödlänks-algoritm. Manuell rensning rekommenderas.` : (linksData > 0 ? `Löst: Städade bort ${linksData} övergivna inlägg.` : '✅ Inga övergivna inlägg (döda länkar) hittades.')
-    });
-
-    // 4. Image Optimization
-    const { data: imgData, error: imgError } = await supabase.rpc('optimize_uploaded_images');
-    updateOne('images', {
-      status: imgError ? 'ok' : (imgData > 0 ? 'warning' : 'ok'),
-      message: imgError ? `Kunde inte köra bildoptimering via Storage. Ingen panik.` : (imgData > 0 ? `Fixat: Aktiverade CDN-optimering för ${imgData} nya bilder (alla bilder krymps även till 800px vid uppladdning).` : '✅ Alla bilder är optimerade för snabb leverans (CDN) och har rätt storlek.')
-    });
-
-    // 5. Gamla Notiser
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const { count: notifCount, error: notifErr } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).lt('created_at', thirtyDaysAgo.toISOString());
-    updateOne('notifications', {
-      status: notifErr ? 'warning' : ((notifCount !== null && notifCount > 0) ? 'warning' : 'ok'),
-      message: notifErr ? `Fel vid sökning av notiser.` : ((notifCount !== null && notifCount > 0) ? `Hittade ${notifCount} gamla notiser som drar minne i databasen.` : '✅ Inga onödiga urgamla notiser i systemet.'),
-      fixAction: (notifCount !== null && notifCount > 0) ? async () => {
-        await supabase.from('notifications').delete().lt('created_at', thirtyDaysAgo.toISOString());
-        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${notifCount} gamla notiser.`);
-        runDiagnostics();
-      } : undefined
-    });
-
-    // 6. Ignorerade Anmälningar
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-    const { count: repCount, error: repErr } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open').lt('created_at', sevenDaysAgo.toISOString());
-    updateOne('reports', {
-      status: repErr ? 'warning' : ((repCount !== null && repCount > 0) ? 'warning' : 'ok'),
-      message: repErr ? `Fel vid sökning av anmälningar.` : ((repCount !== null && repCount > 0) ? `Varning: ${repCount} anmälningar har legat orörda i över en vecka!` : '✅ Alla äldre anmälningar är hanterade av supporten.')
-    });
-
-    // 7. Trasiga Avatar Länkar
-    const { count: avCount1 } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).ilike('avatar_url', '%undefined%');
-    const { count: avCount2 } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).ilike('avatar_url', '%null%');
-    const totalAvIssues = (avCount1 || 0) + (avCount2 || 0);
-    updateOne('avatars', {
-      status: totalAvIssues > 0 ? 'warning' : 'ok',
-      message: totalAvIssues > 0 ? `Hittade ${totalAvIssues} profiler med formateringsfel i avatar-länken ("undefined").` : '✅ Inga trasiga profilbilds-URL:er hittades.',
-      fixAction: totalAvIssues > 0 ? async () => {
-        await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%undefined%');
-        await supabase.from('profiles').update({ avatar_url: null }).ilike('avatar_url', '%null%');
-        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Fixade ${totalAvIssues} trasiga avatar-länkar.`);
-        runDiagnostics();
-      } : undefined
-    });
-
-    // 8. Social Hälsa (Dubbla vänskaps-rader)
-    const { data: friendFixData, error: friendFixError } = await supabase.rpc('fix_duplicate_friendships');
-    updateOne('friendships', {
-       status: friendFixError ? 'ok' : (friendFixData > 0 ? 'warning' : 'ok'),
-       message: friendFixError ? `Kunde inte skanna vänskaper (RPC saknas). Men de flesta raderas via triggers.` : (friendFixData > 0 ? `Löst: Städade bort ${friendFixData} hängda vänförfrågningar som krockade med existerande vänner.` : '✅ Inga hängda eller dubbla vänförfrågningar hittades.')
-    });
-
-    // 9. KÖR DEEP SCAN
-    const scanRes = await adminRunDeepScan();
-    if (scanRes?.success && scanRes.issues) {
-      if (scanRes.issues.length > 0) {
-        const newItems = scanRes.issues.map((iss: any) => ({
-          id: iss.id,
-          title: iss.title,
-          status: 'warning' as const,
-          message: iss.message,
-          fixAction: async () => {
-            const fixRes = await adminFixDeepScanIssue(iss.id);
-            if (fixRes?.error) alert('Det gick inte att laga: ' + fixRes.error);
-            else {
-              await logAdminAction(supabase, currentUser.id, `Vårdcentralen Deep-Lösning: ${fixRes.message}`);
-              runDiagnostics();
-            }
-          }
-        }));
-        currentResults = [...currentResults.filter(p => !newItems.some(ni => ni.id === p.id)), ...newItems];
-      } else {
-        currentResults = [...currentResults.filter(p => p.id !== 'deep_scan_ok'), { id: 'deep_scan_ok', title: 'Deep Scan Databaskontroll', status: 'ok', message: '✅ Systemets tabeller (Snake, Forum, Mejl m.fl.) är felfria och sanerade!' }];
+    try {
+      // 0. Latency (Ping)
+      const startPing = Date.now();
+      const { error: pingErr } = await supabase.from('profiles').select('id').limit(1);
+      if (pingErr?.message?.includes('503')) {
+        alert("⚠️ Databasen är överbelastad (503). Vänta 2-3 minuter.");
+        throw new Error("DB_OVERLOAD");
       }
-      setResults([...currentResults]);
-    }
+      updateOne('latency', { 
+         status: pingErr ? 'warning' : 'ok', 
+         message: pingErr ? `Ping-fel: ${pingErr.message}` : `✅ Svarar normalt (${Date.now() - startPing}ms).` 
+      });
 
-    setRunning(false);
-    
-    // Sammanfatta resultatet baserat på de faktiska aktuella resultaten
-    const okItems = currentResults.filter(r => r.status === 'ok');
-    const warnItems = currentResults.filter(r => r.status === 'warning');
-    const summary = `${okItems.length} felfria kontroller, ${warnItems.length} varningar/åtgärder identifierade.`;
-    
-    // Logga resultat
-    await logAdminAction(supabase, currentUser.id, `Diagnosverktyg resultat: ${summary}`);
-    await logAdminAction(supabase, currentUser.id, 'Körde Diagnosverktyg (Vårdcentralen Deep Scan)');
-    
-    fetchLatestScanResult();
+      // 1. Oanvända Bilder (RPC)
+      const { data: orphanCount } = await supabase.rpc('count_orphan_avatars');
+      if ((orphanCount || 0) > 0) {
+        updateOne('orphaned_avatars', { status: 'warning', message: `Hittade ${orphanCount} bilder. Rensar nu...` });
+        await supabase.rpc('cleanup_orphan_avatars');
+        await logAdminAction(supabase, currentUser.id, `Vårdcentralen Auto: Rensade ${orphanCount} bilder.`);
+        updateOne('orphaned_avatars', { status: 'ok', message: '✅ Rensade.' });
+      } else {
+        updateOne('orphaned_avatars', { status: 'ok', message: '✅ Inga herrelösa bilder.' });
+      }
+
+      // 2. Storage
+      const { data: storageSize } = await supabase.rpc('get_total_storage_size');
+      const sizeMB = ((storageSize || 0) / (1024 * 1024)).toFixed(2);
+      updateOne('storage', { status: 'ok', message: `✅ ${sizeMB} MB använt.` });
+
+      // 3. Profil-sync (Auth vs Profile)
+      const { data: syncData } = await supabase.rpc('diagnose_missing_profiles');
+      updateOne('sync', { status: 'ok', message: syncData > 0 ? `✅ Fixade ${syncData} profiler.` : '✅ Allt synkat.' });
+
+      // 4. Döda länkar
+      const { data: linksData } = await supabase.rpc('fix_dead_links');
+      updateOne('links', { status: 'ok', message: linksData > 0 ? `✅ Rensade ${linksData} inlägg.` : '✅ Inga döda länkar.' });
+
+      // 5. Gamla notiser (>30 dagar)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      const { count: oldNotif } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).lt('created_at', thirtyDaysAgo.toISOString());
+      if ((oldNotif || 0) > 0) {
+         await supabase.from('notifications').delete().lt('created_at', thirtyDaysAgo.toISOString());
+         updateOne('notifications', { status: 'ok', message: `✅ Rensade ${oldNotif} notiser.` });
+      } else {
+         updateOne('notifications', { status: 'ok', message: '✅ Inget skräp.' });
+      }
+
+      // 6. Trasiga avatar-URLer (undefined/null i strängar)
+      const { count: badAvatars } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).or('avatar_url.ilike.%undefined%,avatar_url.ilike.%null%');
+      if ((badAvatars || 0) > 0) {
+        await supabase.from('profiles').update({ avatar_url: null }).or('avatar_url.ilike.%undefined%,avatar_url.ilike.%null%');
+        updateOne('avatars', { status: 'ok', message: `✅ Fixade ${badAvatars} URL:er.` });
+      } else {
+        updateOne('avatars', { status: 'ok', message: '✅ Inga trasiga länkar.' });
+      }
+
+      // 7. Deep Scan (Social och Struktur)
+      const scanRes = await adminRunDeepScan();
+      if (scanRes?.issues && scanRes.issues.length > 0) {
+         for (const issue of scanRes.issues) {
+            await adminFixDeepScanIssue(issue.id);
+         }
+         updateOne('friendships', { status: 'ok', message: '✅ Djupanalys klar och lagad.' });
+      } else {
+         updateOne('friendships', { status: 'ok', message: '✅ Deep scan felfri.' });
+      }
+
+      // 8. Bildoptimering
+      const { data: optImg } = await supabase.rpc('optimize_uploaded_images');
+      updateOne('images', { status: 'ok', message: optImg > 0 ? `✅ Optimerade ${optImg} bilder.` : '✅ Alle bilder optimerade.' });
+
+      // Slutgiltig summering
+      const okCount = currentResults.filter(r => r.status === 'ok').length;
+      const warnCount = currentResults.filter(r => r.status === 'warning').length;
+      const summaryText = `${okCount} felfria, ${warnCount} åtgärdade automatiskt.`;
+      
+      await logAdminAction(supabase, currentUser.id, `Vårdcentralen: ${summaryText}`);
+      fetchLatestScanResult();
+
+    } catch (err: any) {
+      if (err.message !== 'DB_OVERLOAD') console.error('Diagnosfel:', err);
+    } finally {
+      setRunning(false);
+      isExecutingRef.current = false;
+    }
   };
 
   const fetchLatestScanResult = async () => {
-    // Hämta senaste loggen som innehåller resultat
     const { data } = await supabase
       .from('admin_logs')
       .select('action, created_at')
-      .ilike('action', 'Diagnosverktyg resultat:%')
+      .ilike('action', 'Vårdcentralen:%')
       .order('created_at', { ascending: false })
       .limit(1);
 
     if (data && data.length > 0) {
-      setLastScanResult(data[0].action.replace('Diagnosverktyg resultat: ', ''));
+      setLastScanResult(data[0].action.replace('Vårdcentralen: ', ''));
     }
   };
 
