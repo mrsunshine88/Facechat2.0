@@ -2133,6 +2133,12 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       setDiagSearchResults([]);
       return;
     }
+
+    // LOGGA SÖKNINGEN! (Vi loggar bara när det är en faktisk sökning)
+    if (term.length >= 3) {
+      logAdminAction(supabase, currentUser.id, `Sökte efter användarprofil i Diagnosverktyget: "${term}"`);
+    }
+
     const { data } = await supabase
       .from('profiles')
       .select('id, username, avatar_url, presentation, custom_style')
@@ -2561,7 +2567,16 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
           </div>
 
           {selectedUser && (
-            <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '2px solid #be185d', marginBottom: '1rem', animation: 'fadeIn 0.3s' }}>
+            <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '2px solid #be185d', marginBottom: '1rem', animation: 'fadeIn 0.3s', position: 'relative' }}>
+              {/* STÄNG-KNAPP (KRYSS) */}
+              <button 
+                onClick={() => { setSelectedUser(null); setDiagSearch(''); }}
+                style={{ position: 'absolute', top: '0.75rem', right: '0.75rem', background: 'none', border: 'none', cursor: 'pointer', color: '#be185d' }}
+                title="Stäng sökresultat"
+              >
+                <X size={24} />
+              </button>
+
               <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
                 <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #fca5a5' }}>
                   <img src={selectedUser.avatar_url || 'https://via.placeholder.com/60'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
