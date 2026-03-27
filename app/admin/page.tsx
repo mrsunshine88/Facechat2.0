@@ -122,9 +122,16 @@ export default function AdminPanel() {
 
       if (canManageContent) {
         const fetchReportsCount = async () => {
-          const { count } = await supabase.from('reports')
+          let query = supabase.from('reports')
             .select('*', { count: 'exact', head: true })
             .eq('status', 'open');
+          
+          if (!isRoot) {
+            // Administratörer ska INTE se/räkna anmälningar mot sig själva
+            query = query.neq('reported_user_id', userProfile.id);
+          }
+
+          const { count } = await query;
           if (count !== null) setUnreadReportsCount(count);
         };
 
@@ -528,15 +535,24 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
   }
 
   useEffect(() => {
+    async function checkBan() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('is_banned').eq('id', user.id).single();
+        if (profile?.is_banned) {
+          window.location.href = '/bannad';
+        }
+      }
+    }
+    
+    checkBan();
     fetchUsers();
     fetchBlockedIps();
-
 
     const channel = supabase.channel('admin_users_realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
         setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
-        // Om Root-Admin uppdaterar sin IP, hämta den igen via fetchUsers
-        if (payload.new.auth_email === 'apersson508@gmail.com') fetchUsers(search);
+        // FIX: Ta bort rekursiv fetchUsers för att undvika 503-loop
       })
       .subscribe();
 
@@ -2594,6 +2610,11 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         const { error: fError } = await supabase.from('forum_posts').delete().ilike('content', query);
         const { error: gError } = await supabase.from('guestbook').delete().ilike('content', query);
         const { error: cError } = await supabase.from('chat_messages').delete().ilike('content', query);
+
+        if (wError) console.error("Whiteboard deletion error:", wError);
+        if (fError) console.error("Forum deletion error:", fError);
+        if (gError) console.error("Guestbook deletion error:", gError);
+        if (cError) console.error("Chat deletion error:", cError);
 
         if (wError || fError || gError || cError) {
           alert("Ett fel uppstod vid mass-radering. Vissa inlägg kan ha raderats.");
