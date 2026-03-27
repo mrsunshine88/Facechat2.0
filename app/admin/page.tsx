@@ -43,6 +43,11 @@ const AdminSkeleton = () => (
   </div>
 );
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [userProfile, setUserProfile] = useState<any>(null);
@@ -50,10 +55,6 @@ export default function AdminPanel() {
   const [unreadReportsCount, setUnreadReportsCount] = useState(0);
   const router = useRouter();
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     async function checkAuth() {
@@ -86,7 +87,7 @@ export default function AdminPanel() {
       return () => { supabase.removeChannel(profileSub); };
     }
     checkAuth();
-  }, [router, supabase]);
+  }, [router]);
 
   useEffect(() => {
     if (!userProfile) return;

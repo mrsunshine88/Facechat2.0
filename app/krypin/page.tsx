@@ -174,6 +174,11 @@ export default function MittKrypin() {
   )
 }
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 function MittKrypinContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -308,10 +313,6 @@ function MittKrypinContent() {
   const [reportTarget, setReportTarget] = useState<any>(null);
   const [reportReason, setReportReason] = useState('');
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     let channel: any;
@@ -430,7 +431,7 @@ function MittKrypinContent() {
     return () => { 
        if(channel) supabase.removeChannel(channel); 
     };
-  }, [targetUsername, supabase, router]);
+  }, [targetUsername, router]);
 
   const chatWith = searchParams?.get('chatWith');
 

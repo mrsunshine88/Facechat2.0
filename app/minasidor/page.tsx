@@ -50,6 +50,11 @@ const PrivacyToggle = ({ label, isVisible, onToggle }: { label: string, isVisibl
   );
 };
 
+const supabase = createBrowserClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
 export default function MinaSidor() {
   const [activeTab, setActiveTab] = useState('Konto');
   const [showSaved, setShowSaved] = useState(false);
@@ -104,10 +109,6 @@ export default function MinaSidor() {
     checkSub();
   }, []);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
 
   useEffect(() => {
     async function fetchUser() {
@@ -145,7 +146,7 @@ export default function MinaSidor() {
       }
     }
     fetchUser();
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     if (currentUser?.id) {
