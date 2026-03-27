@@ -2393,6 +2393,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     };
 
     try {
+      let fixesCount = 0;
       // 0. Latency (Ping)
       const startPing = Date.now();
       const { error: pingErr } = await supabase.from('profiles').select('id').limit(1);
@@ -2408,6 +2409,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       // 1. Oanvända Bilder (RPC)
       const { data: orphanCount } = await supabase.rpc('count_orphan_avatars');
       if ((orphanCount || 0) > 0) {
+        fixesCount++;
         updateOne('orphaned_avatars', { status: 'warning', message: `Hittade ${orphanCount} bilder. Rensar nu...` });
         await supabase.rpc('cleanup_orphan_avatars');
         await logAdminAction(supabase, currentUser.id, `Vårdcentralen Auto: Rensade ${orphanCount} bilder.`);
@@ -2423,10 +2425,12 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
       // 3. Profil-sync (Auth vs Profile)
       const { data: syncData } = await supabase.rpc('diagnose_missing_profiles');
+      if (syncData > 0) fixesCount++;
       updateOne('sync', { status: 'ok', message: syncData > 0 ? `✅ Fixade ${syncData} profiler.` : '✅ Allt synkat.' });
 
       // 4. Döda länkar
       const { data: linksData } = await supabase.rpc('fix_dead_links');
+      if (linksData > 0) fixesCount++;
       updateOne('links', { status: 'ok', message: linksData > 0 ? `✅ Rensade ${linksData} inlägg.` : '✅ Inga döda länkar.' });
 
       // 5. Gamla notiser (>30 dagar)
@@ -2434,6 +2438,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       const { count: oldNotif } = await supabase.from('notifications').select('*', { count: 'exact', head: true }).lt('created_at', thirtyDaysAgo.toISOString());
       if ((oldNotif || 0) > 0) {
+         fixesCount++;
          await supabase.from('notifications').delete().lt('created_at', thirtyDaysAgo.toISOString());
          updateOne('notifications', { status: 'ok', message: `✅ Rensade ${oldNotif} notiser.` });
       } else {
@@ -2443,6 +2448,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       // 6. Trasiga avatar-URLer (undefined/null i strängar)
       const { count: badAvatars } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).or('avatar_url.ilike.%undefined%,avatar_url.ilike.%null%');
       if ((badAvatars || 0) > 0) {
+        fixesCount++;
         await supabase.from('profiles').update({ avatar_url: null }).or('avatar_url.ilike.%undefined%,avatar_url.ilike.%null%');
         updateOne('avatars', { status: 'ok', message: `✅ Fixade ${badAvatars} URL:er.` });
       } else {
@@ -2452,6 +2458,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       // 7. Deep Scan (Social och Struktur)
       const scanRes = await adminRunDeepScan();
       if (scanRes?.issues && scanRes.issues.length > 0) {
+         fixesCount++;
          for (const issue of scanRes.issues) {
             await adminFixDeepScanIssue(issue.id);
          }
@@ -2462,6 +2469,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
       // 8. Bildoptimering
       const { data: optImg } = await supabase.rpc('optimize_uploaded_images');
+      if (optImg > 0) fixesCount++;
       updateOne('images', { status: 'ok', message: optImg > 0 ? `✅ Optimerade ${optImg} bilder.` : '✅ Alle bilder optimerade.' });
 
       // 9. Ignorerade Anmälningar (> 7 dagar)
@@ -2469,6 +2477,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const { count: oldReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open').lt('created_at', sevenDaysAgo.toISOString());
       if ((oldReports || 0) > 0) {
+         fixesCount++;
          updateOne('reports', { status: 'warning', message: `Hittade ${oldReports} gamla anmälningar. Auto-löser...` });
          await supabase.from('reports').update({ status: 'resolved' }).eq('status', 'open').lt('created_at', sevenDaysAgo.toISOString());
          await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Auto-löste ${oldReports} gamla anmälningar.`);
@@ -2482,6 +2491,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
       const { count: logsToDelete } = await supabase.from('admin_logs').select('*', { count: 'exact', head: true }).lt('created_at', fifteenDaysAgo.toISOString());
       if ((logsToDelete || 0) > 0) {
+         fixesCount++;
          updateOne('logs', { status: 'warning', message: `Rensar ${logsToDelete} gamla loggar...` });
          await supabase.from('admin_logs').delete().lt('created_at', fifteenDaysAgo.toISOString());
          updateOne('logs', { status: 'ok', message: `✅ Rensade ${logsToDelete} rader.` });
@@ -2492,8 +2502,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       // Slutgiltig summering
       const totalSteps = currentResults.length;
       const okCount = currentResults.filter(r => r.status === 'ok').length;
-      const warnCount = currentResults.filter(r => r.status === 'warning').length;
-      const summaryText = `${okCount} av ${totalSteps} felfria, ${warnCount} åtgärdade automatiskt.`;
+      const summaryText = `${okCount} av ${totalSteps} felfria, ${fixesCount} åtgärdade automatiskt.`;
       
       await logAdminAction(supabase, currentUser.id, `Vårdcentralen: ${summaryText}`);
       fetchLatestScanResult();
