@@ -526,7 +526,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
     // Hämta Root-Admins IP via en säker SQL RPC (för att kringgå RLS)
     const fetchRootIp = async () => {
-      const { data } = await supabase.rpc('get_root_admin_ip');
+      const { data } = await supabase.rpc('get_root_admin_ip', {});
       if (data) setProtectedIp(data);
     };
     fetchRootIp();
@@ -2397,13 +2397,25 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       // 0. Latency (Ping)
       const startPing = Date.now();
       const { error: pingErr } = await supabase.from('profiles').select('id').limit(1);
+      const pingTime = Date.now() - startPing;
+      
       if (pingErr?.message?.includes('503')) {
         alert("⚠️ Databasen är överbelastad (503). Vänta 2-3 minuter.");
         throw new Error("DB_OVERLOAD");
       }
+
+      // Latency-betyg (Rating)
+      let pingRating = "✅ Svarar normalt";
+      let pingIcon = "🆗";
+      if (pingTime < 200) { pingRating = "⚡ Blixtsnabb"; pingIcon = "🚀"; }
+      else if (pingTime < 500) { pingRating = "✅ Snabb"; pingIcon = "🚅"; }
+      else if (pingTime < 1500) { pingRating = "🆗 Normal"; pingIcon = "🚗"; }
+      else if (pingTime < 3000) { pingRating = "⚠️ Seg"; pingIcon = "🐢"; }
+      else { pingRating = "🚨 Mycket seg (Databasen flisar!)"; pingIcon = "💥"; }
+
       updateOne('latency', { 
-         status: pingErr ? 'warning' : 'ok', 
-         message: pingErr ? `Ping-fel: ${pingErr.message}` : `✅ Svarar normalt (${Date.now() - startPing}ms).` 
+         status: pingErr ? 'warning' : (pingTime > 2000 ? 'warning' : 'ok'), 
+         message: pingErr ? `Ping-fel: ${pingErr.message}` : `${pingIcon} ${pingRating} (${pingTime}ms).` 
       });
 
       // 1. Oanvända Bilder (Storage API + RPC)
