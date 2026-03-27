@@ -527,7 +527,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
     // Hämta Root-Admins IP via en säker SQL RPC (för att kringgå RLS)
     const fetchRootIp = async () => {
-      const { data } = await supabase.rpc('get_root_admin_ip', {});
+      const { data } = await supabase.rpc('get_root_admin_ip', { target_email: 'apersson508@gmail.com' });
       if (data) setProtectedIp(data);
     };
     fetchRootIp();
