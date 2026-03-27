@@ -363,7 +363,6 @@ function MittKrypinContent() {
          setViewerUser(viewer);
 
          let profileToView: any = null;
-         let profileToView: any = null;
          let iBlocked = false;
          let blockedMe = false;
 
