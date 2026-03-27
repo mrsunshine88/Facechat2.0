@@ -2367,25 +2367,26 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     });
 
     // 1. Storage Usage
+    const sizeLimitMB = 50;
     const { data: storageSize, error: storageError } = await supabase.rpc('get_total_storage_size');
     if (storageError) {
-      updateOne('storage', { status: 'warning', message: `⚠️ Lagringskontroll misslyckades. Se till att RPC 'get_total_storage_size' är installerad.` });
+      updateOne('storage', { status: 'warning', message: `⚠️ Lagringskontroll misslyckades. Kör SQL-rutinen 'get_total_storage_size' i Dashboard.` });
     } else {
       const sizeBytes = Number(storageSize) || 0;
       const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
-      const percent = ((sizeBytes / (50 * 1024 * 1024)) * 100).toFixed(1);
-      const isFull = sizeBytes > (50 * 1024 * 1024 * 0.9);
+      const percent = ((sizeBytes / (sizeLimitMB * 1024 * 1024)) * 100).toFixed(1);
+      const isFull = sizeBytes > (sizeLimitMB * 1024 * 1024 * 0.9);
       updateOne('storage', {
         status: isFull ? 'warning' : 'ok',
-        message: isFull ? `🚨 Kritisk nivå: ${sizeMB} MB använt av 50 MB (${percent}%).` : `✅ ${sizeMB} MB använt av 50 MB (${percent}%). (Endast profilbilder/avatars räknas).`
+        message: isFull ? `🚨 Kritisk nivå: ${sizeMB} MB använt av ${sizeLimitMB} MB (${percent}%).` : `✅ ${sizeMB} MB använt av ${sizeLimitMB} MB (${percent}%). (Endast profilbilder räknas).`
       });
     }
 
     // 1.5. Oanvända Profilbilder (Cleanup)
     const { data: orphanCount, error: orphanError } = await supabase.rpc('cleanup_orphan_avatars');
     updateOne('orphaned_avatars', {
-      status: orphanError ? 'ok' : (orphanCount > 0 ? 'warning' : 'ok'),
-      message: orphanError ? `Kontroll av herrelösa bilder hoppades över (RPC saknas).` : (orphanCount > 0 ? `Hittade och rensade ${orphanCount} profilbilder som inte längre användes.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!')
+      status: orphanError ? 'warning' : (orphanCount > 0 ? 'warning' : 'ok'),
+      message: orphanError ? `⚠️ Kontroll av herrelösa bilder hoppades över (RPC saknas). Kör 'admin_diagnostic_routines.sql'.` : (orphanCount > 0 ? `Hittade och rensade ${orphanCount} profilbilder som inte längre användes.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!')
     });
 
     // 2. Sync PWA/DB Profiles

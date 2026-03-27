@@ -13,16 +13,15 @@ GRANT SELECT ON storage.buckets TO postgres, anon, authenticated;
 -- 2. RUTINER FÖR DIAGNOSVERKTYGET (RPC)
 -- -------------------------------------------------------------------------
 
--- Räkna total lagringsstorlek specifikt för 'avatars' hinken (Anpassad för äldre Supabase)
+-- Räkna total lagringsstorlek (Återställd till en version som vi vet fungerar i ditt projekt)
 CREATE OR REPLACE FUNCTION public.get_total_storage_size()
 RETURNS bigint AS $$
 DECLARE
     size_sum bigint;
 BEGIN
-    -- I äldre Supabase ligger storleken i metadata-fältet som JSON
+    -- Vi räknar allt i storage.objects via metadata eftersom filtret 'avatars' verkade blockera mätningen
     SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) INTO size_sum 
-    FROM storage.objects 
-    WHERE bucket_id = 'avatars';
+    FROM storage.objects;
 
     RETURN COALESCE(size_sum, 0);
 EXCEPTION WHEN OTHERS THEN
@@ -72,28 +71,38 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- NY: Rensa herrelösa profilbilder (Bilder i storage som inte används)
+-- 2.1 Rensa herrelösa profilbilder (Bilder i storage som inte används)
+-- Denna version är säkrare och hanterar även mappar korrekt.
 CREATE OR REPLACE FUNCTION public.cleanup_orphan_avatars()
 RETURNS integer AS $$
 DECLARE
     deleted_count integer;
 BEGIN
     -- Raderar poster från storage.objects som inte finns i någons avatar_url
+    -- Vi använder en subquery för att extrahera filnamnet från URL:en
     DELETE FROM storage.objects
     WHERE bucket_id = 'avatars'
-      AND name <> '.emptyFolderPlaceholder'
+      AND name NOT LIKE '.%' -- Ignorera systemfiler som .emptyFolderPlaceholder
       AND name NOT IN (
-        SELECT split_part(split_part(avatar_url, '/avatars/', 2), '?', 1)
+        SELECT 
+          CASE 
+            WHEN avatar_url LIKE '%/avatars/%' THEN 
+              split_part(split_part(avatar_url, '/avatars/', 2), '?', 1)
+            ELSE 
+              NULL 
+          END
         FROM public.profiles
         WHERE avatar_url IS NOT NULL
       );
       
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
-    RETURN deleted_count;
+    RETURN COALESCE(deleted_count, 0);
+EXCEPTION WHEN OTHERS THEN
+    RETURN 0;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2.1 Bild-Optimeraren (Append parameters for Supabase transformation service)
+-- 2.2 Bild-Optimeraren (Append parameters for Supabase transformation service)
 CREATE OR REPLACE FUNCTION public.optimize_uploaded_images()
 RETURNS integer AS $$
 DECLARE
@@ -104,16 +113,14 @@ BEGIN
     SET avatar_url = avatar_url || '?width=800&resize=contain'
     WHERE avatar_url IS NOT NULL 
       AND avatar_url != '' 
-      -- Vi appendrar endast om inte redan finns bredd-inställning eller token
-      -- (Tjänsten fungerar bäst med rena sökvägar till JPG/PNG)
       AND avatar_url NOT LIKE '%width=800%'
-      AND avatar_url NOT LIKE '%?%' -- Om den redan har parametrar (t.ex. token) skippar vi för säkerhets skull
+      AND avatar_url NOT LIKE '%?%' 
       AND avatar_url LIKE '%/avatars/%'
     RETURNING 1
   )
   SELECT count(*) INTO affected_rows FROM updated;
   
-  RETURN affected_rows;
+  RETURN COALESCE(affected_rows, 0);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

@@ -345,6 +345,32 @@ export async function adminRunDeepScan() {
         }
       }
     } catch(e) {}
+    
+    // 9. Oanvända/Herrelösa Profilbilder (Fallback om RPC saknas)
+    try {
+      const { data: storageFiles } = await supabaseAdmin.storage.from('avatars').list('', { limit: 1000 });
+      const { data: activeProfiles } = await supabaseAdmin.from('profiles').select('avatar_url').not('avatar_url', 'is', null);
+      
+      if (storageFiles && activeProfiles) {
+        const activeFileNames = new Set(
+          activeProfiles
+            .map((p: any) => p.avatar_url?.split('/').pop()?.split('?')[0])
+            .filter(Boolean)
+        );
+        
+        const orphans = storageFiles
+          .map((f: any) => f.name)
+          .filter((name: string) => name !== '.emptyFolderPlaceholder' && !activeFileNames.has(name));
+          
+        if (orphans.length > 0) {
+          issues.push({ 
+            id: 'cleanup_orphan_files', 
+            title: 'Herrelösa Profilbilder', 
+            message: `Hittade ${orphans.length} filer i storage som inte tillhör någon användare.` 
+          });
+        }
+      }
+    } catch (e) {}
 
     return { success: true, issues };
   } catch (err: any) {
@@ -435,6 +461,29 @@ export async function adminFixDeepScanIssue(issueId: string) {
         }
       }
       fixedMsg = `Sanering klar. Raderade totalt ${totalDeleted} föräldralösa rader i ${tablesProcessed} tabeller.`;
+    } else if (issueId === 'cleanup_orphan_files') {
+      const { data: storageFiles } = await supabaseAdmin.storage.from('avatars').list('', { limit: 1000 });
+      const { data: activeProfiles } = await supabaseAdmin.from('profiles').select('avatar_url').not('avatar_url', 'is', null);
+      
+      if (storageFiles && activeProfiles) {
+        const activeFileNames = new Set(
+          activeProfiles
+            .map((p: any) => p.avatar_url?.split('/').pop()?.split('?')[0])
+            .filter(Boolean)
+        );
+        
+        const orphans = storageFiles
+          .map((f: any) => f.name)
+          .filter((name: string) => name !== '.emptyFolderPlaceholder' && !activeFileNames.has(name));
+          
+        if (orphans.length > 0) {
+          const { error } = await supabaseAdmin.storage.from('avatars').remove(orphans);
+          if (error) throw error;
+          fixedMsg = `Raderade ${orphans.length} herrelösa profilbilder från storage.`;
+        } else {
+          fixedMsg = 'Inga herrelösa bilder hittades vid försök till fix.';
+        }
+      }
     } else {
       throw new Error('Ogiltigt åtgärds-ID.');
     }
