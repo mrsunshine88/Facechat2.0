@@ -1955,6 +1955,34 @@ function MittKrypinContent() {
                title="Background Music"
             ></iframe>
       <div id="krypin-custom-container">
+        {/* FIX FÖR ATT SKYDDA UI-KNAPPAR MOT TEMAN SOM ANVÄNDER !IMPORTANT */}
+        <style dangerouslySetInnerHTML={{ __html: `
+          .krypin-layout button.fb-action-btn, 
+          .krypin-layout button.fb-trash-btn {
+             background: none !important;
+             border: none !important;
+             box-shadow: none !important;
+             padding: 4px !important;
+             width: auto !important;
+             height: auto !important;
+             min-width: 0 !important;
+             min-height: 0 !important;
+             margin: 0 !important;
+             display: flex !important;
+             align-items: center !important;
+             justify-content: center !important;
+             transform: none !important;
+             animation: none !important;
+          }
+          .krypin-layout button.fb-action-btn:hover {
+             background: rgba(245, 158, 11, 0.1) !important;
+             border-radius: 50% !important;
+          }
+          .krypin-layout button.fb-trash-btn:hover {
+             background: rgba(239, 68, 68, 0.1) !important;
+             border-radius: 50% !important;
+          }
+        ` }} />
         <div style={{ display: 'flex', gap: '2rem', minHeight: 'calc(100vh - 120px)', padding: '2rem' }} className="krypin-layout">
         
         {/* Global Custom Alert Toast */}
@@ -2302,7 +2330,7 @@ function MittKrypinContent() {
                           {new Date(post.created_at).toLocaleDateString('sv-SE')}
                         </span>
                         {(isMyProfile || viewerUser?.id === post.sender_id) && (
-                          <button onClick={() => handleDeleteGuestbookPost(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }} title="Radera inlägg"><Trash2 size={18} /></button>
+                          <button onClick={() => handleDeleteGuestbookPost(post.id)} className="fb-trash-btn" style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }} title="Radera inlägg"><Trash2 size={18} /></button>
                         )}
                         {viewerUser?.id !== post.sender_id && (
                           <button 

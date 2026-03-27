@@ -2369,7 +2369,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     // 1. Storage Usage
     const { data: storageSize, error: storageError } = await supabase.rpc('get_total_storage_size');
     if (storageError) {
-      updateOne('storage', { status: 'ok', message: `✅ Lagringskontroll hoppades över (kräver RPC get_total_storage_size).` });
+      updateOne('storage', { status: 'warning', message: `⚠️ Lagringskontroll misslyckades. Se till att RPC 'get_total_storage_size' är installerad.` });
     } else {
       const sizeBytes = Number(storageSize) || 0;
       const sizeMB = (sizeBytes / (1024 * 1024)).toFixed(2);
@@ -2377,41 +2377,16 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       const isFull = sizeBytes > (50 * 1024 * 1024 * 0.9);
       updateOne('storage', {
         status: isFull ? 'warning' : 'ok',
-        message: isFull ? `Varning: ${sizeMB} MB använt av 50 MB (${percent}%). Närmar sig bristningsgränsen!` : `✅ ${sizeMB} MB använt av 50 MB (${percent}%).`
+        message: isFull ? `🚨 Kritisk nivå: ${sizeMB} MB använt av 50 MB (${percent}%).` : `✅ ${sizeMB} MB använt av 50 MB (${percent}%). (Endast profilbilder/avatars räknas).`
       });
     }
 
     // 1.5. Oanvända Profilbilder (Cleanup)
-    try {
-      const { data: storageFiles } = await supabase.storage.from('avatars').list('', { limit: 1000 });
-      const { data: activeProfiles } = await supabase.from('profiles').select('avatar_url');
-      
-      if (storageFiles && activeProfiles) {
-        const activeFileNames = new Set(
-          activeProfiles
-            .map((p: any) => p.avatar_url?.split('/').pop()?.split('?')[0])
-            .filter(Boolean)
-        );
-        
-        const orphans = storageFiles
-          .map((f: any) => f.name)
-          .filter((name: string) => name !== '.emptyFolderPlaceholder' && !activeFileNames.has(name));
-          
-        setOrphanedFiles(orphans);
-        updateOne('orphaned_avatars', {
-          status: orphans.length > 0 ? 'warning' : 'ok',
-          message: orphans.length > 0 ? `Hittade ${orphans.length} profilbilder som inte används av någon användare längre.` : '✅ Inga oanvända profilbilder hittades. Snyggt!',
-          fixAction: orphans.length > 0 ? async () => {
-             if (!confirm(`Vill du verkligen radera ${orphans.length} gamla profilbilder permanent?`)) return;
-             await supabase.storage.from('avatars').remove(orphans);
-             await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${orphans.length} oanvända profilbilder.`);
-             runDiagnostics();
-          } : undefined
-        });
-      }
-    } catch (err) {
-      console.error("Orphaned avatars check failed:", err);
-    }
+    const { data: orphanCount, error: orphanError } = await supabase.rpc('cleanup_orphan_avatars');
+    updateOne('orphaned_avatars', {
+      status: orphanError ? 'ok' : (orphanCount > 0 ? 'warning' : 'ok'),
+      message: orphanError ? `Kontroll av herrelösa bilder hoppades över (RPC saknas).` : (orphanCount > 0 ? `Hittade och rensade ${orphanCount} profilbilder som inte längre användes.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!')
+    });
 
     // 2. Sync PWA/DB Profiles
     const { data: syncData, error: syncError } = await supabase.rpc('diagnose_missing_profiles');
@@ -2431,7 +2406,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     const { data: imgData, error: imgError } = await supabase.rpc('optimize_uploaded_images');
     updateOne('images', {
       status: imgError ? 'ok' : (imgData > 0 ? 'warning' : 'ok'),
-      message: imgError ? `Kunde inte köra bildoptimering via Storage. Ingen panik.` : (imgData > 0 ? `Löst: Förminskade ${imgData} tunga profilbilder.` : '✅ Alla bilder är vackert optimerade.')
+      message: imgError ? `Kunde inte köra bildoptimering via Storage. Ingen panik.` : (imgData > 0 ? `Fixat: Aktiverade CDN-optimering för ${imgData} nya bilder (alla bilder krymps även till 800px vid uppladdning).` : '✅ Alla bilder är optimerade för snabb leverans (CDN) och har rätt storlek.')
     });
 
     // 5. Gamla Notiser

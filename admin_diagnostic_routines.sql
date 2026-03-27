@@ -10,11 +10,14 @@ CREATE EXTENSION IF NOT EXISTS pg_cron;
 -- 2. RUTINER FÖR DIAGNOSVERKTYGET (RPC)
 -- -------------------------------------------------------------------------
 
--- Räkna total lagringsstorlek i storage.objects
+-- Räkna total lagringsstorlek specifikt för 'avatars' hinken
 CREATE OR REPLACE FUNCTION public.get_total_storage_size()
 RETURNS bigint AS $$
+DECLARE
+    size_sum bigint;
 BEGIN
-    RETURN (SELECT SUM(size) FROM storage.objects);
+    SELECT SUM(size) INTO size_sum FROM storage.objects WHERE bucket_id = 'avatars';
+    RETURN COALESCE(size_sum, 0);
 EXCEPTION WHEN OTHERS THEN
     RETURN 0;
 END;
@@ -69,7 +72,6 @@ DECLARE
     deleted_count integer;
 BEGIN
     -- Raderar poster från storage.objects som inte finns i någons avatar_url
-    -- Vi extraherar filnamnet från URL:en för att jämföra
     DELETE FROM storage.objects
     WHERE bucket_id = 'avatars'
       AND name <> '.emptyFolderPlaceholder'
@@ -81,6 +83,30 @@ BEGIN
       
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
     RETURN deleted_count;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 2.1 Bild-Optimeraren (Append parameters for Supabase transformation service)
+CREATE OR REPLACE FUNCTION public.optimize_uploaded_images()
+RETURNS integer AS $$
+DECLARE
+  affected_rows integer;
+BEGIN
+  WITH updated AS (
+    UPDATE public.profiles 
+    SET avatar_url = avatar_url || '?width=800&resize=contain'
+    WHERE avatar_url IS NOT NULL 
+      AND avatar_url != '' 
+      -- Vi appendrar endast om inte redan finns bredd-inställning eller token
+      -- (Tjänsten fungerar bäst med rena sökvägar till JPG/PNG)
+      AND avatar_url NOT LIKE '%width=800%'
+      AND avatar_url NOT LIKE '%?%' -- Om den redan har parametrar (t.ex. token) skippar vi för säkerhets skull
+      AND avatar_url LIKE '%/avatars/%'
+    RETURNING 1
+  )
+  SELECT count(*) INTO affected_rows FROM updated;
+  
+  RETURN affected_rows;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -128,18 +154,19 @@ BEGIN
     -- Hämta Root Admin ID för loggning
     SELECT id INTO admin_id FROM public.profiles WHERE auth_email = 'apersson508@gmail.com' LIMIT 1;
 
-    -- Kör alla lagningar och rökut
+    -- Kör alla lagningar
     links_fixed := public.fix_dead_links();
     profiles_fixed := public.diagnose_missing_profiles();
     friends_fixed := public.fix_duplicate_friendships();
     images_cleaned := public.cleanup_orphan_avatars();
+    PERFORM public.optimize_uploaded_images(); -- Kör även bildoptimeraren nattetid
     
     -- Rensa gamla notiser (äldre än 30 dagar)
     DELETE FROM public.notifications WHERE created_at < NOW() - INTERVAL '30 days';
     GET DIAGNOSTICS notifs_cleaned = ROW_COUNT;
     
     -- Skapa loggmeddelandet
-    log_msg := format('System: Nattlig städning klar. Raderade %s herrelösa bilder, fixade %s döda länkar, lade till %s saknade profiler och rensade %s gamla notiser.', 
+    log_msg := format('SYSTEM: Nattlig städning klar. Raderade %s herrelösa bilder, fixade %s döda länkar, lade till %s saknade profiler och rensade %s gamla notiser.', 
         images_cleaned, links_fixed, profiles_fixed, notifs_cleaned);
     
     -- Logga resultatet i admin_logs om admin_id hittades
