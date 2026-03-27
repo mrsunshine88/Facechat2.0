@@ -815,7 +815,7 @@ const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: an
           if (err || !batch || batch.length === 0) {
             hasMoreProfiles = false;
           } else {
-            allActiveUrls = [...allActiveUrls, ...batch.map(p => p.avatar_url)];
+            allActiveUrls = [...allActiveUrls, ...batch.map((p: any) => p.avatar_url)];
             from += 1000;
             if (batch.length < 1000) hasMoreProfiles = false;
           }
@@ -2377,12 +2377,17 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
   const runDiagnostics = async () => {
     setRunning(true);
-    let currentResults: typeof results = results.map(p => ({ ...p, status: 'running', message: 'Skannar systemet...' }));
+    let currentResults: typeof results = results.map((p: any) => ({ ...p, status: 'running', message: 'Skannar systemet...' }));
     setResults([...currentResults]);
 
     const updateOne = (id: string, update: Partial<typeof results[0]>) => {
-      currentResults = currentResults.map(p => p.id === id ? { ...p, ...update } : p);
+      currentResults = currentResults.map((p: any) => p.id === id ? { ...p, ...update } : p);
       setResults([...currentResults]);
+      
+      // AUTO-FIX: Om vi har en auto-åtgärd och status är 'warning', kör den direkt!
+      if (update.status === 'warning' && update.fixAction) {
+        update.fixAction();
+      }
     };
 
     // 0. Latency (Ping)
