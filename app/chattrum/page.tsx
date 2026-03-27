@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert } from 'lucide-react';
+import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 
@@ -28,6 +28,11 @@ function ChattrumContent() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const channelRef = useRef<any>(null);
   const blockedIdsRef = useRef<string[]>([]);
+  
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportTarget, setReportTarget] = useState<any>(null);
+  const [reportReason, setReportReason] = useState('');
+  const [reportCategory, setReportCategory] = useState('Spam');
 
   useEffect(() => {
     if (!activeRoom && typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -297,6 +302,67 @@ function ChattrumContent() {
     }
   };
 
+  const handleReportMessage = async () => {
+    if (!reportReason.trim() || !currentUser || !reportTarget) return;
+    
+    const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+
+    await supabase.from('reports').insert({
+      reporter_id: currentUser.id,
+      reported_user_id: reportTarget.reportedUserId,
+      item_type: 'chat_message',
+      item_id: reportTarget.id,
+      reason: finalReason,
+      category: reportCategory,
+      status: 'open',
+      reported_content: `CHATT: ${activeRoom?.name}\n\n${reportTarget.content}`
+    });
+
+    // Notifiera alla administratörer om den nya anmälan!
+    try {
+      const { data: admins } = await supabase.from('profiles').select('id')
+        .or('is_admin.eq.true,perm_content.eq.true');
+      
+      if (admins && admins.length > 0) {
+        // JÄVSFILTER: Anmäld admin ska inte se anmälan mot sig själv (undantaget Root)
+        const filteredAdmins = admins.filter(admin => 
+          admin.id !== reportTarget.reportedUserId || currentUser?.auth_email === 'apersson508@gmail.com'
+        );
+
+        if (filteredAdmins.length > 0) {
+          const adminNotifs = filteredAdmins.map(admin => ({
+            receiver_id: admin.id,
+            actor_id: currentUser.id,
+            type: 'report',
+            content: `har skickat in en ny anmälan från chatten (${activeRoom?.name}).`,
+            link: '/admin?tab=reports'
+          }));
+
+          await supabase.from('notifications').insert(adminNotifs);
+
+          // Skicka även push-notiser till admins
+          filteredAdmins.forEach(admin => {
+            fetch('/api/send-push', {
+              method: 'POST', body: JSON.stringify({
+                userId: admin.id,
+                title: 'Ny anmälan i Chatten!',
+                message: `${currentUser.username} har anmält ett chatt-meddelande.`,
+                url: '/admin?tab=reports'
+              }), headers: { 'Content-Type': 'application/json' }
+            });
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("Misslyckades att notifiera admins:", notifErr);
+    }
+
+    alert('Din anmälan har skickats till våra moderatorer. Tack!');
+    setShowReportModal(false);
+    setReportReason('');
+    setReportTarget(null);
+  };
+
   return (
     <div style={{ height: 'calc(100vh - 140px)', display: 'grid', gridTemplateColumns: '250px 1fr 200px', gap: '1.5rem', alignItems: 'stretch' }} className="krypin-layout chat-layout">
       
@@ -400,15 +466,29 @@ function ChattrumContent() {
 
              return (
                <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                   <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isOwn ? 'var(--theme-chat)' : 'var(--text-main)' }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                   <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isOwn ? 'var(--theme-chat)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                       <span className="user-link" onClick={() => window.location.href = `/krypin?u=${msg.profiles?.username}`} style={{ cursor: 'pointer', fontWeight: 'bold' }}>{msg.profiles?.username || 'Okänd'}</span> <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{timeStr}</span>
                    </span>
-                   {canModerate && (
-                     <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.6 }} title="Radera inlägg">
-                       <Trash2 size={14} />
-                     </button>
-                   )}
+                   <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                     {!isOwn && (
+                       <button 
+                         onClick={() => {
+                           setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content });
+                           setShowReportModal(true);
+                         }}
+                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', opacity: 0.6 }} 
+                         title="Anmäl meddelande"
+                       >
+                         <AlertTriangle size={14} />
+                       </button>
+                     )}
+                     {canModerate && (
+                       <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.6 }} title="Radera inlägg">
+                         <Trash2 size={14} />
+                       </button>
+                     )}
+                   </div>
                  </div>
                  <p style={{ color: 'var(--text-main)', margin: 0, wordBreak: 'break-word' }}>{msg.content}</p>
                </div>
@@ -449,6 +529,47 @@ function ChattrumContent() {
           ))}
         </div>
       </div>
+
+      {/* REPORT MODAL */}
+      {showReportModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
+            
+            <select 
+              value={reportCategory}
+              onChange={e => setReportCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', marginBottom: '1rem', fontWeight: 'bold' }}
+            >
+              <option value="Spam">Spam/Nedskräpning</option>
+              <option value="Hatretorik">Hatretorik/Kränkande</option>
+              <option value="Trakasserier">Trakasserier/Mobbning</option>
+              <option value="Olämpligt">Olämpligt Innehåll</option>
+              <option value="Annat">Annat</option>
+            </select>
+
+            <textarea 
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical', marginBottom: '1rem', outline: 'none' }}
+              placeholder="Beskriv problemet..."
+            ></textarea>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                onClick={handleReportMessage} 
+                disabled={!reportReason.trim()} 
+                style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+              >
+                Skicka Anmälan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <style jsx global>{`
         @media (max-width: 768px) {

@@ -1,9 +1,10 @@
 -- =========================================================================
--- FACECHAT 2.0 - OFFICIAL SECURITY HARDENING & DATABASE MASTER FIX
+-- FACECHAT 2.0 - OFFICIAL SECURITY HARDENING & DATABASE MASTER FIX v2.1
 -- KÖR DETTA I SUPABASE SQL EDITOR FÖR ATT LÅSA HELA SYSTEMET! 🛡️🚀
+-- Uppdaterad: 2026-03-27 (Lagt till perm_stats, perm_diagnostics och enhetligt ordfilter)
 -- =========================================================================
 
--- 1. SKAPA SAKNADE TABELLER FÖR SÄKERHET OCH NOTISER
+-- 1. SKAPA SAKNADE TABELLER FÖR SÄKERHET OCH MODERERING
 -- -------------------------------------------------------------------------
 
 -- Tabell för Administrativa Loggar (Vem ändrade vad?)
@@ -47,16 +48,18 @@ CREATE TABLE IF NOT EXISTS public.blocked_ips (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
-CREATE TABLE IF NOT EXISTS public.word_filters (
+-- VIKTIGT: Denna tabell heter forbidden_words i applikationskoden
+CREATE TABLE IF NOT EXISTS public.forbidden_words (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
-    phrase TEXT UNIQUE NOT NULL,
+    word TEXT UNIQUE NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW())
 );
 
 -- 2. SCHEMA-UPPDATERINGAR (FÖRSÄKRA KOLUMNER)
 -- -------------------------------------------------------------------------
 
--- Uppdatera Profiler med Administrativa fält
+-- Uppdatera Profiler med alla Administrativa fält
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_admin BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS is_banned BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS last_ip TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_users BOOLEAN DEFAULT false;
@@ -67,12 +70,15 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_support BOOLEAN DEFAUL
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_logs BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_broadcast BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_chat BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_images BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_stats BOOLEAN DEFAULT false;
+ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS perm_diagnostics BOOLEAN DEFAULT false;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS custom_style TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS presentation TEXT;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS interests JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS show_interests BOOLEAN DEFAULT false;
 
--- Uppdatera Supportärenden med meddelanden och raderingsstatus
+-- Uppdatera Supportärenden
 ALTER TABLE public.support_tickets ADD COLUMN IF NOT EXISTS messages JSONB DEFAULT '[]'::jsonb;
 ALTER TABLE public.support_tickets ADD COLUMN IF NOT EXISTS has_unread_admin BOOLEAN DEFAULT false;
 ALTER TABLE public.support_tickets ADD COLUMN IF NOT EXISTS has_unread_user BOOLEAN DEFAULT false;
@@ -85,7 +91,7 @@ ALTER TABLE public.admin_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.user_secrets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.push_subscriptions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.blocked_ips ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.word_filters ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.forbidden_words ENABLE ROW LEVEL SECURITY;
 
 -- Admin Logs: Endast admins kan läsa
 DROP POLICY IF EXISTS "Admins can read logs" ON public.admin_logs;
@@ -94,13 +100,15 @@ CREATE POLICY "Admins can read logs" ON public.admin_logs FOR SELECT USING (
     (SELECT perm_logs FROM public.profiles WHERE id = auth.uid())
 );
 
--- User Secrets: Endast ägaren kan läsa/skriva
+-- User Secrets: Endast ägaren
 DROP POLICY IF EXISTS "Users can manage own secrets" ON public.user_secrets;
 CREATE POLICY "Users can manage own secrets" ON public.user_secrets FOR ALL USING (auth.uid() = user_id);
 
--- Push Subscriptions: Endast ägaren
-DROP POLICY IF EXISTS "Users can manage own push" ON public.push_subscriptions;
-CREATE POLICY "Users can manage own push" ON public.push_subscriptions FOR ALL USING (auth.uid() = user_id);
+-- Forbidden Words: Endast admins kan hantera
+DROP POLICY IF EXISTS "Admins can manage forbidden words" ON public.forbidden_words;
+CREATE POLICY "Admins can manage forbidden words" ON public.forbidden_words FOR ALL USING (
+    (SELECT is_admin FROM public.profiles WHERE id = auth.uid())
+);
 
 -- 4. TRIGGERS (THE MASTER SHIELD)
 -- -------------------------------------------------------------------------
@@ -113,7 +121,7 @@ BEGIN
   IF (auth.email() <> 'apersson508@gmail.com' AND 
       (SELECT perm_roles FROM public.profiles WHERE id = auth.uid()) IS NOT TRUE) THEN
     
-    -- Tvinga tillbaka alla administrativa fält till deras gamla värden
+    -- Tvinga tillbaka ALLA administrativa fält till deras gamla värden
     NEW.is_admin = OLD.is_admin;
     NEW.perm_users = OLD.perm_users;
     NEW.perm_content = OLD.perm_content;
@@ -123,12 +131,13 @@ BEGIN
     NEW.perm_logs = OLD.perm_logs;
     NEW.perm_broadcast = OLD.perm_broadcast;
     NEW.perm_chat = OLD.perm_chat;
-    
-    -- Om någon försöker ta bort bannlysningen på sig själv
+    NEW.perm_images = OLD.perm_images;
+    NEW.perm_stats = OLD.perm_stats;
+    NEW.perm_diagnostics = OLD.perm_diagnostics;
     NEW.is_banned = OLD.is_banned;
   END IF;
 
-  -- Root-Admin är alltid Root-Admin
+  -- Root-Admin är alltid Root-Admin och kan inte bannas
   IF OLD.username = 'apersson508' THEN
     NEW.is_admin = true;
     NEW.perm_roles = true;
@@ -144,7 +153,7 @@ CREATE TRIGGER trg_security_shield
 BEFORE UPDATE ON public.profiles
 FOR EACH ROW EXECUTE FUNCTION public.prevent_privilege_escalation();
 
--- Sanera användarnamn från skadliga tecken vid sparning (Last line of defense)
+-- Sanera användarnamn (Last line of defense)
 CREATE OR REPLACE FUNCTION public.sanitize_username()
 RETURNS trigger AS $$
 BEGIN
@@ -162,30 +171,18 @@ FOR EACH ROW EXECUTE FUNCTION public.sanitize_username();
 -- -------------------------------------------------------------------------
 DO $$ 
 BEGIN
-  -- Skapa publikationen om den inte finns
   IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
     CREATE PUBLICATION supabase_realtime;
   END IF;
 
-  -- Lägg till support_tickets om den inte redan är med
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables 
-    WHERE pubname = 'supabase_realtime' 
-    AND schemaname = 'public' 
-    AND tablename = 'support_tickets'
-  ) THEN
+  -- Lägg till tabeller i realtime om de inte redan finns där
+  BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.support_tickets;
-  END IF;
+  EXCEPTION WHEN OTHERS THEN END;
 
-  -- Lägg till admin_logs om den inte redan är med
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_publication_tables 
-    WHERE pubname = 'supabase_realtime' 
-    AND schemaname = 'public' 
-    AND tablename = 'admin_logs'
-  ) THEN
+  BEGIN
     ALTER PUBLICATION supabase_realtime ADD TABLE public.admin_logs;
-  END IF;
+  EXCEPTION WHEN OTHERS THEN END;
 END $$;
 
--- KLART! DIN DATABAS ÄR NU TÄT OCH SÄKRAD. 🟢
+-- KLART! DIN DATABAS ÄR NU TÄT OCH SÄKRAD v2.1. 🟢

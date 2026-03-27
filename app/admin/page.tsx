@@ -150,12 +150,13 @@ export default function AdminPanel() {
   const canManageStats = isRoot || userProfile.perm_stats === true;
   const canManageDiagnostics = isRoot || userProfile.perm_diagnostics === true;
   const canManageChat = isRoot || userProfile.perm_chat === true;
+  const canManageImages = isRoot || userProfile.perm_images === true;
 
   const renderContent = () => {
     switch (activeTab) {
       case 'dashboard': return canManageStats ? <AdminDashboard supabase={supabase} /> : <NoAccess />;
       case 'users': return canManageUsers ? <AdminUsers supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
-      case 'bilder': return canManageContent ? <AdminBilder supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
+      case 'bilder': return canManageImages ? <AdminBilder supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
       case 'reports': return canManageContent ? <AdminReports supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
       case 'content': return (canManageContent || canManageChat) ? <AdminContent supabase={supabase} currentUser={userProfile} perms={{ content: canManageContent, chat: canManageChat }} /> : <NoAccess />;
       case 'rooms': return canManageRooms ? <AdminRooms supabase={supabase} currentUser={userProfile} /> : <NoAccess />;
@@ -199,6 +200,11 @@ export default function AdminPanel() {
             {canManageUsers && (
               <button onClick={() => setActiveTab('blocks')} className={`admin-nav-link ${activeTab === 'blocks' ? 'active' : ''}`}>
                 <ShieldAlert size={18} /> Blockeringar
+              </button>
+            )}
+            {canManageImages && (
+              <button onClick={() => setActiveTab('bilder')} className={`admin-nav-link ${activeTab === 'bilder' ? 'active' : ''}`}>
+                <Shield size={18} /> Bilder
               </button>
             )}
             {canManageContent && (
@@ -262,6 +268,7 @@ export default function AdminPanel() {
               {canManageStats && <option value="dashboard">Dashboard & Statistik</option>}
               {canManageUsers && <option value="users">Användare</option>}
               {canManageUsers && <option value="blocks">Blockeringar</option>}
+              {canManageImages && <option value="bilder">Bilder</option>}
               {canManageContent && <option value="reports">Anmälningar</option>}
               {(canManageContent || canManageChat) && <option value="content">Innehåll & Moderering</option>}
               {canManageRooms && <option value="rooms">Hantera Chattrum</option>}
@@ -706,18 +713,6 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 <button onClick={() => handleDeleteUser(u)} style={{ backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem 1rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '600', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
                   <Trash2 size={14} /> Radera Konto
                 </button>
-
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', width: '100%', marginTop: '0.25rem', borderTop: '1px solid #f1f5f9', paddingTop: '0.75rem' }}>
-                  <button onClick={() => handleResetAvatar(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Eraser size={12} /> Nollställ Bild
-                  </button>
-                  <button onClick={() => handleResetPresentation(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Edit2 size={12} /> Rensa Bio
-                  </button>
-                  <button onClick={() => handleResetTheme(u)} style={{ backgroundColor: '#f1f5f9', color: '#475569', border: '1px solid #cbd5e1', padding: '0.4rem 0.75rem', borderRadius: '6px', cursor: 'pointer', fontSize: '0.7rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                    <Wrench size={12} /> Rensa Tema
-                  </button>
-                </div>
               </div>
             </div>
           );
@@ -841,9 +836,13 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     if (data) {
       // --- JÄVSFILTER (ADMIN-SKYDD) ---
       // Administratörer ska inte se anmälningar mot sig själva.
-      // Endast apersson508@gmail.com kan se allt.
+      // Endast apersson508 eller den med perm_roles kan se allt.
+      const isRoot = currentUser.auth_email === 'apersson508@gmail.com' || 
+                     currentUser.username === 'apersson508' || 
+                     currentUser.perm_roles === true;
+                     
       const filteredData = data.filter((r: any) =>
-        r.reported_user_id !== currentUser.id || currentUser.auth_email === 'apersson508@gmail.com'
+        r.reported_user_id !== currentUser.id || isRoot
       );
 
       const enriched = await Promise.all(filteredData.map(async (r: any) => {
@@ -870,11 +869,21 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
             contentStr = f.content; 
             contentLink = `/forum/${f.thread_id}`;
             // @ts-ignore
-            isForumStarter = f.content.trim() === f.forum_threads?.title?.trim();
+            isForumStarter = f.content?.trim().toLowerCase() === f.forum_threads?.title?.trim().toLowerCase();
           }
         } else if (r.item_type === 'profile') {
           contentStr = `Anmälan av profil: ${r.reported?.username || 'Okänd'}`;
           contentLink = `/krypin?u=${r.reported?.username || ''}`;
+        } else if (r.item_type === 'private_message') {
+          contentStr = "[Privat Meddelande]";
+          contentLink = "#"; 
+        } else if (r.item_type === 'chat_message') {
+          const { data: chatList } = await supabase.from('chat_messages').select('content, room_id, chat_rooms(name)').eq('id', r.item_id).limit(1);
+          const msg = chatList && chatList.length > 0 ? chatList[0] : null;
+          if (msg) {
+            contentStr = msg.content;
+            contentLink = `/chattrum?room=${msg.chat_rooms?.name || ''}`;
+          }
         }
 
         return { ...r, reported_content: contentStr, reported_link: contentLink, is_forum_starter: isForumStarter };
@@ -894,6 +903,12 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
       if (table) {
         const res = await adminDeleteContent(table, report.item_id);
         if (res?.error) return alert('Kunde inte radera: ' + res.error);
+      } else if (report.item_type === 'private_message') {
+        const { error } = await supabase.from('private_messages').delete().eq('id', report.item_id);
+        if (error) return alert('Kunde inte radera DM: ' + error.message);
+      } else if (report.item_type === 'chat_message') {
+        const { error } = await supabase.from('chat_messages').delete().eq('id', report.item_id);
+        if (error) return alert('Kunde inte radera chattmeddelande: ' + error.message);
       }
       await adminResolveReport(report.id, 'resolved');
       await logAdminAction(supabase, currentUser.id, `Hanterade en anmälan och raderade ${table}-inlägg.`);
@@ -961,7 +976,17 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: report.item_type === 'profile' ? '#3b82f6' : '#b91c1c', marginBottom: '0.25rem', textTransform: 'uppercase' }}>
                 {report.item_type === 'profile' ? '👤 Person-Anmälan' : (
                    report.item_type === 'forum_post' 
-                   ? `📝 ${report.is_forum_starter ? 'TRÅD' : 'KOMMENTAR'}-Anmälan` 
+                   ? `🏛️ Forum ${report.is_forum_starter ? 'TRÅD' : 'KOMMENTAR'}` 
+                   : report.item_type === 'private_message'
+                   ? '📧 Privat Meddelande (DM)'
+                   : report.item_type === 'chat_message'
+                   ? '🗨️ Chatt Meddelande'
+                   : report.item_type === 'whiteboard'
+                   ? '📝 Whiteboard Inlägg'
+                   : report.item_type === 'whiteboard_comment'
+                   ? '💬 Whiteboard Kommentar'
+                   : report.item_type === 'guestbook'
+                   ? '📖 Gästbok Inlägg'
                    : `📝 Inläggs-Anmälan (${report.item_type})`
                 )}
               </p>
@@ -1778,6 +1803,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
                 <PermissionCard title="Dashboard & Statistik" desc="Åtkomst till statistiska data." icon={Activity} checked={!!activeEditAdmin.perm_stats} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_stats', !activeEditAdmin.perm_stats)} />
                 <PermissionCard title="Användarhantering" desc="Logga in, blockera eller radera." icon={Users} checked={!!activeEditAdmin.perm_users} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_users', !activeEditAdmin.perm_users)} />
                 <PermissionCard title="Innehåll & Moderering" desc="Ta bort logginlägg, klotter & forum." icon={Database} checked={!!activeEditAdmin.perm_content} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_content', !activeEditAdmin.perm_content)} />
+                <PermissionCard title="Bild-Moderering" desc="Granska och radera profilbilder." icon={Shield} checked={!!activeEditAdmin.perm_images} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_images', !activeEditAdmin.perm_images)} />
                 <PermissionCard title="Chatt-Moderering" desc="Radera textmeddelanden i realtidschattar." icon={Trash2} checked={!!activeEditAdmin.perm_chat} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_chat', !activeEditAdmin.perm_chat)} />
                 <PermissionCard title="Chattrum" desc="Skapa rum, lösenord, etc." icon={Terminal} checked={!!activeEditAdmin.perm_rooms} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_rooms', !activeEditAdmin.perm_rooms)} />
                 <PermissionCard title="Supportärenden" desc="Läs/svara supporttickets." icon={LifeBuoy} checked={!!activeEditAdmin.perm_support} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_support', !activeEditAdmin.perm_support)} />
@@ -2086,7 +2112,10 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
 // ==========================================================
 const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
   const [running, setRunning] = useState(false);
-  const [cssWipeTarget, setCssWipeTarget] = useState('');
+  const [diagSearch, setDiagSearch] = useState('');
+  const [diagSearchResults, setDiagSearchResults] = useState<any[]>([]);
+  const [selectedUser, setSelectedUser] = useState<any | null>(null);
+  const [lastScanResult, setLastScanResult] = useState<string | null>(null);
   const [massDeleteQuery, setMassDeleteQuery] = useState('');
   const [massDeleting, setMassDeleting] = useState(false);
   const [forbiddenWords, setForbiddenWords] = useState<any[]>([]);
@@ -2095,7 +2124,22 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
   useEffect(() => {
     fetchForbiddenWords();
+    fetchLatestScanResult();
   }, [supabase]);
+
+  const handleSearchDiagUsers = async (term: string) => {
+    setDiagSearch(term);
+    if (!term || term.length < 2) {
+      setDiagSearchResults([]);
+      return;
+    }
+    const { data } = await supabase
+      .from('profiles')
+      .select('id, username, avatar_url, presentation, custom_style')
+      .ilike('username', `%${term}%`)
+      .limit(5);
+    if (data) setDiagSearchResults(data);
+  };
 
   async function fetchForbiddenWords() {
     const { data } = await supabase.from('forbidden_words').select('*').order('word', { ascending: true });
@@ -2306,18 +2350,58 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     }
 
     setRunning(false);
+    
+    // Sammanfatta resultatet för loggning
+    const okCount = results.filter(r => r.status === 'ok').length;
+    const warnCount = results.filter(r => r.status === 'warning').length;
+    const summary = `${okCount} felfria kontroller, ${warnCount} varningar/åtgärder identifierade.`;
+    
+    // Logga resultat först (så det hamnar överst i loggen)
+    await logAdminAction(supabase, currentUser.id, `Diagnosverktyg resultat: ${summary}`);
+    // Logga själva körningen
     await logAdminAction(supabase, currentUser.id, 'Körde Diagnosverktyg (Vårdcentralen Deep Scan)');
+    
+    fetchLatestScanResult();
+  };
+
+  const fetchLatestScanResult = async () => {
+    // Hämta senaste loggen som innehåller resultat
+    const { data } = await supabase
+      .from('admin_logs')
+      .select('action, created_at')
+      .ilike('action', 'Diagnosverktyg resultat:%')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (data && data.length > 0) {
+      setLastScanResult(data[0].action.replace('Diagnosverktyg resultat: ', ''));
+    }
+  };
+
+  const handleWipeBio = async () => {
+    if (!selectedUser) return;
+    if (confirm(`Säkerhetsvarning: Vill du verkligen rensa all profiltext/biografi för ${selectedUser.username}?`)) {
+      const { error } = await supabase.from('profiles').update({ presentation: null }).eq('id', selectedUser.id);
+      if (error) alert("Ett fel uppstod: " + error.message);
+      else {
+        alert(`Biografin för ${selectedUser.username} är nu raderad.`);
+        await logAdminAction(supabase, currentUser.id, `Rensade biografi för användare ${selectedUser.username}`);
+        setSelectedUser(null);
+        setDiagSearch('');
+      }
+    }
   };
 
   const handleWipeCss = async () => {
-    if (!cssWipeTarget.trim()) return;
-    if (confirm(`Säkerhetsvarning: Vill du verkligen nollställa all CSS-design för ${cssWipeTarget}?`)) {
-      const { error } = await supabase.from('profiles').update({ custom_style: null }).ilike('username', cssWipeTarget.trim());
+    if (!selectedUser) return;
+    if (confirm(`Säkerhetsvarning: Vill du verkligen nollställa all CSS-design för ${selectedUser.username}?`)) {
+      const { error } = await supabase.from('profiles').update({ custom_style: null }).eq('id', selectedUser.id);
       if (error) alert("Ett fel uppstod: " + error.message);
       else {
-        alert(`Designen för ${cssWipeTarget} var nollställd.`);
-        await logAdminAction(supabase, currentUser.id, `Nollställde CSS-design för användare ${cssWipeTarget}`);
-        setCssWipeTarget('');
+        alert(`Designen för ${selectedUser.username} var nollställd.`);
+        await logAdminAction(supabase, currentUser.id, `Nollställde CSS-design för användare ${selectedUser.username}`);
+        setSelectedUser(null);
+        setDiagSearch('');
       }
     }
   };
@@ -2367,6 +2451,13 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         >
           {running ? 'SKANNAR...' : 'KÖR DIAGNOS-VERKTYG'}
         </button>
+      </div>
+
+      <div className="admin-card" style={{ marginBottom: '1.5rem', padding: '1.5rem', borderLeft: '6px solid #3b82f6', backgroundColor: '#f8fafc' }}>
+        <h3 style={{ margin: 0, fontSize: '1rem', color: '#1e40af', fontWeight: '800' }}>Diagnosverktyg resultat:</h3>
+        <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.9rem', color: '#334155', fontStyle: 'italic' }}>
+          {lastScanResult || 'Ingen skanning har körts nyligen.'}
+        </p>
       </div>
 
       <div style={{ display: 'grid', gap: '0.75rem' }}>
@@ -2452,25 +2543,66 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
           )}
         </div>
 
-        <div className="admin-card" style={{ padding: '1.5rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
-          <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Eraser size={20} /> Nollställ Profil-design</h3>
-          <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Om en användare har förstört sitt krypin med dålig CSS kan du rensa den här genom att ange användarnamnet.</p>
-          <div style={{ display: 'flex', gap: '1rem' }} className="admin-responsive-card">
+        <div className="admin-card" style={{ padding: '2rem', backgroundColor: '#fef2f2', border: '1px solid #fca5a5' }}>
+          <h3 style={{ margin: 0, marginBottom: '1rem', color: '#be185d', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Search size={22} /> Hitta Användarprofil (för rensning)</h3>
+          <p style={{ fontSize: '0.9rem', color: 'var(--text-muted)', marginBottom: '1.5rem' }}>Sök fram en användare för att nollställa deras design eller biografi. Skriv t.ex. "mr" för att hitta "mrsunshine88".</p>
+          
+          <div style={{ position: 'relative', marginBottom: '1.5rem' }}>
             <input
               type="text"
-              placeholder="Fyll i användarnamn (@ behövs ej)..."
-              value={cssWipeTarget}
-              onChange={(e) => setCssWipeTarget(e.target.value)}
+              placeholder="Sök på användarnamn..."
+              value={diagSearch}
+              onChange={(e) => handleSearchDiagUsers(e.target.value)}
               className="chat-input"
-              style={{ flex: 1, backgroundColor: 'white', border: '1px solid #fca5a5', padding: '0.75rem', borderRadius: '8px', outline: 'none' }}
+              style={{ width: '100%', backgroundColor: 'white', border: '1px solid #fca5a5', padding: '0.75rem', borderRadius: '8px', outline: 'none' }}
             />
-            <button
-              onClick={handleWipeCss}
-              style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            >
-              Nollställ Design
-            </button>
+            
+            {diagSearchResults.length > 0 && (
+              <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', backgroundColor: 'white', border: '1px solid #fca5a5', borderRadius: '8px', marginTop: '4px', zIndex: 10, boxShadow: '0 4px 6px rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+                {diagSearchResults.map(u => (
+                  <div 
+                    key={u.id} 
+                    onClick={() => { setSelectedUser(u); setDiagSearchResults([]); setDiagSearch(u.username); }}
+                    style={{ padding: '0.75rem', borderBottom: '1px solid #fff5f5', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.75rem' }}
+                  >
+                    <div style={{ width: '30px', height: '30px', borderRadius: '50%', overflow: 'hidden', backgroundColor: '#f1f5f9' }}>
+                      <img src={u.avatar_url || 'https://via.placeholder.com/30'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                    </div>
+                    <strong>{u.username}</strong>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
+
+          {selectedUser && (
+            <div style={{ backgroundColor: 'white', padding: '1.5rem', borderRadius: '12px', border: '2px solid #be185d', marginBottom: '1rem', animation: 'fadeIn 0.3s' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1rem' }}>
+                <div style={{ width: '60px', height: '60px', borderRadius: '50%', overflow: 'hidden', border: '2px solid #fca5a5' }}>
+                  <img src={selectedUser.avatar_url || 'https://via.placeholder.com/60'} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" />
+                </div>
+                <div>
+                  <h4 style={{ margin: 0, fontSize: '1.25rem', color: '#be185d' }}>{selectedUser.username}</h4>
+                  <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>ID: {selectedUser.id}</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }} className="admin-responsive-card">
+                <button
+                  onClick={handleWipeCss}
+                  style={{ flex: 1, backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <Eraser size={18} /> Nollställ Design
+                </button>
+                <button
+                  onClick={handleWipeBio}
+                  style={{ flex: 1, backgroundColor: '#be185d', color: 'white', border: 'none', padding: '0.75rem 1rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
+                >
+                  <Edit2 size={18} /> Rensa Biografi
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

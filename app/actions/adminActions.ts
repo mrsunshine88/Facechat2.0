@@ -212,7 +212,7 @@ export async function adminDeleteSupportTicket(ticketId: string) {
 
 export async function adminResetAvatar(targetUserId: string) {
   try {
-    const { isRoot } = await verifyAdminPermission('perm_content');
+    const { isRoot } = await verifyAdminPermission('perm_images');
     
     // Root-skydd
     const { data: target } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', targetUserId).single();

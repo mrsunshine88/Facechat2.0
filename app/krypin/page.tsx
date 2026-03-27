@@ -1080,7 +1080,10 @@ function MittKrypinContent() {
 
   const handleReportContent = async () => {
     if (!viewerUser || !reportTarget || !reportReason.trim()) return;
-    const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+    let finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+    if (reportTarget.type === 'private_message' && reportTarget.content) {
+      finalReason = `DM: "${reportTarget.content}"\n\n${finalReason}`;
+    }
     await supabase.from('reports').insert({
       reporter_id: viewerUser.id,
       reported_user_id: reportTarget.reportedUserId,
@@ -1091,15 +1094,21 @@ function MittKrypinContent() {
 
     // Notifiera alla administratörer om den nya anmälan så de ser den i klockan!
     try {
-      const { data: admins } = await supabase.from('profiles').select('id')
+      const { data: admins } = await supabase.from('profiles').select('id, username')
         .or('is_admin.eq.true,perm_content.eq.true');
       
       if (admins && admins.length > 0) {
-        // Filtrera bort den person som blir anmäld om den är admin (jäv), 
-        // men låt apersson508@gmail.com alltid få notiser.
-        const filteredAdmins = admins.filter(admin => 
-          admin.id !== reportTarget.reportedUserId || viewerUser.auth_email === 'apersson508@gmail.com'
-        );
+        const filteredAdmins = admins.filter(admin => {
+          // Om en admin blir anmäld ska hen INTE få notis, 
+          // förutom om det är root (apersson508).
+          const isReportedAdmin = admin.id === reportTarget.reportedUserId;
+          const isRoot = admin.username === 'apersson508';
+          
+          if (isReportedAdmin && !isRoot) {
+            return false;
+          }
+          return true;
+        });
 
         if (filteredAdmins.length > 0) {
           const adminNotifs = filteredAdmins.map(admin => ({
@@ -2438,10 +2447,22 @@ function MittKrypinContent() {
                                           <div key={msg.id} style={{ display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start' }}>
                                              <div className={`krypin-message-bubble ${isMe ? 'is-me' : 'is-other'}`} style={{ maxWidth: '75%', padding: '0.75rem 1rem', borderRadius: '16px', borderBottomRightRadius: isMe ? '4px' : '16px', borderBottomLeftRadius: !isMe ? '4px' : '16px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', border: isMe ? 'none' : '1px solid var(--border-color)', minHeight: '1.5rem' }}>
                                                 <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.4', fontSize: '0.95rem' }}>{msg.content}</div>
-                                                <div style={{ fontSize: '0.7rem', textAlign: 'right', marginTop: '0.4rem', opacity: 0.7 }}>
+                                                <div style={{ fontSize: '0.7rem', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: '8px', marginTop: '0.4rem', opacity: 0.7 }}>
+                                                   {!isMe && (
+                                                      <button 
+                                                         onClick={() => {
+                                                            setReportTarget({ id: msg.id, type: 'private_message', reportedUserId: msg.sender_id, content: msg.content });
+                                                            setShowReportModal(true);
+                                                         }}
+                                                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                                                         title="Anmäl meddelande"
+                                                      >
+                                                         <AlertTriangle size={12} />
+                                                      </button>
+                                                   )}
                                                    {new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
                                                    {isMe && <span style={{ marginLeft: '4px' }}>{msg.is_read ? '✓✓' : '✓'}</span>}
-                                                </div>
+                                                 </div>
                                              </div>
                                           </div>
                                        );

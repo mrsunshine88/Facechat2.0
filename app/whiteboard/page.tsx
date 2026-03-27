@@ -370,12 +370,17 @@ export default function Whiteboard() {
   const handleReportContent = async () => {
     if (!currentUser || !reportTarget || !reportReason.trim()) return;
     const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+    const contentToReport = reportTarget.type === 'whiteboard' 
+      ? posts.find(p => p.id === reportTarget.id)?.content
+      : posts.flatMap(p => p.comments || []).find(c => c.id === reportTarget.id)?.content;
+
     await supabase.from('reports').insert({
       reporter_id: currentUser.id,
       reported_user_id: reportTarget.reportedUserId,
       item_type: reportTarget.type,
       item_id: reportTarget.id,
-      reason: finalReason
+      reason: finalReason,
+      reported_content: contentToReport || ''
     });
 
     // Notifiera alla administratörer om den nya anmälan!
@@ -387,7 +392,7 @@ export default function Whiteboard() {
         // Filtrera bort den person som blir anmäld om den är admin (jäv), 
         // men låt apersson508@gmail.com alltid få notiser.
         const filteredAdmins = admins.filter(admin => 
-          admin.id !== reportTarget.reportedUserId || currentUser.auth_email === 'apersson508@gmail.com'
+          admin.id !== reportTarget.reportedUserId || currentUser?.auth_email === 'apersson508@gmail.com'
         );
 
         if (filteredAdmins.length > 0) {
@@ -395,7 +400,7 @@ export default function Whiteboard() {
             receiver_id: admin.id,
             actor_id: currentUser.id,
             type: 'report',
-            content: 'har skickat in en ny anmälan.',
+            content: `har skickat in en ny anmälan (${reportTarget.type === 'whiteboard' ? 'Whiteboard' : 'Kommentar'}).`,
             link: '/admin?tab=reports'
           }));
 
@@ -710,14 +715,25 @@ export default function Whiteboard() {
                                        <span style={{ fontSize: '0.9rem', color: '#050505', whiteSpace: 'pre-wrap' }}>{comment.content}</span>
                                      )}
                                    </div>
-                                   <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', marginTop: '0.2rem', marginLeft: '0.5rem', fontSize: '0.75rem', fontWeight: 'bold', color: '#65676b' }}>
+                                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.75rem', alignItems: 'center', marginTop: '0.2rem', marginLeft: '0.5rem', fontSize: '0.75rem', fontWeight: 'bold', color: '#65676b' }}>
                                       <span onClick={() => handleToggleLikeComment(comment.id)} style={{ color: cLiked ? '#1877f2' : 'inherit', cursor: 'pointer' }}>Gilla</span>
                                       <span style={{ fontWeight: 'normal' }}>{new Date(comment.created_at).toLocaleTimeString('sv-SE', {hour:'2-digit', minute:'2-digit'})}</span>
                                       {comment.likes?.length > 0 && (
                                          <span style={{ display: 'flex', alignItems: 'center', gap: '0.1rem' }}><Heart size={10} fill="#65676b" color="#65676b" /> {comment.likes.length}</span>
                                       )}
                                       {cOwn && <span onClick={() => setEditingItem({ id: comment.id, type: 'comment', content: comment.content })} style={{ cursor: 'pointer' }}>Ändra</span>}
-                                      {(cOwn) && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
+                                      {cOwn && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
+                                      {!cOwn && (
+                                        <span 
+                                          onClick={() => { 
+                                            setReportTarget({ id: comment.id, type: 'whiteboard_comment', reportedUserId: comment.author_id }); 
+                                            setShowReportModal(true); 
+                                          }} 
+                                          style={{ color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                                        >
+                                          Anmäl
+                                        </span>
+                                      )}
                                    </div>
                                 </div>
                              </div>

@@ -202,17 +202,20 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
   }
 
   const handleReport = async () => {
-    if (!reportReason.trim() || !currentUser) return;
+    if (!reportReason.trim() || !currentUser || !reportTarget) return;
     
+    const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+    const contentToReport = posts.find(p => p.id === reportTarget.id)?.content || thread?.title || '';
+
     await supabase.from('reports').insert({
       reporter_id: currentUser.id,
       reported_user_id: reportTarget.reportedUserId,
-      item_type: reportTarget.type,
+      item_type: reportTarget.type, // 'forum_post'
       item_id: reportTarget.id,
-      reason: reportReason,
+      reason: finalReason,
       category: reportCategory,
       status: 'open',
-      reported_content: posts.find(p => p.id === reportTarget.id)?.content || thread?.title || ''
+      reported_content: `FORUM: ${thread?.title}\n\n${contentToReport}`
     });
 
     // Notifiera alla administratörer om den nya anmälan!
@@ -221,14 +224,17 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
         .or('is_admin.eq.true,perm_content.eq.true');
       
       if (admins && admins.length > 0) {
-        const filteredAdmins = admins.filter(admin => admin.id !== reportTarget.reportedUserId);
+        // JÄVSFILTER: Anmäld admin ska inte se anmälan mot sig själv (undantaget Root)
+        const filteredAdmins = admins.filter(admin => 
+          admin.id !== reportTarget.reportedUserId || currentUser?.auth_email === 'apersson508@gmail.com'
+        );
 
         if (filteredAdmins.length > 0) {
           const adminNotifs = filteredAdmins.map(admin => ({
             receiver_id: admin.id,
             actor_id: currentUser.id,
             type: 'report',
-            content: 'har skickat in en ny anmälan i forumet.',
+            content: `har skickat in en ny anmälan i forumet (${thread?.title}).`,
             link: '/admin?tab=reports'
           }));
 
@@ -254,6 +260,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
     alert('Din anmälan har skickats till våra moderatorer. Tack!');
     setShowReportModal(false);
     setReportReason('');
+    setReportTarget(null);
   };
 
   if (loading) {
@@ -355,9 +362,10 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                   <div style={{ 
                     display: 'flex', 
                     flexWrap: 'wrap',
-                    gap: isMobile ? '0.75rem' : '1rem', 
+                    gap: isMobile ? '0.5rem' : '1rem', 
                     marginTop: isMobile ? '1rem' : '0',
-                    marginLeft: isMobile ? '0' : 'auto'
+                    marginLeft: isMobile ? '0' : 'auto',
+                    justifyContent: isMobile ? 'flex-start' : 'flex-end'
                   }}>
                     <button 
                       onClick={() => { setNewReply(`[citat]${thread.title}[/citat]\n`); window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); }}
@@ -379,6 +387,17 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                         style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
                       >
                         <Trash2 size={14} /> Radera
+                      </button>
+                    )}
+                    {(currentUser?.id !== posts[0]?.author_id) && (
+                      <button 
+                        onClick={() => {
+                          setReportTarget({ id: posts[0].id, type: 'forum_post', reportedUserId: posts[0].author_id });
+                          setShowReportModal(true);
+                        }}
+                        style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                      >
+                        <AlertTriangle size={14} /> Anmäl
                       </button>
                     )}
                   </div>
@@ -478,6 +497,18 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                           <Trash2 size={14} /> Radera
                         </button>
                       )}
+
+                      {post.author_id !== currentUser?.id && (
+                        <button 
+                          onClick={() => {
+                            setReportTarget({ id: post.id, type: 'forum_post', reportedUserId: post.author_id });
+                            setShowReportModal(true);
+                          }}
+                          style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}
+                        >
+                          <AlertTriangle size={14} /> Anmäl
+                        </button>
+                      )}
                     </div>
                   </div>
 
@@ -570,13 +601,54 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
               Jag fattar!
             </button>
           </div>
-          <style jsx>{`
-            @keyframes modalBounce {
-              0% { transform: scale(0.8); opacity: 0; }
-              70% { transform: scale(1.05); }
-              100% { transform: scale(1); opacity: 1; }
-            }
-          `}</style>
+      {/* REPORT MODAL */}
+      {showReportModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
+            
+            <select 
+              value={reportCategory}
+              onChange={e => setReportCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', marginBottom: '1rem', fontWeight: 'bold' }}
+            >
+              <option value="Spam">Spam/Nedskräpning</option>
+              <option value="Hatretorik">Hatretorik/Kränkande</option>
+              <option value="Trakasserier">Trakasserier/Mobbning</option>
+              <option value="Olämpligt">Olämpligt Innehåll</option>
+              <option value="Annat">Annat</option>
+            </select>
+
+            <textarea 
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical', marginBottom: '1rem', outline: 'none' }}
+              placeholder="Beskriv problemet..."
+            ></textarea>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                onClick={handleReport} 
+                disabled={!reportReason.trim()} 
+                style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+              >
+                Skicka Anmälan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes modalBounce {
+          0% { transform: scale(0.8); opacity: 0; }
+          70% { transform: scale(1.05); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
         </div>
       )}
     </div>
