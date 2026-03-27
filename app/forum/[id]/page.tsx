@@ -395,9 +395,11 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                           setReportTarget({ id: posts[0].id, type: 'forum_post', reportedUserId: posts[0].author_id });
                           setShowReportModal(true);
                         }}
-                        style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: '600' }}
+                        style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px', borderRadius: '50%', transition: 'background-color 0.2s' }}
+                        className="fb-action-btn"
+                        title="Anmäl inlägg"
                       >
-                        <AlertTriangle size={14} /> Anmäl
+                        <AlertTriangle size={18} />
                       </button>
                     )}
                   </div>
@@ -504,9 +506,11 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                             setReportTarget({ id: post.id, type: 'forum_post', reportedUserId: post.author_id });
                             setShowReportModal(true);
                           }}
-                          style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem', fontWeight: 'bold' }}
+                          style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px', borderRadius: '50%', transition: 'background-color 0.2s' }}
+                          className="fb-action-btn"
+                          title="Anmäl inlägg"
                         >
-                          <AlertTriangle size={14} /> Anmäl
+                          <AlertTriangle size={18} />
                         </button>
                       )}
                     </div>
@@ -601,11 +605,14 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
               Jag fattar!
             </button>
           </div>
+        </div>
+      )}
+
       {/* REPORT MODAL */}
       {showReportModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
           <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
-            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#ef4444' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
             <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
             
             <select 
@@ -633,7 +640,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
               <button 
                 onClick={handleReport} 
                 disabled={!reportReason.trim()} 
-                style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+                style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
               >
                 Skicka Anmälan
               </button>
@@ -649,8 +656,6 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
           100% { transform: scale(1); opacity: 1; }
         }
       `}</style>
-        </div>
-      )}
     </div>
   )
 }

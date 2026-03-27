@@ -578,8 +578,13 @@ export default function Whiteboard() {
                       </button>
                     )}
                     {!isOwnPost && (
-                      <button onClick={() => { setReportTarget({ id: post.id, type: 'whiteboard', reportedUserId: post.author_id }); setShowReportModal(true); }} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer' }} title="Anmäl inlägg">
-                        <AlertTriangle size={16} />
+                      <button 
+                        onClick={() => { setReportTarget({ id: post.id, type: 'whiteboard', reportedUserId: post.author_id }); setShowReportModal(true); }} 
+                        style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: '8px', borderRadius: '50%', transition: 'background-color 0.2s', display: 'flex', alignItems: 'center' }} 
+                        className="fb-action-btn"
+                        title="Anmäl inlägg"
+                      >
+                        <AlertTriangle size={18} />
                       </button>
                     )}
                   </div>
@@ -724,15 +729,17 @@ export default function Whiteboard() {
                                       {cOwn && <span onClick={() => setEditingItem({ id: comment.id, type: 'comment', content: comment.content })} style={{ cursor: 'pointer' }}>Ändra</span>}
                                       {cOwn && <span onClick={() => handleDeleteComment(comment.id)} style={{ color: '#ef4444', cursor: 'pointer' }}>Radera</span>}
                                       {!cOwn && (
-                                        <span 
+                                        <button 
                                           onClick={() => { 
                                             setReportTarget({ id: comment.id, type: 'whiteboard_comment', reportedUserId: comment.author_id }); 
                                             setShowReportModal(true); 
                                           }} 
-                                          style={{ color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.2rem' }}
+                                          style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '2px', borderRadius: '50%', transition: 'background-color 0.2s' }}
+                                          className="fb-action-btn"
+                                          title="Anmäl kommentar"
                                         >
-                                          Anmäl
-                                        </span>
+                                          <AlertTriangle size={14} />
+                                        </button>
                                       )}
                                    </div>
                                 </div>
@@ -771,7 +778,7 @@ export default function Whiteboard() {
       {showReportModal && (
          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
            <div className="card animate-fade-in" style={{ width: '100%', maxWidth: '400px', padding: '2rem' }}>
-              <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#b91c1c' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
+              <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
               <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.875rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat.</p>
               
               <select 
@@ -795,7 +802,7 @@ export default function Whiteboard() {
               ></textarea>
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
                 <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
-                <button onClick={handleReportContent} disabled={!reportReason.trim()} style={{ background: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}>Skicka Anmälan</button>
+                <button onClick={handleReportContent} disabled={!reportReason.trim()} style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}>Skicka Anmälan</button>
               </div>
            </div>
          </div>

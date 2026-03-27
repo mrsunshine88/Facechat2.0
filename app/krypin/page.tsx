@@ -2202,9 +2202,11 @@ function MittKrypinContent() {
                           setReportTarget({ id: currentUser.id, type: 'profile', reportedUserId: currentUser.id });
                           setShowReportModal(true);
                         }} 
-                        style={{ backgroundColor: '#fff', color: '#b91c1c', padding: '0.6rem 1rem', borderRadius: '8px', border: '2px solid #b91c1c', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.05)', flex: '1 1 auto', justifyContent: 'center' }}
+                        style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '8px', borderRadius: '50%', transition: 'background-color 0.2s', flex: '0 0 auto' }}
+                        className="fb-action-btn"
+                        title="Anmäl person"
                       >
-                        <AlertTriangle size={16} /> Anmäl person
+                        <AlertTriangle size={20} />
                       </button>
                     </div>
                   )}
@@ -2302,8 +2304,15 @@ function MittKrypinContent() {
                         {(isMyProfile || viewerUser?.id === post.sender_id) && (
                           <button onClick={() => handleDeleteGuestbookPost(post.id)} style={{ color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }} title="Radera inlägg"><Trash2 size={18} /></button>
                         )}
-                        {!isMyProfile && viewerUser?.id !== post.sender_id && (
-                          <button onClick={() => { setReportTarget({ id: post.id, type: 'guestbook', reportedUserId: post.sender_id }); setShowReportModal(true); }} style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: '0.25rem' }} title="Anmäl inlägg"><AlertTriangle size={18} /></button>
+                        {viewerUser?.id !== post.sender_id && (
+                          <button 
+                            onClick={() => { setReportTarget({ id: post.id, type: 'guestbook', reportedUserId: post.sender_id }); setShowReportModal(true); }} 
+                            style={{ color: '#f59e0b', background: 'none', border: 'none', cursor: 'pointer', padding: '0.4rem', borderRadius: '50%', transition: 'background-color 0.2s' }} 
+                            className="fb-action-btn"
+                            title="Anmäl inlägg"
+                          >
+                            <AlertTriangle size={20} />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -2454,11 +2463,12 @@ function MittKrypinContent() {
                                                             setReportTarget({ id: msg.id, type: 'private_message', reportedUserId: msg.sender_id, content: msg.content });
                                                             setShowReportModal(true);
                                                          }}
-                                                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}
+                                                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: '4px', borderRadius: '50%', display: 'flex', alignItems: 'center', transition: 'background-color 0.2s' }}
+                                                         className="fb-action-btn"
                                                          title="Anmäl meddelande"
                                                       >
-                                                         <AlertTriangle size={12} />
-                                                      </button>
+                                                          <AlertTriangle size={18} />
+                                                       </button>
                                                    )}
                                                    {new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}
                                                    {isMe && <span style={{ marginLeft: '4px' }}>{msg.is_read ? '✓✓' : '✓'}</span>}
@@ -2616,15 +2626,93 @@ function MittKrypinContent() {
               Jag fattar!
             </button>
           </div>
-          <style jsx>{`
-            @keyframes modalBounce {
-              0% { transform: scale(0.8); opacity: 0; }
-              70% { transform: scale(1.05); }
-              100% { transform: scale(1); opacity: 1; }
-            }
-          `}</style>
         </div>
       )}
+
+      {/* REPORT MODAL */}
+      {showReportModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}><AlertTriangle size={24}/> Anmäl Innehåll</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
+            
+            <select 
+              value={reportCategory}
+              onChange={e => setReportCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', marginBottom: '1rem', fontWeight: 'bold' }}
+            >
+              <option value="Spam">Spam/Nedskräpning</option>
+              <option value="Hatretorik">Hatretorik/Kränkande</option>
+              <option value="Trakasserier">Trakasserier/Mobbning</option>
+              <option value="Olämpligt">Olämpligt Innehåll</option>
+              <option value="Annat">Annat</option>
+            </select>
+
+            <textarea 
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical', marginBottom: '1rem', outline: 'none' }}
+              placeholder="Beskriv problemet..."
+            ></textarea>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                onClick={async () => {
+                  if (!reportReason.trim() || !viewerUser || !reportTarget) return;
+                  
+                  const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
+                  const { error } = await supabase.from('reports').insert({
+                    reporter_id: viewerUser.id,
+                    reported_user_id: reportTarget.reportedUserId,
+                    item_type: reportTarget.type,
+                    item_id: reportTarget.id,
+                    reason: finalReason,
+                    category: reportCategory,
+                    status: 'open',
+                    reported_content: reportTarget.content || '(Innehåll saknas)'
+                  });
+
+                  if (!error) {
+                    // Notifiera admins
+                    const { data: admins } = await supabase.from('profiles').select('id').or('is_admin.eq.true,perm_content.eq.true');
+                    if (admins) {
+                      const adminNotifs = admins.map(admin => ({
+                        receiver_id: admin.id,
+                        actor_id: viewerUser.id,
+                        type: 'report',
+                        content: `ny anmälan: ${reportTarget.type}`,
+                        link: '/admin?tab=reports'
+                      }));
+                      await supabase.from('notifications').insert(adminNotifs);
+                    }
+                    alert('Anmälan skickad! Tack för din hjälp.');
+                  } else {
+                    alert('Kunde inte skicka anmälan: ' + error.message);
+                  }
+                  
+                  setShowReportModal(false);
+                  setReportReason('');
+                  setReportTarget(null);
+                }} 
+                disabled={!reportReason.trim()} 
+                style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+              >
+                Skicka Anmälan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        @keyframes modalBounce {
+          0% { transform: scale(0.8); opacity: 0; }
+          70% { transform: scale(1.05); }
+          100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
     </div>
     </div>
     </>

@@ -477,10 +477,11 @@ function ChattrumContent() {
                            setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content });
                            setShowReportModal(true);
                          }}
-                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', opacity: 0.6 }} 
+                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: '4px', borderRadius: '50%', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }} 
+                         className="fb-action-btn"
                          title="Anmäl meddelande"
                        >
-                         <AlertTriangle size={14} />
+                         <AlertTriangle size={16} />
                        </button>
                      )}
                      {canModerate && (
@@ -602,10 +603,51 @@ function ChattrumContent() {
         }
       `}</style>
 
+      {/* REPORT MODAL */}
+      {showReportModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}><AlertTriangle size={24}/> Anmäl Meddelande</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
+            
+            <select 
+              value={reportCategory}
+              onChange={e => setReportCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', marginBottom: '1rem', fontWeight: 'bold' }}
+            >
+              <option value="Spam">Spam/Nedskräpning</option>
+              <option value="Hatretorik">Hatretorik/Kränkande</option>
+              <option value="Trakasserier">Trakasserier/Mobbning</option>
+              <option value="Olämpligt">Olämpligt Innehåll</option>
+              <option value="Annat">Annat</option>
+            </select>
+
+            <textarea 
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical', marginBottom: '1rem', outline: 'none' }}
+              placeholder="Beskriv problemet..."
+            ></textarea>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                onClick={handleReportMessage} 
+                disabled={!reportReason.trim()} 
+                style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+              >
+                Skicka Anmälan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* DUPLICATE WARNING MODAL */}
       {showDuplicateModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowDuplicateModal(false)}>
-          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem 2rem', textAlign: 'center', borderRadius: '24px', position: 'relative', border: '2px solid #ef4444', animation: 'modalBounce 0.4s ease-out' }} onClick={e => e.stopPropagation()}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2.5rem 2rem', textAlign: 'center', borderRadius: '24px', position: 'relative', border: '2px solid #ef4444', animation: 'modalBounce 0.4s ease-out', backgroundColor: 'white' }} onClick={e => e.stopPropagation()}>
             <div style={{ width: '80px', height: '80px', backgroundColor: '#fee2e2', color: '#ef4444', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto' }}>
               <ShieldAlert size={40} />
             </div>
