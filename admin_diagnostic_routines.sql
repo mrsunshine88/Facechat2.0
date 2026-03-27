@@ -3,20 +3,27 @@
 -- KÖR DETTA I SUPABASE SQL EDITOR FÖR ATT AKTIVERA VÅRDCENTRALEN! 🏥⚡
 -- =========================================================================
 
--- 1. AKTIVERA EXTENSIONS (Krävs för schemaläggning)
+-- 1. AKTIVERA EXTENSIONS OCH RÄTTIGHETER
 -- -------------------------------------------------------------------------
 CREATE EXTENSION IF NOT EXISTS pg_cron;
+GRANT USAGE ON SCHEMA storage TO postgres, anon, authenticated;
+GRANT SELECT ON storage.objects TO postgres, anon, authenticated;
+GRANT SELECT ON storage.buckets TO postgres, anon, authenticated;
 
 -- 2. RUTINER FÖR DIAGNOSVERKTYGET (RPC)
 -- -------------------------------------------------------------------------
 
--- Räkna total lagringsstorlek specifikt för 'avatars' hinken
+-- Räkna total lagringsstorlek specifikt för 'avatars' hinken (Anpassad för äldre Supabase)
 CREATE OR REPLACE FUNCTION public.get_total_storage_size()
 RETURNS bigint AS $$
 DECLARE
     size_sum bigint;
 BEGIN
-    SELECT SUM(size) INTO size_sum FROM storage.objects WHERE bucket_id = 'avatars';
+    -- I äldre Supabase ligger storleken i metadata-fältet som JSON
+    SELECT SUM(COALESCE((metadata->>'size')::bigint, 0)) INTO size_sum 
+    FROM storage.objects 
+    WHERE bucket_id = 'avatars';
+
     RETURN COALESCE(size_sum, 0);
 EXCEPTION WHEN OTHERS THEN
     RETURN 0;
