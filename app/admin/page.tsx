@@ -2373,6 +2373,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     { id: 'reports', title: 'Ignorerade Anmälningar (> 7d)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'avatars', title: 'Profilbilder (Trasiga Länkar)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'friendships', title: 'Social Hälsa (Vänskap)', status: 'idle', message: 'Väntar på diagnos...' },
+    { id: 'logs', title: 'Log-städning (> 15d)', status: 'idle', message: 'Väntar på diagnos...' },
   ]);
 
   const isExecutingRef = useRef(false);
@@ -2463,10 +2464,36 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       const { data: optImg } = await supabase.rpc('optimize_uploaded_images');
       updateOne('images', { status: 'ok', message: optImg > 0 ? `✅ Optimerade ${optImg} bilder.` : '✅ Alle bilder optimerade.' });
 
+      // 9. Ignorerade Anmälningar (> 7 dagar)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const { count: oldReports } = await supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open').lt('created_at', sevenDaysAgo.toISOString());
+      if ((oldReports || 0) > 0) {
+         updateOne('reports', { status: 'warning', message: `Hittade ${oldReports} gamla anmälningar. Auto-löser...` });
+         await supabase.from('reports').update({ status: 'resolved' }).eq('status', 'open').lt('created_at', sevenDaysAgo.toISOString());
+         await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Auto-löste ${oldReports} gamla anmälningar.`);
+         updateOne('reports', { status: 'ok', message: `✅ Rensade ${oldReports} anmälningar.` });
+      } else {
+         updateOne('reports', { status: 'ok', message: '✅ Inga gamla anmälningar.' });
+      }
+
+      // 10. Log-städning (> 15 dagar)
+      const fifteenDaysAgo = new Date();
+      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
+      const { count: logsToDelete } = await supabase.from('admin_logs').select('*', { count: 'exact', head: true }).lt('created_at', fifteenDaysAgo.toISOString());
+      if ((logsToDelete || 0) > 0) {
+         updateOne('logs', { status: 'warning', message: `Rensar ${logsToDelete} gamla loggar...` });
+         await supabase.from('admin_logs').delete().lt('created_at', fifteenDaysAgo.toISOString());
+         updateOne('logs', { status: 'ok', message: `✅ Rensade ${logsToDelete} rader.` });
+      } else {
+         updateOne('logs', { status: 'ok', message: '✅ Loggarna är fräscha.' });
+      }
+
       // Slutgiltig summering
+      const totalSteps = currentResults.length;
       const okCount = currentResults.filter(r => r.status === 'ok').length;
       const warnCount = currentResults.filter(r => r.status === 'warning').length;
-      const summaryText = `${okCount} felfria, ${warnCount} åtgärdade automatiskt.`;
+      const summaryText = `${okCount} av ${totalSteps} felfria, ${warnCount} åtgärdade automatiskt.`;
       
       await logAdminAction(supabase, currentUser.id, `Vårdcentralen: ${summaryText}`);
       fetchLatestScanResult();
