@@ -2286,24 +2286,29 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   // Sök-loggning & Auto-Sök (Debounced)
   useEffect(() => {
     const term = diagSearch.trim();
-    if (term.length >= 2) {
+    if (term.length >= 1) {
       const timer = setTimeout(async () => {
-        // Logga sökningen
-        logAdminAction(supabase, currentUser.id, `Sökte efter användarprofil i Diagnosverktyget: "${term}"`);
+        // Logga sökningen (endast om det är en ny sökning)
+        if (term.length >= 2) {
+          logAdminAction(supabase, currentUser?.id, `Sökte efter användarprofil i Diagnosverktyget: "${term}"`);
+        }
         
         // Utför sökningen
-        const { data } = await supabase
+        const { data, error } = await supabase
           .from('profiles')
           .select('id, username, avatar_url, presentation, custom_style')
           .ilike('username', `%${term}%`)
-          .limit(5);
-        if (data) setDiagSearchResults(data);
-      }, 400);
+          .limit(10);
+          
+        if (!error && data) {
+          setDiagSearchResults(data);
+        }
+      }, 300);
       return () => clearTimeout(timer);
     } else {
       setDiagSearchResults([]);
     }
-  }, [diagSearch, supabase, currentUser.id]);
+  }, [diagSearch, supabase, currentUser?.id]);
 
   async function fetchForbiddenWords() {
     const { data } = await supabase.from('forbidden_words').select('*').order('word', { ascending: true });
@@ -2530,8 +2535,8 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   const handleWipeBio = async () => {
     if (!selectedUser) return;
     if (confirm(`Säkerhetsvarning: Vill du verkligen rensa all profiltext/biografi för ${selectedUser.username}?`)) {
-      const { error } = await supabase.from('profiles').update({ presentation: null }).eq('id', selectedUser.id);
-      if (error) alert("Ett fel uppstod: " + error.message);
+      const res = await adminResetPresentation(selectedUser.id);
+      if (res?.error) alert("Kunde inte rensa: " + res.error);
       else {
         alert(`Biografin för ${selectedUser.username} är nu raderad.`);
         await logAdminAction(supabase, currentUser.id, `Rensade biografi för användare ${selectedUser.username}`);
@@ -2544,8 +2549,8 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   const handleWipeCss = async () => {
     if (!selectedUser) return;
     if (confirm(`Säkerhetsvarning: Vill du verkligen nollställa all CSS-design för ${selectedUser.username}?`)) {
-      const { error } = await supabase.from('profiles').update({ custom_style: null }).eq('id', selectedUser.id);
-      if (error) alert("Ett fel uppstod: " + error.message);
+      const res = await adminResetTheme(selectedUser.id);
+      if (res?.error) alert("Kunde inte nollställa: " + res.error);
       else {
         alert(`Designen för ${selectedUser.username} var nollställd.`);
         await logAdminAction(supabase, currentUser.id, `Nollställde CSS-design för användare ${selectedUser.username}`);
