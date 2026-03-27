@@ -72,27 +72,23 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 -- 2.1 Rensa herrelösa profilbilder (Bilder i storage som inte används)
--- Denna version är säkrare och hanterar även mappar korrekt.
+-- Denna version använder NOT EXISTS för att vara immun mot NULL-värden i profiles-tabellen.
 CREATE OR REPLACE FUNCTION public.cleanup_orphan_avatars()
 RETURNS integer AS $$
 DECLARE
     deleted_count integer;
 BEGIN
-    -- Raderar poster från storage.objects som inte finns i någons avatar_url
-    -- Vi använder en subquery för att extrahera filnamnet från URL:en
-    DELETE FROM storage.objects
-    WHERE bucket_id = 'avatars'
-      AND name NOT LIKE '.%' -- Ignorera systemfiler som .emptyFolderPlaceholder
-      AND name NOT IN (
-        SELECT 
-          CASE 
-            WHEN avatar_url LIKE '%/avatars/%' THEN 
-              split_part(split_part(avatar_url, '/avatars/', 2), '?', 1)
-            ELSE 
-              NULL 
-          END
-        FROM public.profiles
-        WHERE avatar_url IS NOT NULL
+    DELETE FROM storage.objects s
+    WHERE s.bucket_id = 'avatars'
+      AND s.name NOT LIKE '.%' 
+      AND NOT EXISTS (
+        SELECT 1 
+        FROM public.profiles p
+        WHERE p.avatar_url IS NOT NULL
+          AND (
+            -- Kollar om filnamnet i storage finns med i slutet av profilens avatar_url
+            p.avatar_url LIKE '%' || s.name || '%'
+          )
       );
       
     GET DIAGNOSTICS deleted_count = ROW_COUNT;
@@ -102,25 +98,24 @@ EXCEPTION WHEN OTHERS THEN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
--- 2.2 Bild-Optimeraren (Append parameters for Supabase transformation service)
-CREATE OR REPLACE FUNCTION public.optimize_uploaded_images()
+-- NY: Enbart räkna herrelösa bilder (utan att radera)
+CREATE OR REPLACE FUNCTION public.count_orphan_avatars()
 RETURNS integer AS $$
 DECLARE
-  affected_rows integer;
+    orphan_count integer;
 BEGIN
-  WITH updated AS (
-    UPDATE public.profiles 
-    SET avatar_url = avatar_url || '?width=800&resize=contain'
-    WHERE avatar_url IS NOT NULL 
-      AND avatar_url != '' 
-      AND avatar_url NOT LIKE '%width=800%'
-      AND avatar_url NOT LIKE '%?%' 
-      AND avatar_url LIKE '%/avatars/%'
-    RETURNING 1
-  )
-  SELECT count(*) INTO affected_rows FROM updated;
-  
-  RETURN COALESCE(affected_rows, 0);
+    SELECT count(*) INTO orphan_count
+    FROM storage.objects s
+    WHERE s.bucket_id = 'avatars'
+      AND s.name NOT LIKE '.%' 
+      AND NOT EXISTS (
+        SELECT 1 
+        FROM public.profiles p
+        WHERE p.avatar_url IS NOT NULL
+          AND p.avatar_url LIKE '%' || s.name || '%'
+      );
+      
+    RETURN COALESCE(orphan_count, 0);
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 

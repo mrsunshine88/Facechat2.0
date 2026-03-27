@@ -788,23 +788,51 @@ const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: an
       if (data) setUsersWithAvatars(data);
     } else {
       try {
-        // Hämta ALLA filer från avatars hinken
-        const { data: storageFiles } = await supabase.storage.from('avatars').list('', { limit: 1000 });
-        // Hämta ALLA aktiva avatar-URL:er
-        const { data: activeProfiles } = await supabase.from('profiles').select('avatar_url').not('avatar_url', 'is', null);
+        // 1. Hämta ALLA filer från avatars hinken (hantera 1000+ filer)
+        let allStorageFiles: any[] = [];
+        let offset = 0;
+        let hasMoreFiles = true;
+        while (hasMoreFiles) {
+          const { data: batch, error: err } = await supabase.storage.from('avatars').list('', { limit: 1000, offset });
+          if (err || !batch || batch.length === 0) {
+            hasMoreFiles = false;
+          } else {
+            allStorageFiles = [...allStorageFiles, ...batch];
+            offset += 1000;
+            if (batch.length < 1000) hasMoreFiles = false;
+          }
+        }
+
+        // 2. Hämta ALLA aktiva avatar-URL:er (hantera 1000+ användare)
+        let allActiveUrls: string[] = [];
+        let from = 0;
+        let hasMoreProfiles = true;
+        while (hasMoreProfiles) {
+          const { data: batch, error: err } = await supabase.from('profiles')
+            .select('avatar_url')
+            .not('avatar_url', 'is', null)
+            .range(from, from + 999);
+          if (err || !batch || batch.length === 0) {
+            hasMoreProfiles = false;
+          } else {
+            allActiveUrls = [...allActiveUrls, ...batch.map(p => p.avatar_url)];
+            from += 1000;
+            if (batch.length < 1000) hasMoreProfiles = false;
+          }
+        }
         
-        if (storageFiles && activeProfiles) {
+        if (allStorageFiles.length > 0) {
           const activeFileNames = new Set(
-            activeProfiles
-              .map((p: any) => {
+            allActiveUrls
+              .map((url: string) => {
                 try {
-                  return p.avatar_url?.split('/').pop()?.split('?')[0];
+                  return url.split('/').pop()?.split('?')[0];
                 } catch (e) { return null; }
               })
               .filter(Boolean)
           );
           
-          const orphans = storageFiles
+          const orphans = allStorageFiles
             .map((f: any) => f.name)
             .filter((name: string) => name !== '.emptyFolderPlaceholder' && !activeFileNames.has(name));
             
@@ -2382,11 +2410,16 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       });
     }
 
-    // 1.5. Oanvända Profilbilder (Cleanup)
-    const { data: orphanCount, error: orphanError } = await supabase.rpc('cleanup_orphan_avatars');
+    // 1.5. Oanvända Profilbilder (Scan)
+    const { data: orphanCount, error: orphanError } = await supabase.rpc('count_orphan_avatars');
     updateOne('orphaned_avatars', {
       status: orphanError ? 'warning' : (orphanCount > 0 ? 'warning' : 'ok'),
-      message: orphanError ? `⚠️ Kontroll av herrelösa bilder hoppades över (RPC saknas). Kör 'admin_diagnostic_routines.sql'.` : (orphanCount > 0 ? `Hittade och rensade ${orphanCount} profilbilder som inte längre användes.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!')
+      message: orphanError ? `⚠️ Kontroll av herrelösa bilder hoppades över (RPC saknas). Kör 'admin_diagnostic_routines.sql'.` : (orphanCount > 0 ? `Hittade ${orphanCount} herrelösa profilbilder som inte längre används.` : '✅ Inga oanvända profilbilder hittades. Mappen är kliniskt ren!'),
+      fixAction: (orphanCount > 0) ? async () => {
+        const { data: delCount } = await supabase.rpc('cleanup_orphan_avatars');
+        await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade bort ${delCount || orphanCount} herrelösa profilbilder.`);
+        runDiagnostics();
+      } : undefined
     });
 
     // 2. Sync PWA/DB Profiles
