@@ -2406,14 +2406,22 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
          message: pingErr ? `Ping-fel: ${pingErr.message}` : `✅ Svarar normalt (${Date.now() - startPing}ms).` 
       });
 
-      // 1. Oanvända Bilder (RPC)
-      const { data: orphanCount } = await supabase.rpc('count_orphan_avatars');
-      if ((orphanCount || 0) > 0) {
+      // 1. Oanvända Bilder (Storage API + RPC)
+      // Vi hämtar en lista på filnamnen och raderar dem via Storage-porten för att undvika 403-fel.
+      const { data: orphans } = await supabase.rpc('get_orphan_avatars');
+      if (orphans && orphans.length > 0) {
         fixesCount++;
-        updateOne('orphaned_avatars', { status: 'warning', message: `Hittade ${orphanCount} bilder. Rensar nu...` });
-        await supabase.rpc('cleanup_orphan_avatars');
-        await logAdminAction(supabase, currentUser.id, `Vårdcentralen Auto: Rensade ${orphanCount} bilder.`);
-        updateOne('orphaned_avatars', { status: 'ok', message: '✅ Rensade.' });
+        updateOne('orphaned_avatars', { status: 'warning', message: `Hittade ${orphans.length} bilder. Rensar via Storage...` });
+        
+        // Radera alla via Storage API (Detta är den "rätta" porten)
+        const { error: storageErr } = await supabase.storage.from('avatars').remove(orphans);
+        
+        if (!storageErr) {
+          await logAdminAction(supabase, currentUser.id, `Vårdcentralen: Rensade ${orphans.length} herrelösa bilder via Storage API.`);
+          updateOne('orphaned_avatars', { status: 'ok', message: `✅ Rensade ${orphans.length} bilder.` });
+        } else {
+          updateOne('orphaned_avatars', { status: 'warning', message: `⚠️ Storage-fel: ${storageErr.message}` });
+        }
       } else {
         updateOne('orphaned_avatars', { status: 'ok', message: '✅ Inga herrelösa bilder.' });
       }
