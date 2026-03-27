@@ -26,6 +26,8 @@ export const logAdminAction = async (supabase: any, adminId: string, action: str
   } catch (e) { }
 };
 
+const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
+
 const AdminSkeleton = () => (
   <div style={{ padding: '2rem', maxWidth: '1200px', margin: '0 auto' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
@@ -44,12 +46,13 @@ const AdminSkeleton = () => (
 );
 
 const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
 );
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
+  const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
   const [userProfile, setUserProfile] = useState<any>(null);
   const [unreadSupportCount, setUnreadSupportCount] = useState(0);
   const [unreadReportsCount, setUnreadReportsCount] = useState(0);
@@ -58,7 +61,8 @@ export default function AdminPanel() {
 
   useEffect(() => {
     async function checkAuth() {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
+      const user = session?.user;
       if (!user) {
         router.push('/');
         return;
@@ -81,7 +85,7 @@ export default function AdminPanel() {
       // Realtime profile/permission listener (for the logged in admin)
       const profileSub = supabase.channel('admin-self-update')
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, (payload) => {
-          setUserProfile((prev: any) => ({ ...prev, ...payload.new }));
+          setUserProfile((prev: any) => ({ ...prev, ...payload.new, auth_email: prev?.auth_email }));
         }).subscribe();
       
       return () => { supabase.removeChannel(profileSub); };
@@ -117,7 +121,7 @@ export default function AdminPanel() {
   // Hämta ANMÄLNINGAR count (Open)
   useEffect(() => {
     if (userProfile) {
-      const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
+  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username === 'mrsunshine88';
       const canManageContent = isRoot || userProfile.perm_content === true;
 
       if (canManageContent) {
@@ -127,7 +131,7 @@ export default function AdminPanel() {
             .eq('status', 'open');
           
           if (!isRoot) {
-            // Administratörer ska INTE se/räkna anmälningar mot sig själva
+            // Endast ROOT (mrsunshine88) ser anmälningar mot sig själv
             query = query.neq('reported_user_id', userProfile.id);
           }
 
@@ -961,7 +965,7 @@ const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: an
               {usersWithAvatars.map(u => (
                 <div key={u.id} className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                   <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '1px solid var(--border-color)' }}>
-                      <img src={u.avatar_url} alt={u.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={cleanUrl(u.avatar_url) || ''} alt={u.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   </div>
                   <div style={{ textAlign: 'center' }}>
                       <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--text-main)', fontSize: '0.9rem' }}>{u.username}</p>
@@ -1166,8 +1170,8 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
-      <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Anmälningar <span style={{ fontSize: '1rem', backgroundColor: '#ef4444', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', verticalAlign: 'middle' }}>{reports.filter(r => r.status === 'open').length}</span></h2>
-      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Granska anmälningar av Whiteboard-inlägg, Gästböcker och Forum.</p>
+      <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '1rem', color: 'var(--text-main)' }}>Granska alla anmälningar <span style={{ fontSize: '1rem', backgroundColor: '#ef4444', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '4px', verticalAlign: 'middle' }}>{reports.filter(r => r.status === 'open').length}</span></h2>
+      <p style={{ color: 'var(--text-muted)', marginBottom: '2rem' }}>Här visas anmälningar från hela sajten: Whiteboard, Gästböcker, Forum, Krypin och Profiler.</p>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {reports.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga anmälningar hittades. Bra jobbat!</p>}
@@ -2232,7 +2236,10 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                   <p style={{ color: 'var(--text-main)', fontSize: '1rem', fontWeight: '500', margin: '1rem 0 0.5rem 0' }}>"{ticket.description}"</p>
                 </div>
                 <div className="admin-card-actions" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '0.5rem' }}>
-                  <span style={{ fontSize: '0.875rem', color: '#3b82f6', fontWeight: 'bold' }}>{ticket.messages && ticket.messages.length > 0 ? `${ticket.messages.length} meddelanden` : 'Nytt ärende'} &rarr;</span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+                    <span style={{ fontSize: '0.875rem', color: '#3b82f6', fontWeight: 'bold' }}>{ticket.messages && ticket.messages.length > 0 ? `${ticket.messages.length} meddelanden` : 'Nytt ärende'} &rarr;</span>
+                    {ticket.status === 'closed' && <span style={{ backgroundColor: '#10b981', color: 'white', padding: '0.2rem 0.5rem', borderRadius: '4px', fontSize: '0.75rem', fontWeight: 'bold' }}>LÖST ✅</span>}
+                  </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
                     {ticket.status === 'open' && (
                       <button onClick={(e) => markResolved(ticket.id, e)} style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', cursor: 'pointer', fontWeight: '600', padding: '0.5rem 1rem', borderRadius: '6px', fontSize: '0.75rem' }}>

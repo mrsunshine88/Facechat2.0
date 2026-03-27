@@ -19,14 +19,15 @@ export default function Header() {
   const [userProfile, setUserProfile] = useState<any>(null)
 
   const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
   )
 
   useEffect(() => {
     if (isBlockedRoute) return;
     async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data: { session } } = await supabase.auth.getSession()
+      const user = session?.user
       if (user) {
         // VATTENTÄTT: Om mejlen INTE är bekräftad och kontot är nytt (från och med idag), sparka ut dem direkt!
         // Detta är en extra spärr ifall de lyckas lura någon klientsida.
@@ -135,9 +136,9 @@ export default function Header() {
          // VIKTIGT: Spela bara ljud om fliken är AKTIV för att undvika dubbel-pling med push-notiser
          if (payload.new.type !== 'visit' && document.visibilityState === 'visible') {
             try {
-               const audio = new Audio('https://shmector.com/_ph/18/843187215.mp3'); // En diskret men tydlig ping
+               const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
                audio.volume = 0.4;
-               audio.play().catch(() => {}); // Ignorera om webbläsaren blockerar autoplay
+               audio.play().catch(() => {}); 
             } catch (e) {}
          }
          fetchPersonligaNotiser();
@@ -204,9 +205,11 @@ export default function Header() {
          }
          
          // Magiskt: Uppdatera profil-state direkt om admin-status eller behörighet ändras!
+         // VATTENTÄTT: Behåll auth_email (Root check) även vid realtime-uppdateringar!
          setUserProfile((prev: any) => ({
             ...prev,
-            ...payload.new
+            ...payload.new,
+            auth_email: prev?.auth_email // Tappa ALDRIG denna virtuella egenskap!
          }));
       }).subscribe();
       

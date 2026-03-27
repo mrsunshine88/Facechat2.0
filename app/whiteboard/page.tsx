@@ -50,13 +50,14 @@ export default function Whiteboard() {
   const [isSending, setIsSending] = useState(false);
   
   const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+    process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
   )
 
   useEffect(() => {
     const init = async () => {
-       const { data: { user } } = await supabase.auth.getUser();
+       const { data: { session } } = await supabase.auth.getSession();
+       const user = session?.user;
        if (user) {
           const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
           if (prof) setCurrentUser(prof);

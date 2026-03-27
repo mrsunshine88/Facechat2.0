@@ -9,7 +9,8 @@ import SnakeGame from '@/components/SnakeGame';
 import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
 import { sanitizeCSS } from '@/utils/securityUtils';
 
-// ... (PrivacyToggle and SettingsDashboard remain similar but simplified for now)
+const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
+
 const PrivacyToggle = ({ label }: { label: string }) => {
    const [isVisible, setIsVisible] = useState(false);
    return (
@@ -175,8 +176,8 @@ export default function MittKrypin() {
 }
 
 const supabase = createBrowserClient(
-   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+   process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co',
+   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder'
 );
 
 function MittKrypinContent() {
@@ -335,13 +336,21 @@ function MittKrypinContent() {
       let globalChannel: any;
 
       async function initData() {
-         // Hämta auth först
-         const { data: { user } } = await supabase.auth.getUser();
+         // FELSÄKRA: Använd getSession() för att undvika "Lock stole it" contention (stability fix)
+         const { data: { session } } = await supabase.auth.getSession();
+         const user = session?.user;
          if (!user) { window.location.href = '/login'; return; }
 
-         // Hämta spärrade ord för det REVERSIBLA filtret
-         const { data: words } = await supabase.from('forbidden_words').select('word');
-         if (words) setForbiddenWords(words.map(w => w.word));
+         // Hämta spärrade ord för det REVERSIBLA filtret + lyssna efter ändringar!
+         const fetchForbiddenWords = async () => {
+            const { data: words } = await supabase.from('forbidden_words').select('word');
+            if (words) setForbiddenWords(words.map(w => w.word));
+         };
+         fetchForbiddenWords();
+
+         const wordFilterChannel = supabase.channel('global-word-filter')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'forbidden_words' }, fetchForbiddenWords)
+            .subscribe();
 
          // Hämta egen IP och kolla spärr listan (Säkerhet)
          try {
@@ -2102,7 +2111,7 @@ function MittKrypinContent() {
 
                      <div style={{ position: 'relative', width: '100px', height: '100px', marginBottom: '1rem', cursor: 'pointer' }}>
                         <div className="profile-frame" style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', boxSizing: 'border-box' }}>
-                           {currentUser.avatar_url ? <img src={currentUser.avatar_url} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : ''}
+                           {currentUser.avatar_url ? <img src={cleanUrl(currentUser.avatar_url) || ''} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : ''}
                         </div>
                         {isMyProfile && (
                            <div
