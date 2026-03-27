@@ -691,9 +691,10 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 {(() => {
                   const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
                   const isCurrentAdmin = u.id === currentUser.id;
-                  const isProtected = isRootUser || (u.last_ip && u.last_ip === protectedIp);
+                  // Skydda om det är Root, om det är DU, eller om personen delar DIN nuvarande IP
+                  const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
-                  if (isProtected || isCurrentAdmin) {
+                  if (isProtected) {
                     return (
                       <div style={{ backgroundColor: '#f0fdf4', color: '#16a34a', border: '1px solid #10b981', padding: '0.5rem 1rem', borderRadius: '6px', fontWeight: '800', fontSize: '0.75rem', display: 'flex', alignItems: 'center', gap: '0.25rem', boxShadow: '0 2px 4px rgba(22,163,74,0.1)' }}>
                         <CheckCircle size={14} /> Säkert IP ✅
