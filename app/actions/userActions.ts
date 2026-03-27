@@ -36,10 +36,10 @@ export async function deleteUserAccount(userId: string) {
     }
   );
 
-  // Prevent deletion of apersson508
   const { data: profList } = await supabaseAdmin.from('profiles').select('username').eq('id', userId).limit(1);
   const userProfile = profList && profList.length > 0 ? profList[0] : null;
-  if (userProfile?.username?.toLowerCase() === 'apersson508') {
+  const isRoot = userProfile?.username?.toLowerCase() === 'apersson508' || userProfile?.username?.toLowerCase() === 'mrsunshine88';
+  if (isRoot) {
     return { error: 'Säkerhetsspärr: Detta konto är skyddat som root-administratör och kan aldrig raderas.' };
   }
 

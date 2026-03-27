@@ -95,7 +95,10 @@ export default function Login() {
             setLoading(false);
             return;
           }
-          const { data: profList } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).limit(1);
+          const { data: profList, error: profError } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).limit(1);
+          if (profError) {
+             throw new Error('Kunde inte läsa din profil: ' + profError.message);
+          }
           const profile = profList && profList.length > 0 ? profList[0] : null;
           if (profile?.is_banned) {
             await supabase.auth.signOut();
@@ -120,7 +123,9 @@ export default function Login() {
       } else if (err.message?.includes('Email not confirmed')) {
         setError('Du måste bekräfta din e-postadress först.')
       } else {
-        setError(err.message || 'Ett fel uppstod vid inloggningen')
+        // Ensure error is a string so it doesn't render as {}
+        const errorMsg = typeof err === 'string' ? err : (err?.message || String(err));
+        setError(errorMsg || 'Ett oväntat fel uppstod vid inloggningen');
       }
     } finally {
       setLoading(false)

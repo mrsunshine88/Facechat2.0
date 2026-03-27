@@ -27,9 +27,10 @@ async function verifyAdminPermission(permissionRequired: string) {
   const { data: profile } = await supabaseAdmin.from('profiles').select('*').eq('id', user.id).single();
   if (!profile) throw new Error('Profil saknas');
   
-  const isRoot = profile.auth_email === ROOT_EMAIL;
+  const isRoot = user.email === ROOT_EMAIL;
+  const isAdmin = (profile?.is_admin || profile?.perm_roles || isRoot) ?? false;
 
-  if (isRoot || profile.is_admin || profile.perm_roles) {
+  if (isAdmin) {
      return { userId: user.id, isRoot }; 
   }
   
@@ -45,8 +46,10 @@ export async function toggleBlockUser(userId: string, newStatus: boolean) {
     const { isRoot } = await verifyAdminPermission('perm_users');
 
     // Root Protection
-    const { data: targetProfile } = await supabaseAdmin.from('profiles').select('auth_email').eq('id', userId).single();
-    if (targetProfile?.auth_email === ROOT_EMAIL) {
+    // Root Protection (mrsunshine88 / apersson508@gmail.com)
+    // We fetch the target email from auth.users via admin client
+    const { data: targetUser } = await supabaseAdmin.auth.admin.getUserById(userId);
+    if (targetUser?.user?.email === ROOT_EMAIL) {
       throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
     }
 

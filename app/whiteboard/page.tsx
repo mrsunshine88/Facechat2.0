@@ -47,6 +47,7 @@ export default function Whiteboard() {
   const [showLikersPostId, setShowLikersPostId] = useState<string | null>(null) // Track which post's likers list is visible
   const [isExpanded, setIsExpanded] = useState(false)
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+  const [isSending, setIsSending] = useState(false);
   
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -54,7 +55,16 @@ export default function Whiteboard() {
   )
 
   useEffect(() => {
-    fetchData()
+    const init = async () => {
+       const { data: { user } } = await supabase.auth.getUser();
+       if (user) {
+          const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+          if (prof) setCurrentUser(prof);
+       }
+       fetchData();
+    };
+    init();
+
     const channel = supabase.channel('realtime whiteboard complex')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard' }, () => fetchData())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard_comments' }, () => fetchData())
@@ -65,31 +75,34 @@ export default function Whiteboard() {
   }, [])
 
   async function fetchData() {
-    const { data: { user } } = await supabase.auth.getUser()
-    
-    let currentProfile = null;
+    // Vi använder nu currentUser från state för att slippa anropa getUser() hela tiden (Lock contention fix)
+    let profileToUse = currentUser;
     let blockedUserIds: string[] = [];
 
-    if (user) {
-      const [profileRes, blocksRes] = await Promise.all([
-        supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-        supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-      ]);
+    if (!profileToUse) {
+       // Om vi inte har currentUser än, gör en snabb koll (men bara om nödvändigt)
+       const { data: { user } } = await supabase.auth.getUser();
+       if (user) {
+          const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+          profileToUse = p;
+          if (p) setCurrentUser(p);
+       }
+    }
+
+    if (profileToUse) {
+      const { data: blocksRes } = await supabase.from('user_blocks').select('*').or(`blocker_id.eq.${profileToUse.id},blocked_id.eq.${profileToUse.id}`);
       
-      currentProfile = profileRes.data && profileRes.data.length > 0 ? profileRes.data[0] : null;
-      setCurrentUser(currentProfile);
-      
-      if (blocksRes.data) {
-        blocksRes.data.forEach(b => {
-          blockedUserIds.push(b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+      if (blocksRes) {
+        blocksRes.forEach(b => {
+          blockedUserIds.push(b.blocker_id === profileToUse.id ? b.blocked_id : b.blocker_id);
         });
       }
     }
 
     let postsData = [];
-    if (currentProfile) {
+    if (profileToUse) {
       // THE ALGORITHM 
-      const { data } = await supabase.rpc('get_newsfeed', { viewer_id: currentProfile.id })
+      const { data } = await supabase.rpc('get_newsfeed', { viewer_id: profileToUse.id })
       if(data && data.length > 0) {
          const pIds = data.map((x:any) => x.id);
          const { data: enriched } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').in('id', pIds).order('created_at', { ascending: false });
@@ -150,13 +163,15 @@ export default function Whiteboard() {
   }
 
   const handlePost = async () => {
-    if (!newPostContent.trim() || !currentUser) return
+    if (!newPostContent.trim() || !currentUser || isSending) return
+    setIsSending(true);
     const { error } = await supabase.from('whiteboard').insert({
       author_id: currentUser.id,
       content: newPostContent
     })
 
     if (error) {
+       setIsSending(false);
        if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
           setShowDuplicateModal(true);
           return;
@@ -164,7 +179,8 @@ export default function Whiteboard() {
        alert('Kunde inte posta på Whiteboarden: ' + error.message);
        return;
     }
-    if (!error) setNewPostContent('')
+    setNewPostContent('')
+    setIsSending(false);
     await fetchData();
   }
 
