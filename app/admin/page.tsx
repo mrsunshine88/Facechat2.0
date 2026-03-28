@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { deleteUserAccount } from '../actions/userActions';
-import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme } from '../actions/adminActions';
+import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme, adminMassDeleteSpam } from '../actions/adminActions';
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
 
 const ADMIN_TABS = [
@@ -2608,29 +2608,20 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       return;
     }
 
-    if (confirm(`VARNING: Detta kommer radera ALLA inlägg (Whiteboard, Forum, Gästbok, Chatten) som innehåller texten "${massDeleteQuery}". Är du helt säker?`)) {
+    if (confirm(`VARNING: Detta kommer radera ALLA inlägg (Whiteboard, Forum, Gästbok, Chatten, PM) som innehåller texten "${massDeleteQuery}". Är du helt säker? Det går inte att ångra.`)) {
       setMassDeleting(true);
       try {
-        const query = `%${massDeleteQuery.trim()}%`;
+        const res = await adminMassDeleteSpam(massDeleteQuery);
 
-        const { error: wError } = await supabase.from('whiteboard').delete().ilike('content', query);
-        const { error: fError } = await supabase.from('forum_posts').delete().ilike('content', query);
-        const { error: gError } = await supabase.from('guestbook').delete().ilike('content', query);
-        const { error: cError } = await supabase.from('chat_messages').delete().ilike('content', query);
-
-        if (wError) console.error("Whiteboard deletion error:", wError);
-        if (fError) console.error("Forum deletion error:", fError);
-        if (gError) console.error("Guestbook deletion error:", gError);
-        if (cError) console.error("Chat deletion error:", cError);
-
-        if (wError || fError || gError || cError) {
-          alert("Ett fel uppstod vid mass-radering. Vissa inlägg kan ha raderats.");
+        if (res?.error) {
+          alert("Ett fel uppstod: " + res.error);
         } else {
-          alert(`Mass-radering slutförd! Alla inlägg med "${massDeleteQuery}" är borta.`);
-          await logAdminAction(supabase, currentUser.id, `Mass-raderade inlägg innehållande: "${massDeleteQuery}"`);
+          alert(`Mass-radering slutförd! Alla inlägg med "${massDeleteQuery}" är nu borta.`);
+          await logAdminAction(supabase, currentUser.id, `Mass-radera spam: "${massDeleteQuery}"`);
           setMassDeleteQuery('');
         }
-      } catch (err) {
+      } catch (err: any) {
+        alert("Ett oväntat fel uppstod vid mass-radering.");
         console.error(err);
       } finally {
         setMassDeleting(false);

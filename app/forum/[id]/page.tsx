@@ -16,13 +16,15 @@ import {
   ChevronRight,
   Send,
   Loader2,
-  ShieldAlert
+  ShieldAlert 
 } from 'lucide-react'
 import React from 'react'
+import { useWordFilter } from '@/hooks/useWordFilter'
 
 export default function ForumThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
+  const { mask } = useWordFilter()
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [thread, setThread] = useState<any>(null)
   const [posts, setPosts] = useState<any[]>([])
@@ -346,7 +348,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
           ) : (
             <>
               <h1 style={{ margin: 0, fontSize: '2.5rem', fontWeight: '900', color: 'var(--text-main)', letterSpacing: '-0.02em', lineHeight: '1.1', marginBottom: '1rem' }}>
-                {thread.title}
+                {mask(thread.title)}
               </h1>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1.5rem', color: 'var(--text-muted)', fontSize: '0.9rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -537,13 +539,13 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
                             return parts.map((part: string, i: number) => {
                               if (i === 1) return (
                                 <div key={i} style={{ backgroundColor: '#f1f5f9', borderLeft: '4px solid var(--theme-forum)', padding: '1rem', margin: '1rem 0', fontStyle: 'italic', fontSize: '0.95rem', color: 'var(--text-muted)' }}>
-                                  {part.trim()}
+                                  {mask(part.trim())}
                                 </div>
                               );
-                              return <span key={i}>{part}</span>;
+                              return <span key={i}>{mask(part)}</span>;
                             });
                           })()
-                        ) : post.content}
+                        ) : mask(post.content)}
                       </div>
                     ) : null}
                   </div>

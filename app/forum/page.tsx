@@ -4,9 +4,11 @@ import React, { useState, useEffect } from 'react';
 import { Search, PenSquare, Lock, User } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 export default function Forumet() {
   const router = useRouter();
+  const { mask } = useWordFilter();
   const [useAlias, setUseAlias] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [threads, setThreads] = useState<any[]>([]); 
@@ -22,17 +24,18 @@ export default function Forumet() {
   );
 
   useEffect(() => {
-    async function fetchUser() {
+    async function init() {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { data: profList } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1);
         const profile = profList && profList.length > 0 ? profList[0] : null;
         setCurrentUser(profile);
       }
+      // Nu anropar vi fetchThreads när vi är klara med getUser, för att slippa krockat anrop
+      fetchThreads(user);
     }
-    fetchUser();
+    init();
 
-    fetchThreads();
     const sub = supabase.channel('real-forum')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => fetchThreads())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => fetchThreads())
@@ -41,8 +44,8 @@ export default function Forumet() {
     return () => { supabase.removeChannel(sub); };
   }, []);
 
-  async function fetchThreads() {
-    const { data: { user } } = await supabase.auth.getUser();
+  async function fetchThreads(passedUser?: any) {
+    const user = passedUser || (await supabase.auth.getUser()).data.user;
     let blockedIds: string[] = [];
     if (user) {
        const { data: bData } = await supabase.from('user_blocks').select('*')
@@ -156,7 +159,7 @@ export default function Forumet() {
               <a href={`/forum/${thread.id}`} key={thread.id} style={{ textDecoration: 'none' }}>
                 <div className="card hover-lift" style={{ padding: '1.25rem', marginBottom: '0', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'transform 0.1s' }}>
                   <div style={{ overflow: 'hidden' }}>
-                    <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem', color: 'var(--text-main)', wordBreak: 'break-word' }}>{thread.title}</h3>
+                    <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem', color: 'var(--text-main)', wordBreak: 'break-word' }}>{mask(thread.title)}</h3>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
                       I <span style={{ fontWeight: '600', color: 'var(--theme-forum)' }}>{thread.category}</span> • Startad av {authorDisplay} • {new Date(thread.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
                     </p>

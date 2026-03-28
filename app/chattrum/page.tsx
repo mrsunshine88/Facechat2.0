@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert, AlertTriangle } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 export default function Chattrum() {
   return (
@@ -16,6 +17,7 @@ export default function Chattrum() {
 function ChattrumContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { mask } = useWordFilter();
   const urlRoomName = searchParams?.get('room');
   const [activeRoom, setActiveRoom] = useState<any>(null);
   const [rooms, setRooms] = useState<any[]>([]);
@@ -491,7 +493,7 @@ function ChattrumContent() {
                      )}
                    </div>
                  </div>
-                 <p style={{ color: 'var(--text-main)', margin: 0, wordBreak: 'break-word' }}>{msg.content}</p>
+                 <p style={{ color: 'var(--text-main)', margin: 0, wordBreak: 'break-word' }}>{mask(msg.content)}</p>
                </div>
              );
           })}

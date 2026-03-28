@@ -66,11 +66,10 @@ export async function adminAddForbiddenWord(word: string) {
     const { error } = await supabaseAdmin.from('forbidden_words').insert({ word: cleanWord });
     if (error) throw error;
 
-    // 2. Kontroll: Tvätta gammal historik direkt (enligt användarens önskemål)
-    const { data: res, error: rpcErr } = await supabaseAdmin.rpc('apply_forbidden_word_globally', { p_word: cleanWord });
-    if (rpcErr) console.error("Historic cleanup failed:", rpcErr);
+    // 2. Vi kör inte längre destruktiv tvätt i databasen. 
+    // Maskering sker nu dynamiskt i frontend vid behov.
 
-    return { success: true, message: res || 'Ord tillagt och historik tvättad.' };
+    return { success: true, message: 'Ord tillagt i globala filtret.' };
   } catch (err: any) {
     return { error: err.message };
   }

@@ -496,3 +496,32 @@ export async function adminFixDeepScanIssue(issueId: string) {
     return { error: err.message };
   }
 }
+
+export async function adminMassDeleteSpam(query: string) {
+  try {
+    await verifyAdminPermission('perm_diagnostics');
+    const searchTerm = `%${query.trim()}%`;
+
+    const tasks = [
+      supabaseAdmin.from('whiteboard').delete().ilike('content', searchTerm),
+      supabaseAdmin.from('whiteboard_comments').delete().ilike('content', searchTerm),
+      supabaseAdmin.from('forum_posts').delete().ilike('content', searchTerm),
+      supabaseAdmin.from('forum_threads').delete().ilike('title', searchTerm),
+      supabaseAdmin.from('guestbook').delete().ilike('content', searchTerm),
+      supabaseAdmin.from('chat_messages').delete().ilike('content', searchTerm),
+      supabaseAdmin.from('private_messages').delete().ilike('content', searchTerm)
+    ];
+
+    const results = await Promise.all(tasks);
+    const errors = results.map(r => r.error).filter(Boolean);
+
+    if (errors.length > 0) {
+      console.error("Mass delete errors:", errors);
+      throw new Error(`Radering misslyckades i ${errors.length} tabeller.`);
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}

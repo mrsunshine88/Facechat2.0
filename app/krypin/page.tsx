@@ -8,6 +8,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import SnakeGame from '@/components/SnakeGame';
 import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
 import { sanitizeCSS } from '@/utils/securityUtils';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
 
@@ -184,6 +185,7 @@ function MittKrypinContent() {
    const router = useRouter();
    const searchParams = useSearchParams();
    const targetUsername = searchParams?.get('u');
+   const { mask } = useWordFilter();
 
    const [activeTab, setActiveTab] = useState((searchParams?.get('spela') || searchParams?.get('arcade')) ? 'Spel 🕹️' : (searchParams?.get('tab') || 'Profil'));
    const [currentUser, setCurrentUser] = useState<any>(null); // Den vems profil man KIKAR PÅ
@@ -322,14 +324,9 @@ function MittKrypinContent() {
 
 
    // REVERSIBELT ORD-FILTER (MASKERAR TEXT UTAN ATT RADERA DEN UR DB)
+   // REVERSIBELT ORD-FILTER (MASKERAR TEXT UTAN ATT RADERA DEN UR DB)
    const maskWords = (text: string) => {
-      if (!text || forbiddenWords.length === 0) return text;
-      let masked = text;
-      forbiddenWords.forEach(word => {
-         const regex = new RegExp(`\\b${word}\\b`, 'gi');
-         masked = masked.replace(regex, '***');
-      });
-      return masked;
+      return mask(text);
    };
 
    useEffect(() => {

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, AlertTriangle, Edit2, ShieldAlert } from 'lucide-react'
 import { createBrowserClient } from '@supabase/ssr'
 import { useRouter } from 'next/navigation'
+import { useWordFilter } from '@/hooks/useWordFilter'
 
 const WhiteboardSkeleton = () => (
    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -29,6 +30,7 @@ const WhiteboardSkeleton = () => (
 
 export default function Whiteboard() {
   const router = useRouter()
+  const { mask } = useWordFilter()
   const [posts, setPosts] = useState<any[]>([])
   const [newPostContent, setNewPostContent] = useState('')
   const [loading, setLoading] = useState(true)
@@ -623,7 +625,7 @@ export default function Whiteboard() {
                     </div>
                   ) : (
                     <>
-                      {post.content && <p style={{ color: '#1c1e21', fontSize: '0.95rem', marginBottom: '0.75rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{post.content}</p>}
+                      {post.content && <p style={{ color: '#1c1e21', fontSize: '0.95rem', marginBottom: '0.75rem', whiteSpace: 'pre-wrap', lineHeight: '1.4' }}>{mask(post.content)}</p>}
                       
                       {/* NESTED SHARED POST */}
                       {post.parent_post && (
@@ -635,7 +637,7 @@ export default function Whiteboard() {
                                 </div>
                                 <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{post.parent_post.profiles?.username || 'Okänd'}</span>
                              </div>
-                             <p style={{ fontSize: '0.9rem', color: '#1c1e21', margin: 0, whiteSpace: 'pre-wrap' }}>{post.parent_post.content}</p>
+                             <p style={{ fontSize: '0.9rem', color: '#1c1e21', margin: 0, whiteSpace: 'pre-wrap' }}>{mask(post.parent_post.content)}</p>
                           </div>
                         </div>
                       )}
