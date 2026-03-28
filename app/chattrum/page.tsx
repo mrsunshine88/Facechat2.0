@@ -284,15 +284,54 @@ function ChattrumContent() {
   const handleKickUser = async (targetId: string, targetName: string) => {
     if (!activeRoom || !currentUser || targetId === currentUser.id) return;
     if (!confirm(`Ska vi verkligen kicka ut ${targetName}?`)) return;
+
     const newAllowed = (activeRoom.allowed_users || []).filter((id: string) => id !== targetId);
-    if (!isAdminRoom && newAllowed.length === 1 && newAllowed[0] === activeRoom.created_by) {
-       if (confirm(`Om du kickar hen kommer rummet att raderas. Fortsätta?`)) {
-          await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
-          setActiveRoom(null);
+    const willDeleteRoom = !isAdminRoom && newAllowed.length === 1 && newAllowed[0] === activeRoom.created_by;
+
+    if (willDeleteRoom) {
+       if (!confirm(`Om du kickar hen kommer rummet att raderas då inga medlemmar är kvar (förutom ägaren). Fortsätta?`)) return;
+       
+       // 1. Notis till den som kickas
+       await supabase.from('notifications').insert({ 
+          receiver_id: targetId, 
+          actor_id: currentUser.id, 
+          type: 'chat_kick', 
+          content: `har tagit bort dig från rummet "${activeRoom.name}".`, 
+          link: '/chattrum' 
+       });
+
+       // 2. Notis till ägaren om moderatorn stänger rummet
+       if (activeRoom.created_by && activeRoom.created_by !== currentUser.id) {
+          await supabase.from('notifications').insert({ 
+             receiver_id: activeRoom.created_id || activeRoom.created_by, 
+             actor_id: currentUser.id, 
+             type: 'chat_room_closed', 
+             content: `har stängt ner ditt rum "${activeRoom.name}" genom att kicka sista medlemmen (${targetName}).`, 
+             link: '/chattrum' 
+          });
        }
+
+       // 3. Logg till admin
+       if (isModerator) {
+          await supabase.from('admin_logs').insert({ 
+             admin_id: currentUser.id, 
+             action: `MODERERING: Stängt rummet "${activeRoom.name}" och kickat ut ${targetName} (Ägare: ${activeRoom.created_by})` 
+          });
+       }
+
+       // 4. Radera rummet
+       await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
+       setActiveRoom(null);
        return;
     }
-    await supabase.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', activeRoom.id);
+
+    // Vanlig kick (fler medlemmar kvar)
+    const { error } = await supabase.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', activeRoom.id);
+    if (error) {
+       alert('Kunde inte kicka användaren: ' + error.message);
+       return;
+    }
+
     setActiveRoom({ ...activeRoom, allowed_users: newAllowed });
     await supabase.from('notifications').insert({ receiver_id: targetId, actor_id: currentUser.id, type: 'chat_kick', content: `har tagit bort dig från rummet "${activeRoom.name}".`, link: '/chattrum' });
     
