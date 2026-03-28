@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createBrowserClient } from '@supabase/ssr'
@@ -17,6 +17,9 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
+  
+  // OPTIMERING: Spara tidpunkt för senaste tunga admin-hämtningen för att undvika seghet vid sidbyte
+  const lastAdminFetch = useRef<number>(0);
 
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -60,15 +63,17 @@ export default function Header() {
         supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
         updateUserIP(user.id);
         
-        // Fetch unread support tickets
+        // Fetch unread support tickets (OPTIMERAD: Max en gång i minuten vid sidbyte för att undvika seghet)
         const currentProfile = profile || { is_admin: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_support: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_roles: user.email?.toLowerCase() === 'apersson508@gmail.com' };
         const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com' || currentProfile.perm_roles;
         const canManageSupport = isRoot || currentProfile.perm_support;
         
-        if (canManageSupport) {
+        const now = Date.now();
+        if (canManageSupport && (now - lastAdminFetch.current > 60000)) {
           const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false);
           setUnreadSupportCount(count || 0);
-        } else {
+          lastAdminFetch.current = now;
+        } else if (!canManageSupport) {
           const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true);
           setUnreadSupportCount(count || 0);
         }
