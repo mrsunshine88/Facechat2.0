@@ -185,28 +185,32 @@ export default function MinaSidor() {
   const handleSaveKonto = async (e: React.FormEvent) => {
     e.preventDefault();
     setUsernameError('');
+    let hasChanges = false;
+    const payload: any = {};
 
+    // 1. Check Username
     if (newUsername.trim() !== currentUser.username) {
-      // Update Username via Secure Server Action
-      const res = await updateUserProfile({ username: newUsername.trim() });
+      payload.username = newUsername.trim();
+      hasChanges = true;
+    }
+
+    // 2. Check Notification Sound
+    if (selectedSound !== currentUser.notif_sound) {
+      payload.notif_sound = selectedSound;
+      hasChanges = true;
+    }
+
+    // Execute Profile Update if anything changed
+    if (hasChanges) {
+      const res = await updateUserProfile(payload);
       if (res.error) {
         setUsernameError(res.error);
         return;
       }
-      setCurrentUser({ ...currentUser, username: newUsername.trim() });
+      setCurrentUser({ ...currentUser, ...payload });
     }
 
-    // Update Notification Sound
-    if (selectedSound !== currentUser.notif_sound) {
-      const res = await updateUserProfile({ notif_sound: selectedSound });
-      if (res.error) {
-        setCustomAlert('Kunde inte spara ljudinställning: ' + res.error);
-        return;
-      }
-      setCurrentUser({ ...currentUser, notif_sound: selectedSound });
-    }
-
-    // Har användaren fyllt i ett nytt lösenord? Update det vi Auth API.
+    // 3. Password Update (Separate Auth API call)
     if (newPassword.trim().length > 0) {
       if (newPassword.trim().length < 6) {
         setUsernameError('Lösenordet måste vara minst 6 tecken.');
@@ -217,7 +221,7 @@ export default function MinaSidor() {
         setUsernameError('Kunde inte uppdatera lösenordet: ' + pwError.message);
         return;
       }
-      setNewPassword(''); // Rensa fältet när det lyckats
+      setNewPassword('');
     }
     
     setShowSaved(true);
@@ -584,21 +588,50 @@ export default function MinaSidor() {
                </div>
 
                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginBottom: '1.5rem' }}>
-                 <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>Inbyggda Notifieringar</h3>
-                 <div style={{ padding: '1.5rem', border: '1px solid #10b981', borderRadius: '8px', backgroundColor: '#f0fdf4' }}>
-                   <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>📱 Push-Notiser (Mobil/Dator)</h4>
-                   <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '1rem' }}>Få ett riktigt 'pling' i telefonen när du får Mejl, Gästboksinlägg, Chatt, Whiteboard och Forum, även när skärmen är avstängd!</p>
-                   {!isPushEnabled ? (
-                     <button type="button" onClick={handleSubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.3)', width: '100%' }} className="hover-lift">
-                       Aktivera Push-notiser för denna enhet 🎉
-                     </button>
-                   ) : (
-                     <button type="button" onClick={handleUnsubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0fdf4', color: '#047857', border: '2px solid #10b981', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.1)', width: '100%' }} className="hover-lift">
-                       ✅ Aktiverat! Klicka för att stänga av 🔕
-                     </button>
-                   )}
-                 </div>
-               </div>
+                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>Inbyggda Notifieringar</h3>
+                  <div style={{ padding: '1.5rem', border: '1px solid #10b981', borderRadius: '12px', backgroundColor: '#f0fdf4', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
+                    
+                    {/* Part 1: Push API */}
+                    <div>
+                      <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>📱 Push-Notiser (Mobil/Dator)</h4>
+                      <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '1rem' }}>Få ett riktigt 'pling' i telefonen när du får Mejl, Gästboksinlägg, Chatt, Whiteboard och Forum!</p>
+                      {!isPushEnabled ? (
+                        <button type="button" onClick={handleSubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.3)', width: '100%' }} className="hover-lift">
+                          Aktivera Push-notiser för denna enhet 🎉
+                        </button>
+                      ) : (
+                        <button type="button" onClick={handleUnsubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0fdf4', color: '#047857', border: '2px solid #10b981', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.1)', width: '100%' }} className="hover-lift">
+                          ✅ Aktiverat! Klicka för att stänga av 🔕
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Part 2: Notification Sound (Retro!) */}
+                    <div style={{ borderTop: '1px solid #d1fae5', paddingTop: '1rem' }}>
+                       <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🔔 Aviseringsljud (Nostalgi!)</h4>
+                       <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '0.75rem' }}>Välj vilket ljud som spelas upp när du är inne på Facechat.</p>
+                       <div style={{ display: 'flex', gap: '0.75rem' }}>
+                          <select 
+                            value={selectedSound} 
+                            onChange={(e) => setSelectedSound(e.target.value)}
+                            style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', border: '1px solid #10b981', outline: 'none', backgroundColor: 'white', fontSize: '0.9rem' }}
+                          >
+                            {NOTIF_SOUNDS.map(s => (
+                               <option key={s.id} value={s.id}>{s.name}</option>
+                            ))}
+                          </select>
+                          <button 
+                            type="button" 
+                            onClick={handleTestSound}
+                            disabled={selectedSound === 'none'}
+                            style={{ padding: '0.6rem 1rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                          >
+                            Testa 🔊
+                          </button>
+                       </div>
+                    </div>
+                  </div>
+                </div>
    
                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                  <button type="submit" style={{ backgroundColor: 'var(--theme-krypin)', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Spara ändringar</button>
@@ -683,32 +716,6 @@ export default function MinaSidor() {
                    </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>🔔 Aviseringsljud (Nostalgi!)</h3>
-                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', backgroundColor: 'var(--bg-color)', padding: '1.5rem', borderRadius: '12px' }}>
-                    <div style={{ flex: 1 }}>
-                       <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Välj ljud för nya notiser:</label>
-                       <select 
-                          value={selectedSound} 
-                          onChange={(e) => setSelectedSound(e.target.value)}
-                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'white' }}
-                       >
-                          {NOTIF_SOUNDS.map(s => (
-                             <option key={s.id} value={s.id}>{s.name}</option>
-                          ))}
-                       </select>
-                    </div>
-                    <button 
-                       type="button" 
-                       onClick={handleTestSound}
-                       disabled={selectedSound === 'none'}
-                       style={{ padding: '0.75rem 1.5rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : 'var(--theme-chat)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer' }}
-                    >
-                       Testa ljud 🔊
-                    </button>
-                  </div>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Detta ljud spelas upp när du får nya notiser medan du har Facechat öppet.</p>
-                </div>
                 <button type="submit" style={{ alignSelf: 'flex-start', border: 'none', cursor: 'pointer', backgroundColor: 'var(--theme-krypin)', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px' }}>Spara uppgifter</button>
              </form>
           )}
