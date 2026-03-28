@@ -65,9 +65,21 @@ function ChattrumContent() {
     async function fetchRoomsData(profile: any) {
       let query = supabase.from('chat_rooms').select('*').order('created_at', { ascending: true });
       if (profile) {
-         const isAdmin = profile.is_admin || profile.auth_email === 'apersson508@gmail.com' || profile.perm_rooms;
-         if (!isAdmin) {
-             query = query.or(`is_secret.eq.false,is_secret.is.null,allowed_users.cs.{${profile.id}}`);
+         const isRoot = profile.username === 'mrsunshine88' || profile.auth_email === 'apersson508@gmail.com' || profile.perm_roles === true;
+         const isAdmin = profile.is_admin || profile.perm_rooms || isRoot;
+
+         if (isRoot) {
+             // Root ser allt - ingen ytterligare filtrering
+         } else {
+             // För alla andra: Visa publika rum + rum de är inbjudna till
+             let filter = `is_secret.eq.false,is_secret.is.null,allowed_users.cs.{${profile.id}}`;
+             
+             // Special för administratörer: De ser alltid rum som heter "admin" (hemligt eller ej)
+             if (isAdmin) {
+                 filter += `,name.ilike.admin`;
+             }
+             
+             query = query.or(filter);
          }
       } else {
          query = query.or(`is_secret.eq.false,is_secret.is.null`);
