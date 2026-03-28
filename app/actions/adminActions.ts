@@ -92,15 +92,36 @@ export async function adminDeleteContent(table: string, id: string) {
 export async function adminResolveReport(reportId: string, status: string) {
   try {
     const { userId: executorId, isRoot } = await verifyAdminPermission('perm_content');
-
-    // Kolla om anmälningen rör admin själv (jäv)
-    const { data: report } = await supabaseAdmin.from('reports').select('reported_user_id').eq('id', reportId).single();
+    
+    // 1. Hämta info om anmälningen (reporter_id och vad det rör)
+    const { data: report } = await supabaseAdmin.from('reports').select('reporter_id, reported_user_id, item_type').eq('id', reportId).single();
     if (report && report.reported_user_id === executorId && !isRoot) {
       throw new Error('Jäv: Du kan inte hantera anmälningar som rör dig själv.');
     }
 
-    const { error } = await supabaseAdmin.from('reports').update({ status }).eq('id', reportId);
-    if (error) throw error;
+    // 2. Uppdatera status
+    const { error: updateErr } = await supabaseAdmin.from('reports').update({ status }).eq('id', reportId);
+    if (updateErr) throw updateErr;
+
+    // 3. Notifiera anmälaren (Reporter) om att det är hanterat!
+    if (report?.reporter_id && status !== 'open') {
+      const typeLabel = report.item_type === 'profile' ? 'en profil' : (
+        report.item_type === 'forum_post' ? 'ett foruminlägg' : (
+          report.item_type === 'whiteboard' ? 'ett whiteboard-inlägg' : (
+            report.item_type === 'guestbook' ? 'ett gästboksinlägg' : 'ett inlägg'
+          )
+        )
+      );
+
+      await supabaseAdmin.from('notifications').insert({
+        receiver_id: report.reporter_id,
+        actor_id: executorId,
+        type: 'report_feedback',
+        content: `Din anmälan gällande ${typeLabel} har nu hanterats av en administratör. Tack för att du hjälper till att hålla Facechat ryggt!`,
+        link: '#'
+      });
+    }
+
     return { success: true };
   } catch (err: any) {
     return { error: err.message };

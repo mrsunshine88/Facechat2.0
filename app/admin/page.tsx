@@ -820,7 +820,11 @@ const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: an
   const fetchAvatars = async () => {
     setLoading(true);
     if (mode === 'active') {
-      const { data } = await supabase.from('profiles').select('*').not('avatar_url', 'is', null).order('created_at', { ascending: false });
+      const { data } = await supabase.from('profiles')
+        .select('*')
+        .not('avatar_url', 'is', null)
+        .neq('avatar_url', '')
+        .order('created_at', { ascending: false });
       if (data) setUsersWithAvatars(data);
     } else {
       try {
@@ -977,23 +981,28 @@ const AdminBilder = ({ supabase, currentUser }: { supabase: any, currentUser: an
           {mode === 'active' ? (
             <>
               {usersWithAvatars.length === 0 && <p>Inga aktiva profilbilder hittades.</p>}
-              {usersWithAvatars.map(u => (
-                <div key={u.id} className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
-                  <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '1px solid var(--border-color)' }}>
-                      <img src={cleanUrl(u.avatar_url) || ''} alt={u.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+              {usersWithAvatars.map(u => {
+                const cleanedImgUrl = cleanUrl(u.avatar_url);
+                if (!cleanedImgUrl || cleanedImgUrl.length < 5) return null; // Skydd mot trasiga/för korta URL:er
+
+                return (
+                  <div key={u.id} className="admin-card" style={{ padding: '1rem', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
+                    <div style={{ width: '140px', height: '140px', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#f1f5f9', border: '1px solid var(--border-color)' }}>
+                        <img src={cleanedImgUrl} alt={u.username} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    </div>
+                    <div style={{ textAlign: 'center' }}>
+                        <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--text-main)', fontSize: '0.9rem' }}>{u.username}</p>
+                        <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>{u.city || 'Ingen ort'}</p>
+                    </div>
+                    <button 
+                        onClick={() => handleResetAvatar(u)}
+                        style={{ width: '100%', backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
+                    >
+                        <Trash2 size={14} /> Radera
+                    </button>
                   </div>
-                  <div style={{ textAlign: 'center' }}>
-                      <p style={{ margin: 0, fontWeight: 'bold', color: 'var(--text-main)', fontSize: '0.9rem' }}>{u.username}</p>
-                      <p style={{ margin: 0, fontSize: '0.7rem', color: 'var(--text-muted)' }}>{u.city || 'Ingen ort'}</p>
-                  </div>
-                  <button 
-                      onClick={() => handleResetAvatar(u)}
-                      style={{ width: '100%', backgroundColor: '#fef2f2', color: '#ef4444', border: '1px solid #fca5a5', padding: '0.5rem', borderRadius: '6px', cursor: 'pointer', fontWeight: '700', fontSize: '0.75rem', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}
-                  >
-                      <Trash2 size={14} /> Radera
-                  </button>
-                </div>
-              ))}
+                );
+              })}
             </>
           ) : (
             <>

@@ -404,15 +404,19 @@ export default function Whiteboard() {
 
     // Notifiera alla administratörer om den nya anmälan!
     try {
-      const { data: admins } = await supabase.from('profiles').select('id')
+      const { data: admins } = await supabase.from('profiles').select('id, username')
         .or('is_admin.eq.true,perm_content.eq.true');
       
       if (admins && admins.length > 0) {
         // Filtrera bort den person som blir anmäld om den är admin (jäv), 
-        // men låt apersson508@gmail.com alltid få notiser.
-        const filteredAdmins = admins.filter(admin => 
-          admin.id !== reportTarget.reportedUserId || currentUser?.auth_email === 'apersson508@gmail.com'
-        );
+        // men låt Mrsunshine88 (Root) alltid få alla notiser.
+        const filteredAdmins = admins.filter(admin => {
+          const isReported = admin.id === reportTarget.reportedUserId;
+          const isRoot = admin.username === 'mrsunshine88';
+          
+          if (isReported && !isRoot) return false;
+          return true;
+        });
 
         if (filteredAdmins.length > 0) {
           const adminNotifs = filteredAdmins.map(admin => ({

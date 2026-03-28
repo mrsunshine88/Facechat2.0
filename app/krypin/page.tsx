@@ -1119,9 +1119,9 @@ function MittKrypinContent() {
          if (admins && admins.length > 0) {
             const filteredAdmins = admins.filter(admin => {
                // Om en admin blir anmäld ska hen INTE få notis, 
-               // förutom om det är root (apersson508).
+               // förutom om det är root (mrsunshine88).
                const isReportedAdmin = admin.id === reportTarget.reportedUserId;
-               const isRoot = admin.username === 'apersson508';
+               const isRoot = admin.username === 'mrsunshine88';
 
                if (isReportedAdmin && !isRoot) {
                   return false;
@@ -2595,9 +2595,73 @@ function MittKrypinContent() {
                               e.preventDefault();
                               const formData = new FormData(e.currentTarget);
                               const sIcon = formData.get('status_icon') as string;
-                              await supabase.from('profiles').update({ status_icon: sIcon }).eq('id', currentUser.id);
-                              setCurrentUser({ ...currentUser, status_icon: sIcon });
-                              setCustomAlert('Inställningar sparade!');
+                              if (!currentUser) return;
+                              
+                              // 1. Check Cooldown (10 minuter)
+                              const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000);
+                              const lastChange = currentUser.last_status_change ? new Date(currentUser.last_status_change) : new Date(0);
+                              const isCooldownActive = lastChange > tenMinutesAgo;
+                              const isIconChanged = sIcon !== currentUser.status_icon;
+
+                              // 2. Update DB
+                              const updatePayload: any = { status_icon: sIcon, last_status_change: new Date().toISOString() };
+                              const { error } = await supabase.from('profiles').update(updatePayload).eq('id', currentUser.id);
+                              
+                              if (error) {
+                                 alert('Kunde inte spara: ' + error.message);
+                                 return;
+                              }
+
+                              // 3. Notify Friends (Bara om ändrad och inte i cooldown)
+                              if (isIconChanged && !isCooldownActive) {
+                                 const { data: friendsList } = await supabase.from('friendships').select('user_id_1, user_id_2').or(`user_id_1.eq.${currentUser.id},user_id_2.eq.${currentUser.id}`);
+                                 
+                                 if (friendsList) {
+                                    const friendIds = friendsList.map(f => f.user_id_1 === currentUser.id ? f.user_id_2 : f.user_id_1);
+                                    
+                                    const iconMap: any = {
+                                       'user': '🧍 (Standard)',
+                                       'star': '⭐ Sugen på fest!',
+                                       'moon': '🌙 Sömntuta',
+                                       'heart': '❤️ Hjärta - Kär & galen!',
+                                       'zap': '⚡ Stressad / Full fart',
+                                       'coffee': '☕ Behöver kaffe',
+                                       'ghost': '👻 På bushumör!',
+                                       'sun': '😎 Cool & lugn',
+                                       'gamepad': '🎮 Sitter och spelar'
+                                    };
+                                    const statusLabel = iconMap[sIcon] || 'en ny status';
+                                    
+                                    const notifs = friendIds.map(fid => ({
+                                       receiver_id: fid,
+                                       actor_id: currentUser.id,
+                                       type: 'status_change',
+                                       content: `har ändrat sin status till: ${statusLabel}`,
+                                       link: `/krypin?u=${currentUser.username}`
+                                    }));
+
+                                    if (notifs.length > 0) {
+                                       await supabase.from('notifications').insert(notifs);
+                                       
+                                       // Push notifs
+                                       friendIds.forEach(fid => {
+                                          fetch('/api/send-push', {
+                                             method: 'POST',
+                                             body: JSON.stringify({
+                                                userId: fid,
+                                                title: '✨ Ny status!',
+                                                message: `${currentUser.username} har ändrat sin status: ${statusLabel}`,
+                                                url: `/krypin?u=${currentUser.username}`
+                                             }),
+                                             headers: { 'Content-Type': 'application/json' }
+                                          }).catch(() => {});
+                                       });
+                                    }
+                                 }
+                              }
+
+                              setCurrentUser({ ...currentUser, ...updatePayload });
+                              setCustomAlert(isIconChanged && isCooldownActive ? 'Status sparad! (Ingen ny notis skickades pga 10-minuters spärren)' : 'Inställningar sparade!');
                            }} style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
 
                               <div>
@@ -2721,15 +2785,22 @@ function MittKrypinContent() {
 
                                  if (!error) {
                                     // Notifiera admins
-                                    const { data: admins } = await supabase.from('profiles').select('id').or('is_admin.eq.true,perm_content.eq.true');
-                                    if (admins) {
-                                       const adminNotifs = admins.map(admin => ({
-                                          receiver_id: admin.id,
-                                          actor_id: viewerUser.id,
-                                          type: 'report',
-                                          content: `ny anmälan: ${reportTarget.type}`,
-                                          link: '/admin?tab=reports'
-                                       }));
+                                    const { data: admins } = await supabase.from('profiles').select('id, username').or('is_admin.eq.true,perm_content.eq.true');
+                                                                         if (admins) {
+                                        const filteredAdmins = admins.filter(admin => {
+                                           const isReported = admin.id === reportTarget.reportedUserId;
+                                           const isRoot = admin.username === 'mrsunshine88';
+                                           if (isReported && !isRoot) return false;
+                                           return true;
+                                        });
+
+                                        const adminNotifs = filteredAdmins.map(admin => ({
+                                           receiver_id: admin.id,
+                                           actor_id: viewerUser.id,
+                                           type: 'report',
+                                           content: `ny anmälan: ${reportTarget.type}`,
+                                           link: '/admin?tab=reports'
+                                        }));
                                        await supabase.from('notifications').insert(adminNotifs);
                                     }
                                     alert('Anmälan skickad! Tack för din hjälp.');

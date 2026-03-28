@@ -90,6 +90,9 @@ export default function Header() {
   const [snakeTicker, setSnakeTicker] = useState<number | null>(null)
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
 
+  const [showOnlineModal, setShowOnlineModal] = useState(false);
+  const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
+
   // Master Realtime Feed
   useEffect(() => {
     if (!userProfile || isBlockedRoute) return;
@@ -167,15 +170,24 @@ export default function Header() {
     // 5. Lyssna på Online Presence
     const presenceChannel = supabase.channel('online-presence');
     presenceChannel
-      .on('presence', { event: 'sync' }, () => {
+      .on('presence', { event: 'sync' }, async () => {
         const state = presenceChannel.presenceState();
-        let uniqueUsers = new Set<string>();
+        let uniqueUserIds = new Set<string>();
         Object.values(state).forEach((presences: any) => {
            presences.forEach((p: any) => {
-              if (p.user && !blockedUserIds.includes(p.user)) uniqueUsers.add(p.user);
+              if (p.user && !blockedUserIds.includes(p.user)) uniqueUserIds.add(p.user);
            });
         });
-        setOnlineCount(uniqueUsers.size > 0 ? uniqueUsers.size : 1);
+        const idList = Array.from(uniqueUserIds);
+        setOnlineCount(idList.length > 0 ? idList.length : 1);
+        
+        // Hämta profiler för modalen om den är öppen eller precis öppnas
+        if (idList.length > 0) {
+           const { data: profiles } = await supabase.from('profiles').select('id, username, avatar_url, last_seen').in('id', idList);
+           if (profiles) {
+              setOnlineUserProfiles(profiles.sort((a, b) => a.username.localeCompare(b.username)));
+           }
+        }
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -353,11 +365,49 @@ export default function Header() {
             )}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.2rem 0.5rem', borderRadius: '20px', color: '#10b981', fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid rgba(16,185,129,0.3)', whiteSpace: 'nowrap' }} title={`${onlineCount} inloggade just nu`}>
+          <div onClick={() => setShowOnlineModal(true)} className="hover-lift" style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.3rem', backgroundColor: 'rgba(16, 185, 129, 0.15)', padding: '0.2rem 0.5rem', borderRadius: '20px', color: '#10b981', fontWeight: 'bold', fontSize: '0.8rem', border: '1px solid rgba(16,185,129,0.3)', whiteSpace: 'nowrap' }} title={`${onlineCount} inloggade just nu. Klicka för att se vilka!`}>
             <div style={{ width: '8px', height: '8px', backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 6px #10b981' }} className="blink"></div>
             <span>{onlineCount} <span className="hide-on-mobile">Online</span></span>
           </div>
-          
+
+          {/* ONLINE MODAL */}
+          {showOnlineModal && (
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowOnlineModal(false)}>
+               <div className="card" style={{ maxWidth: '450px', width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'modalBounce 0.4s ease-out', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
+                  <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-color)' }}>
+                     <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-main)' }}>
+                        <div style={{ width: '10px', height: '10px', backgroundColor: '#10b981', borderRadius: '50%', boxShadow: '0 0 8px #10b981' }} className="blink"></div>
+                        Inloggade Just Nu ({onlineCount})
+                     </h3>
+                     <button onClick={() => setShowOnlineModal(false)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0.5rem' }}><X size={24} /></button>
+                  </div>
+                  
+                  <div style={{ flex: 1, overflowY: 'auto', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                     {onlineUserProfiles.length === 0 ? (
+                        <div style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>Hämtar lista...</div>
+                     ) : (
+                        onlineUserProfiles.map((user) => (
+                           <div key={user.id} onClick={() => { setShowOnlineModal(false); router.push(`/krypin?u=${user.username}`); }} 
+                              style={{ padding: '0.75rem 1rem', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', transition: 'all 0.1s' }} className="hover-bg-gray">
+                              <div style={{ width: '45px', height: '45px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '2px solid #10b981' }}>
+                                 {user.avatar_url ? <img src={user.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={24} color="white" />}
+                              </div>
+                              <div style={{ flex: 1 }}>
+                                 <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: 'var(--text-main)' }}>{user.username}</div>
+                                 <div style={{ fontSize: '0.75rem', color: '#10b981', fontWeight: '600' }}>• Online nu</div>
+                              </div>
+                              <div style={{ color: 'var(--theme-krypin)', fontWeight: 'bold', fontSize: '0.85rem' }}>Besök &rarr;</div>
+                           </div>
+                        ))
+                     )}
+                  </div>
+                  
+                  <div style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem', backgroundColor: 'var(--bg-color)' }}>
+                     Klicka på en användare för att besöka deras Krypin!
+                  </div>
+               </div>
+            </div>
+          )}          
           <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
             <button className="icon-btn" onClick={async () => {
                 const isOpening = !showDropdown;
