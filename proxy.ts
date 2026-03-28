@@ -23,21 +23,23 @@ export async function proxy(request: NextRequest) {
         },
         set(name: string, value: string, options: CookieOptions) {
           request.cookies.set({ name, value, ...options })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+          response.cookies.set({ 
+            name, 
+            value, 
+            ...options,
+            maxAge: 60 * 60 * 24 * 30, // 30 days
+            path: '/', 
           })
-          response.cookies.set({ name, value, ...options })
         },
         remove(name: string, options: CookieOptions) {
           request.cookies.set({ name, value: '', ...options })
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+          response.cookies.set({ 
+            name, 
+            value: '', 
+            ...options,
+            maxAge: 0,
+            path: '/',
           })
-          response.cookies.set({ name, value: '', ...options })
         },
       },
     }
