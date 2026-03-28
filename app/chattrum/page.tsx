@@ -192,9 +192,15 @@ function ChattrumContent() {
   }
 
   const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
-  const isAdmin = currentUser?.perm_rooms === true || isRoot; // Endast de med rums-behörighet eller Root räknas som "Moderator" här
+  const isModerator = (currentUser?.perm_rooms === true || isRoot); // Kan se allt och radera inlägg
+  const isOwner = activeRoom?.created_by === currentUser?.id;
   const isAdminRoom = activeRoom?.name?.toLowerCase() === 'admin';
-  const isSpectator = activeRoom?.is_secret && isAdmin && !isAdminRoom && !(activeRoom?.allowed_users?.includes(currentUser?.id));
+  const isSpectator = activeRoom?.is_secret && isModerator && !isAdminRoom && !(activeRoom?.allowed_users?.includes(currentUser?.id));
+
+  // Endast skaparen eller ROOT kan bjuda in/kicka i ett privat rum. 
+  // Vanliga admins (som Helena) ska inte kunna "styra" någon annans privata rum om de bara är inbjudna.
+  const canManageMembers = isOwner || isRoot; 
+
 
   const handleSend = async () => {
     if (!inputVal.trim() || !activeRoom || !currentUser) return;
@@ -233,7 +239,7 @@ function ChattrumContent() {
     if(!confirm('Ta bort detta meddelande från chatten?')) return;
     const { error } = await supabase.from('chat_messages').delete().eq('id', msgId);
     if (error) { alert(`Åtkomst nekad: Du har inte rättigheter att radera meddelanden. (${error.message})`); return; }
-    if(isAdmin) { await supabase.from('admin_logs').insert({ admin_id: currentUser.id, action: `Raderade ett chattmeddelande i rummet "${activeRoom?.name}"` }); }
+    if(isModerator) { await supabase.from('admin_logs').insert({ admin_id: currentUser.id, action: `Raderade ett chattmeddelande i rummet "${activeRoom?.name}"` }); }
     await fetchMessages(activeRoom.id);
     if (channelRef.current) { channelRef.current.send({ type: 'broadcast', event: 'new_message', payload: {} }); }
   };
@@ -337,7 +343,7 @@ function ChattrumContent() {
            </button>
            {activeRoom && activeRoom.is_secret && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                 {(activeRoom.created_by === currentUser?.id || isAdmin) && !isAdminRoom && (
+                 {canManageMembers && !isAdminRoom && (
                     <button onClick={openInviteModal} style={{ background: 'var(--theme-chat)', color: 'white', border: 'none', padding: '6px', borderRadius: '6px' }} title="Bjud in"><UserPlus size={16} /></button>
                  )}
                  {!isSpectator && !isAdminRoom && (
@@ -356,23 +362,46 @@ function ChattrumContent() {
            </h2>
            {activeRoom && activeRoom.is_secret && (
               <div style={{ display: 'flex', gap: '0.75rem' }}>
-                 {(activeRoom.created_by === currentUser?.id || isAdmin) && !isAdminRoom && (
-                    <button onClick={openInviteModal} style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}><UserPlus size={14} /> Bjud in</button>
+                 {canManageMembers && !isAdminRoom && (
+                    <button onClick={openInviteModal} style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><UserPlus size={16} /> Bjud in</button>
                  )}
                  {!isSpectator && !isAdminRoom && (
-                    <button onClick={handleLeaveRoom} style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.4rem 0.8rem', borderRadius: '8px', fontSize: '0.75rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'pointer' }}><LogOut size={14} /> Lämna</button>
+                    <button onClick={handleLeaveRoom} style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><LogOut size={16} /> Lämna</button>
                  )}
               </div>
            )}
         </div>
 
-        {/* Messages */}
-        <div className="chat-messages-container" style={{ flex: 1, minHeight: 0, padding: '1.5rem', overflowY: 'auto', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
-          {mobileDropdownOpen && <div className="mobile-only-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.9)', zIndex: 10, padding: '1rem', overflowY: 'auto' }}>
+        {/* Mobile Room Selection Overlay */}
+        {mobileDropdownOpen && (
+          <div className="mobile-only-block" style={{ position: 'absolute', top: '50px', left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1.5rem', overflowY: 'auto', animation: 'fadeIn 0.2s ease-out' }}>
+            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '0.5rem', letterSpacing: '0.05rem' }}>TILLGÄNGLIGA RUM</div>
             {rooms.map(room => (
-               <button key={room.id} onClick={() => handleJoinRoom(room)} style={{ width: '100%', padding: '1rem', borderRadius: '12px', backgroundColor: activeRoom?.id === room.id ? 'var(--theme-chat)' : 'white', color: activeRoom?.id === room.id ? 'white' : 'var(--text-main)', border: '1px solid #e2e8e0', marginBottom: '0.5rem', textAlign: 'left', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Hash size={18}/> {room.name}</button>
+               <button 
+                  key={room.id} 
+                  onClick={() => { handleJoinRoom(room); setMobileDropdownOpen(false); }} 
+                  style={{ 
+                    width: '100%', padding: '1.2rem', borderRadius: '16px', 
+                    backgroundColor: activeRoom?.id === room.id ? 'var(--theme-chat)' : '#f1f5f9', 
+                    color: activeRoom?.id === room.id ? 'white' : 'var(--text-main)', 
+                    border: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    fontWeight: '600', fontSize: '1.1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                  }}
+               >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
+                    <Hash size={20} opacity={0.6} /> {room.name}
+                  </span>
+                  {room.password && <Lock size={16} />}
+               </button>
             ))}
-          </div>}
+            <div style={{ marginTop: 'auto', padding: '1rem 0' }}>
+               <button onClick={() => { setShowCreateModal(true); setMobileDropdownOpen(false); }} style={{ width: '100%', padding: '1.2rem', borderRadius: '16px', border: '2px dashed var(--theme-chat)', backgroundColor: 'transparent', color: 'var(--theme-chat)', fontWeight: 'bold', fontSize: '1rem' }}>+ Skapa nytt privat rum</button>
+            </div>
+          </div>
+        )}
+
+        {/* Messages Container */}
+        <div className="chat-messages-container" style={{ flex: 1, minHeight: 0, padding: '1.5rem', overflowY: 'auto', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
 
           {activeRoom && messages.map(msg => (
              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
@@ -380,7 +409,7 @@ function ChattrumContent() {
                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: msg.author_id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)', cursor: 'pointer' }} onClick={() => window.location.href=`/krypin?u=${msg.profiles?.username}`}>{msg.profiles?.username || 'Okänd'} <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span></span>
                    <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {msg.author_id !== currentUser?.id && <button onClick={() => { setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content }); setShowReportModal(true); }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer' }}><AlertTriangle size={14}/></button>}
-                      {(msg.author_id === currentUser?.id || isAdmin) && <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>}
+                      {(msg.author_id === currentUser?.id || isModerator) && <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>}
                    </div>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.95rem', wordBreak: 'break-word' }}>{mask(msg.content)}</p>
@@ -402,8 +431,8 @@ function ChattrumContent() {
          {onlineUsers.map(user => (
             <div key={user.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                <span style={{ fontSize: '0.85rem' }}>{user.username}</span>
-               {activeRoom?.is_secret && (activeRoom.created_by === currentUser?.id || isAdmin) && user.id !== currentUser?.id && (
-                  <button onClick={() => handleKickUser(user.id, user.username)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><XCircle size={14}/></button>
+               {activeRoom?.is_secret && canManageMembers && user.id !== currentUser?.id && (
+                  <button onClick={() => handleKickUser(user.id, user.username)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }} title="Kicka användare"><XCircle size={14}/></button>
                )}
             </div>
          ))}
@@ -440,11 +469,19 @@ function ChattrumContent() {
       </div>}
 
       <style jsx global>{`
+        .mobile-only-flex { display: none; }
+        .mobile-only-block { display: none; }
+
         @media (max-width: 768px) {
            .chat-layout { height: calc(100vh - 70px) !important; display: flex !important; flex-direction: column !important; gap: 0 !important; }
            .hide-on-mobile { display: none !important; }
            .mobile-only-flex { display: flex !important; }
            .mobile-only-block { display: block !important; }
+           
+           @keyframes fadeIn {
+             from { opacity: 0; transform: translateY(-10px); }
+             to { opacity: 1; transform: translateY(0); }
+           }
         }
       `}</style>
     </div>
