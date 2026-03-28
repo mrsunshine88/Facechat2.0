@@ -65,10 +65,15 @@ function ChattrumContent() {
       let query = supabase.from('chat_rooms').select('*').order('created_at', { ascending: true });
       if (profile) {
          const isRoot = profile.username === 'mrsunshine88' || profile.auth_email === 'apersson508@gmail.com' || profile.perm_roles === true;
-         const isAdmin = profile.perm_rooms || isRoot;
+         const hasModeratorPerms = profile.perm_rooms || isRoot;
+         const isAnyAdmin = profile.is_admin || hasModeratorPerms;
 
-         if (isAdmin) {
-             // Endast Root och de med 'perm_rooms' (redigera chattrum) ser alla rum
+         if (hasModeratorPerms) {
+             // Root och de med 'perm_rooms' (redigera chattrum) ser alla rum
+         } else if (isAnyAdmin) {
+             // Vanliga admins ser publika rum + egna inbjudningar + det speciella "Admin"-rummet
+             let filter = `is_secret.eq.false,is_secret.is.null,allowed_users.cs.{${profile.id}},name.eq.Admin`;
+             query = query.or(filter);
          } else {
              // För alla andra: Visa publika rum + rum de är inbjudna till
              let filter = `is_secret.eq.false,is_secret.is.null,allowed_users.cs.{${profile.id}}`;
@@ -375,7 +380,12 @@ function ChattrumContent() {
         {/* Mobile Room Selection Overlay */}
         {mobileDropdownOpen && (
           <div className="mobile-only-block" style={{ position: 'absolute', top: '50px', left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1.5rem', overflowY: 'auto', animation: 'fadeIn 0.2s ease-out' }}>
-            <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '0.5rem', letterSpacing: '0.05rem' }}>TILLGÄNGLIGA RUM</div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+               <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', letterSpacing: '0.05rem' }}>TILLGÄNGLIGA RUM</div>
+               <button onClick={() => setMobileDropdownOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', cursor: 'pointer' }}>
+                  <XCircle size={20} />
+               </button>
+            </div>
             {rooms.map(room => (
                <button 
                   key={room.id} 
