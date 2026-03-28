@@ -267,6 +267,17 @@ function ChattrumContent() {
     }
     if (!confirm(`Vill du verkligen lämna rummet "${activeRoom.name}"?`)) return;
     await supabase.rpc('leave_chat_room', { p_room_id: activeRoom.id });
+    
+    // Skicka notis till rummets ägare om att någon lämnat
+    if (activeRoom.created_by && activeRoom.created_by !== currentUser.id) {
+       await supabase.from('notifications').insert({
+          receiver_id: activeRoom.created_by,
+          actor_id: currentUser.id,
+          type: 'chat_user_left',
+          content: `har lämnat rummet "${activeRoom.name}".`,
+          link: `/chattrum?room=${encodeURIComponent(activeRoom.name)}`
+       });
+    }
     setActiveRoom(null);
   };
 
@@ -284,6 +295,11 @@ function ChattrumContent() {
     await supabase.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', activeRoom.id);
     setActiveRoom({ ...activeRoom, allowed_users: newAllowed });
     await supabase.from('notifications').insert({ receiver_id: targetId, actor_id: currentUser.id, type: 'chat_kick', content: `har tagit bort dig från rummet "${activeRoom.name}".`, link: '/chattrum' });
+    
+    // Logga om en moderator kickar någon i någon annans rum
+    if (isModerator && activeRoom.created_by !== currentUser.id) {
+       await supabase.from('admin_logs').insert({ admin_id: currentUser.id, action: `MODERERING: Kickat ut ${targetName} från rummet "${activeRoom.name}" (Ägare: ${activeRoom.created_by})` });
+    }
   };
 
   const handleRenameRoom = async () => {
@@ -311,6 +327,11 @@ function ChattrumContent() {
     if (!error) {
        setActiveRoom({ ...activeRoom, allowed_users: newAllowed });
        await supabase.from('notifications').insert({ receiver_id: targetId, actor_id: currentUser.id, type: 'chat_invite', content: `har bjudit in dig till rummet "${activeRoom.name}"!`, link: `/chattrum?room=${encodeURIComponent(activeRoom.name)}` });
+       
+       // Logga om en moderator bjuder in någon i någon annans rum
+       if (isModerator && activeRoom.created_by !== currentUser.id) {
+          await supabase.from('admin_logs').insert({ admin_id: currentUser.id, action: `MODERERING: Bjudit in ${targetName} till rummet "${activeRoom.name}" (Ägare: ${activeRoom.created_by})` });
+       }
     }
   };
 
