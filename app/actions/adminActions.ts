@@ -503,24 +503,25 @@ export async function adminMassDeleteSpam(query: string) {
     const searchTerm = `%${query.trim()}%`;
 
     const tasks = [
-      supabaseAdmin.from('whiteboard').delete().ilike('content', searchTerm),
-      supabaseAdmin.from('whiteboard_comments').delete().ilike('content', searchTerm),
-      supabaseAdmin.from('forum_posts').delete().ilike('content', searchTerm),
-      supabaseAdmin.from('forum_threads').delete().ilike('title', searchTerm),
-      supabaseAdmin.from('guestbook').delete().ilike('content', searchTerm),
-      supabaseAdmin.from('chat_messages').delete().ilike('content', searchTerm),
-      supabaseAdmin.from('private_messages').delete().ilike('content', searchTerm)
+      supabaseAdmin.from('whiteboard').delete({ count: 'exact' }).ilike('content', searchTerm),
+      supabaseAdmin.from('whiteboard_comments').delete({ count: 'exact' }).ilike('content', searchTerm),
+      supabaseAdmin.from('forum_posts').delete({ count: 'exact' }).ilike('content', searchTerm),
+      supabaseAdmin.from('forum_threads').delete({ count: 'exact' }).ilike('title', searchTerm),
+      supabaseAdmin.from('guestbook').delete({ count: 'exact' }).ilike('content', searchTerm),
+      supabaseAdmin.from('chat_messages').delete({ count: 'exact' }).ilike('content', searchTerm),
+      supabaseAdmin.from('private_messages').delete({ count: 'exact' }).ilike('content', searchTerm)
     ];
 
     const results = await Promise.all(tasks);
     const errors = results.map(r => r.error).filter(Boolean);
+    const totalDeleted = results.reduce((sum, r) => sum + (r.count || 0), 0);
 
     if (errors.length > 0) {
       console.error("Mass delete errors:", errors);
       throw new Error(`Radering misslyckades i ${errors.length} tabeller.`);
     }
 
-    return { success: true };
+    return { success: true, count: totalDeleted };
   } catch (err: any) {
     return { error: err.message };
   }

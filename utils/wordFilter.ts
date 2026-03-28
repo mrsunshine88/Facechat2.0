@@ -11,15 +11,16 @@ export function maskContent(text: string, forbiddenWords: string[]): string {
   const sortedWords = [...forbiddenWords].sort((a, b) => b.length - a.length);
 
   sortedWords.forEach(word => {
-    if (!word.trim()) return;
-    
     // Escape special regex characters in the word
-    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedWord = word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // Case-insensitive regex with global flag
-    const regex = new RegExp(escapedWord, 'gi');
+    // Case-insensitive regex with Swedish-safe word boundaries
+    // We avoid \b because it doesn't support ÅÄÖ. 
+    const regex = new RegExp(`(^|[^a-zA-Z0-9åäöÅÄÖ])${escapedWord}(?=$|[^a-zA-Z0-9åäöÅÄÖ])`, 'gi');
     
-    maskedText = maskedText.replace(regex, (match) => '*'.repeat(match.length));
+    maskedText = maskedText.replace(regex, (match, p1) => {
+      return p1 + '*'.repeat(word.trim().length);
+    });
   });
 
   return maskedText;

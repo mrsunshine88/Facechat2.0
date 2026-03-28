@@ -2368,13 +2368,31 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   }
 
   const handleAddWord = async () => {
-    if (!newForbiddenWord.trim()) return;
-    const res = await adminAddForbiddenWord(newForbiddenWord);
-    if (res?.error) return alert('Fel: ' + res.error);
-    await logAdminAction(supabase, currentUser.id, `Lade till förbjudet ord: "${newForbiddenWord}"`);
-    setNewForbiddenWord('');
-    fetchForbiddenWords();
-    alert(res.message || 'Ordet tillagt!');
+    const wordToAdd = newForbiddenWord.trim().toLowerCase();
+    if (!wordToAdd) return;
+
+    // 1. Check impact first
+    const searchTerm = `%${wordToAdd}%`;
+    const [wb, wbc, fp, ft, gb, cm, pm] = await Promise.all([
+      supabase.from('whiteboard').select('id', { count: 'exact', head: true }).ilike('content', searchTerm),
+      supabase.from('whiteboard_comments').select('id', { count: 'exact', head: true }).ilike('content', searchTerm),
+      supabase.from('forum_posts').select('id', { count: 'exact', head: true }).ilike('content', searchTerm),
+      supabase.from('forum_threads').select('id', { count: 'exact', head: true }).ilike('title', searchTerm),
+      supabase.from('guestbook').select('id', { count: 'exact', head: true }).ilike('content', searchTerm),
+      supabase.from('chat_messages').select('id', { count: 'exact', head: true }).ilike('content', searchTerm),
+      supabase.from('private_messages').select('id', { count: 'exact', head: true }).ilike('content', searchTerm)
+    ]);
+
+    const totalLines = (wb.count || 0) + (wbc.count || 0) + (fp.count || 0) + (ft.count || 0) + (gb.count || 0) + (cm.count || 0) + (pm.count || 0);
+
+    const { error } = await supabase.from('forbidden_words').insert({ word: wordToAdd });
+    if (error) alert("Kunde inte lägga till ord: " + error.message);
+    else {
+      setNewForbiddenWord('');
+      fetchForbiddenWords();
+      alert(`✅ Ordet "${wordToAdd}" har lagts till i det globala filtret.\n\nDetta påverkar just nu ${totalLines} inlägg på sajten som omedelbart kommer att stjärnmarkeras.`);
+      await logAdminAction(supabase, currentUser.id, `Lade till ord "${wordToAdd}" i det globala filtret (Påverkar ${totalLines} rader).`);
+    }
   };
 
   const handleRemoveWord = async (id: string, word: string) => {
@@ -2616,13 +2634,12 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         if (res?.error) {
           alert("Ett fel uppstod: " + res.error);
         } else {
-          alert(`Mass-radering slutförd! Alla inlägg med "${massDeleteQuery}" är nu borta.`);
-          await logAdminAction(supabase, currentUser.id, `Mass-radera spam: "${massDeleteQuery}"`);
+          alert(`🔥 Mass-radering slutförd! Totalt raderades ${res.count || 0} inlägg som innehöll "${massDeleteQuery}".`);
+          await logAdminAction(supabase, currentUser.id, `Mass-radera spam: "${massDeleteQuery}" (Raderade ${res.count || 0} rader)`);
           setMassDeleteQuery('');
         }
       } catch (err: any) {
         alert("Ett oväntat fel uppstod vid mass-radering.");
-        console.error(err);
       } finally {
         setMassDeleting(false);
       }
