@@ -285,6 +285,9 @@ export async function updateUserProfile(payload: {
     if (payload.show_interests !== undefined) {
       updateData.show_interests = payload.show_interests;
     }
+    if (payload.notif_sound !== undefined) {
+      updateData.notif_sound = payload.notif_sound;
+    }
 
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,

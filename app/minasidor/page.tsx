@@ -610,11 +610,11 @@ export default function MinaSidor() {
                     <div style={{ borderTop: '1px solid #d1fae5', paddingTop: '1rem' }}>
                        <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🔔 Aviseringsljud (Nostalgi!)</h4>
                        <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '0.75rem' }}>Välj vilket ljud som spelas upp när du är inne på Facechat.</p>
-                       <div style={{ display: 'flex', gap: '0.75rem' }}>
+                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                           <select 
                             value={selectedSound} 
                             onChange={(e) => setSelectedSound(e.target.value)}
-                            style={{ flex: 1, padding: '0.6rem', borderRadius: '8px', border: '1px solid #10b981', outline: 'none', backgroundColor: 'white', fontSize: '0.9rem' }}
+                            style={{ flex: '1 1 200px', padding: '0.6rem', borderRadius: '8px', border: '1px solid #10b981', outline: 'none', backgroundColor: 'white', fontSize: '0.9rem', minWidth: '150px' }}
                           >
                             {NOTIF_SOUNDS.map(s => (
                                <option key={s.id} value={s.id}>{s.name}</option>
@@ -624,9 +624,9 @@ export default function MinaSidor() {
                             type="button" 
                             onClick={handleTestSound}
                             disabled={selectedSound === 'none'}
-                            style={{ padding: '0.6rem 1rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer', fontSize: '0.85rem' }}
+                            style={{ padding: '0.6rem 1.25rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer', fontSize: '0.85rem', flex: '0 0 auto' }}
                           >
-                            Testa 🔊
+                            Provlyssna 🔊
                           </button>
                        </div>
                     </div>
