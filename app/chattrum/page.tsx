@@ -231,18 +231,22 @@ function ChattrumContent() {
     // Admin Spectator Check
     const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
     const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
-    const isSpectator = activeRoom?.is_secret && isAdmin && !(activeRoom?.allowed_users?.includes(currentUser.id));
+    const isAdminRoom = activeRoom?.name?.toLowerCase() === 'admin';
+    const isSpectator = activeRoom?.is_secret && isAdmin && !isAdminRoom && !(activeRoom?.allowed_users?.includes(currentUser.id));
 
     if (isSpectator) {
        alert('Du är i moderator-läge och kan inte skriva i detta hemliga rum.');
        return;
     }
 
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return;
+
     const txt = inputVal.trim();
     setInputVal('');
     const { error } = await supabase.from('chat_messages').insert({
       room_id: activeRoom.id,
-      author_id: currentUser.id,
+      author_id: user.id,
       content: txt
     });
 
@@ -255,7 +259,14 @@ function ChattrumContent() {
        return;
     }
 
-    const { data: participants } = await supabase.from('chat_messages').select('author_id').eq('room_id', activeRoom.id);
+    // PRESTANDAFIX: Hämta bara unika deltagare från de senaste 48 timmarna (max 200 rader)
+    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+    const { data: participants } = await supabase.from('chat_messages')
+      .select('author_id')
+      .eq('room_id', activeRoom.id)
+      .gt('created_at', fortyEightHoursAgo)
+      .limit(200);
+
     if (participants) {
        const uniqueIds = Array.from(new Set(participants.map(p => p.author_id))).filter(id => id !== currentUser.id && !blockedIdsRef.current.includes(id));
        if (uniqueIds.length > 0) {
@@ -391,10 +402,17 @@ function ChattrumContent() {
 
   const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
   const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
+  const isAdminRoom = activeRoom?.name?.toLowerCase() === 'admin';
 
   const handleLeaveRoom = async () => {
     if (!activeRoom || !currentUser) return;
     
+    // Admin-rum kan aldrig lämnas/raderas så här
+    if (isAdminRoom) {
+       alert('Du kan inte lämna det officiella Admin-rummet.');
+       return;
+    }
+
     // Om det är ett hemligt rum och användaren är skaparen
     if (activeRoom.is_secret && activeRoom.created_by === currentUser.id) {
        const othersCount = (activeRoom.allowed_users || []).length - 1;
@@ -443,7 +461,8 @@ function ChattrumContent() {
     const newAllowed = (activeRoom.allowed_users || []).filter((id: string) => id !== targetId);
     
     // Om bara ägaren är kvar efter kicken -> Radera rummet (Självdestruktion)
-    if (newAllowed.length === 1 && newAllowed[0] === activeRoom.created_by) {
+    // UNDANTAG: Radera ALDRIG admin-rummet!
+    if (!isAdminRoom && newAllowed.length === 1 && newAllowed[0] === activeRoom.created_by) {
        if (confirm(`${targetName} är sista medlemmen. Om du kickar hen kommer rummet "${activeRoom.name}" att raderas permanent. Fortsätta?`)) {
           const { error } = await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
           if (error) alert('Kunde inte radera rummet: ' + error.message);
@@ -463,6 +482,9 @@ function ChattrumContent() {
        alert('Kunde inte sparka ut användaren: ' + error.message);
        return;
     }
+
+    // Uppdatera lokalt tillstånd direkt
+    setActiveRoom({ ...activeRoom, allowed_users: newAllowed });
 
     // Skicka notis till den som blev kickad
     await supabase.from('notifications').insert({
@@ -535,6 +557,9 @@ function ChattrumContent() {
        alert('Kunde inte bjuda in användaren: ' + error.message);
        return;
     }
+
+    // Uppdatera lokalt tillstånd direkt så knappen ändras till "Medlem"
+    setActiveRoom({ ...activeRoom, allowed_users: newAllowed });
 
     // Skicka notis till den inbjudna
     await supabase.from('notifications').insert({
@@ -662,18 +687,18 @@ function ChattrumContent() {
                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: isSpectator ? '#ef4444' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                  {activeRoom ? activeRoom.name : 'Välj ett rum i listan'}
                  {activeRoom?.password && <Lock size={16} color="#ef4444" />}
-                 {activeRoom?.created_by === currentUser?.id && (
+                 {activeRoom?.created_by === currentUser?.id && !isAdminRoom && (
                     <button onClick={handleRenameRoom} style={{ background: 'none', border: 'none', color: 'var(--theme-chat)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }} title="Byt namn på rummet">
                        <Edit size={16} />
                     </button>
                  )}
-                 {isSpectator && <span style={{ fontSize: '0.8rem', backgroundColor: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '999px', marginLeft: '12px' }}>Moderator-läge (Endast läsa)</span>}
+                 {(isSpectator || (isAdminRoom && !isAdmin)) && <span style={{ fontSize: '0.8rem', backgroundColor: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '999px', marginLeft: '12px' }}>Moderator-läge (Endast läsa)</span>}
                </h2>
 
                {/* Header Actions (Leave/Invite) */}
                {activeRoom && activeRoom.is_secret && (
                   <div style={{ display: 'flex', gap: '0.75rem' }}>
-                     {(activeRoom.created_by === currentUser?.id || isAdmin) && (
+                     {(activeRoom.created_by === currentUser?.id || isAdmin) && !isAdminRoom && (
                         <button 
                            onClick={openInviteModal}
                            style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
@@ -682,7 +707,7 @@ function ChattrumContent() {
                            <UserPlus size={16} /> Bjud in
                         </button>
                      )}
-                     {!isSpectator && (
+                     {!isSpectator && !isAdminRoom && (
                         <button 
                            onClick={handleLeaveRoom}
                            style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
@@ -759,10 +784,10 @@ function ChattrumContent() {
                 onChange={e => setInputVal(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleSend()}
                 placeholder={isSpectator ? "Moderator-läge: Endast läsrättigheter" : (activeRoom ? `Skriv i ${activeRoom.name}...` : 'Låst. Välj ett rum först!')}
-                disabled={!activeRoom || isSpectator}
-                style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid var(--border-color)', borderRadius: '999px', fontFamily: 'inherit', outline: 'none', backgroundColor: (activeRoom && !isSpectator) ? 'white' : '#e2e8f0' }}
+                disabled={!activeRoom || (isSpectator && !isAdminRoom)}
+                style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid var(--border-color)', borderRadius: '999px', fontFamily: 'inherit', outline: 'none', backgroundColor: (activeRoom && (!isSpectator || isAdminRoom)) ? 'white' : '#e2e8f0' }}
               />
-              <button onClick={handleSend} disabled={!activeRoom || isSpectator} style={{ backgroundColor: (activeRoom && !isSpectator) ? 'var(--theme-chat)' : '#94a3b8', border: 'none', cursor: (activeRoom && !isSpectator) ? 'pointer' : 'not-allowed', color: 'white', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button onClick={handleSend} disabled={!activeRoom || (isSpectator && !isAdminRoom)} style={{ backgroundColor: (activeRoom && (!isSpectator || isAdminRoom)) ? 'var(--theme-chat)' : '#94a3b8', border: 'none', cursor: (activeRoom && (!isSpectator || isAdminRoom)) ? 'pointer' : 'not-allowed', color: 'white', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Send size={18} style={{ marginLeft: '-2px', marginTop: '1px' }} />
               </button>
             </div>

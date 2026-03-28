@@ -42,3 +42,13 @@ CREATE POLICY "Admins can manage chat_rooms" ON public.chat_rooms
     EXISTS (SELECT 1 FROM public.profiles WHERE id = auth.uid() AND perm_rooms = true) OR 
     auth.email() = 'apersson508@gmail.com'
   );
+
+-- 4. PRESTANDAOPTIMERING: Index för snabbare sökning
+-- GIN index för array-sökning (allowed_users)
+CREATE INDEX IF NOT EXISTS idx_chat_rooms_allowed_users ON public.chat_rooms USING GIN (allowed_users);
+
+-- Index för meddelanden i specifika rum sorterat på tid
+CREATE INDEX IF NOT EXISTS idx_chat_messages_room_time ON public.chat_messages (room_id, created_at DESC);
+
+-- Index för profil-id i meddelanden
+CREATE INDEX IF NOT EXISTS idx_chat_messages_author ON public.chat_messages (author_id);
