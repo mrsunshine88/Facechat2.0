@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
-import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert, AlertTriangle } from 'lucide-react';
+import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert, AlertTriangle, LogOut, UserPlus, XCircle, Edit, PlusCircle } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useWordFilter } from '@/hooks/useWordFilter';
@@ -35,6 +35,10 @@ function ChattrumContent() {
   const [reportTarget, setReportTarget] = useState<any>(null);
   const [reportReason, setReportReason] = useState('');
   const [reportCategory, setReportCategory] = useState('Spam');
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newRoomName, setNewRoomName] = useState('');
+  const [friends, setFriends] = useState<any[]>([]);
 
   useEffect(() => {
     if (!activeRoom && typeof window !== 'undefined' && window.innerWidth <= 768) {
@@ -121,9 +125,16 @@ function ChattrumContent() {
     initialLoad();
 
     const roomsChannel = supabase.channel('realtime_rooms_list')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, async () => {
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_rooms' }, async (payload: any) => {
          const { data } = await fetchRoomsData(currentProfile);
-         if (data) setRooms(data);
+         if (data) {
+            setRooms(data);
+            // Om vårt aktiva rum raderades (t.ex. av admin)
+            if (payload.event === 'DELETE' && activeRoom?.id === payload.old.id) {
+               setActiveRoom(null);
+               alert('Detta rummet har stängts eller raderats.');
+            }
+         }
       })
       .subscribe();
 
@@ -378,6 +389,180 @@ function ChattrumContent() {
     setReportTarget(null);
   };
 
+  const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
+  const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
+
+  const handleLeaveRoom = async () => {
+    if (!activeRoom || !currentUser) return;
+    
+    // Om det är ett hemligt rum och användaren är skaparen
+    if (activeRoom.is_secret && activeRoom.created_by === currentUser.id) {
+       const othersCount = (activeRoom.allowed_users || []).length - 1;
+       if (othersCount > 0) {
+          alert('Du kan inte lämna rummet så länge det finns andra medlemmar kvar. Kicka dem först eller be en admin ta bort rummet.');
+          return;
+       }
+       if (!confirm(`Du är ensam kvar i "${activeRoom.name}". Om du lämnar kommer rummet att raderas permanent. Vill du fortsätta?`)) return;
+       
+       // Radera rummet
+       const { error } = await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
+       if (error) alert('Kunde inte radera rummet: ' + error.message);
+       else {
+          setActiveRoom(null);
+          alert('Rummet har raderats.');
+       }
+       return;
+    }
+
+    if (!confirm(`Vill du verkligen lämna rummet "${activeRoom.name}"?`)) return;
+
+    const { error } = await supabase.rpc('leave_chat_room', { p_room_id: activeRoom.id });
+    if (error) {
+       alert('Kunde inte lämna rummet: ' + error.message);
+    } else {
+       // Om rummet nu bara har ägaren kvar, radera det (Självdestruktion)
+       const { data: updatedRoom } = await supabase.from('chat_rooms').select('allowed_users, created_by').eq('id', activeRoom.id).single();
+       if (updatedRoom && updatedRoom.allowed_users.length === 1 && updatedRoom.allowed_users[0] === updatedRoom.created_by) {
+          await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
+       }
+       
+       setActiveRoom(null);
+       alert(`Du har lämnat "${activeRoom.name}".`);
+    }
+  };
+
+  const handleKickUser = async (targetId: string, targetName: string) => {
+    if (!activeRoom || !currentUser) return;
+    if (targetId === currentUser.id) {
+       handleLeaveRoom();
+       return;
+    }
+    
+    if (!confirm(`Ska vi verkligen kicka ut ${targetName} från detta rummet?`)) return;
+
+    const newAllowed = (activeRoom.allowed_users || []).filter((id: string) => id !== targetId);
+    
+    // Om bara ägaren är kvar efter kicken -> Radera rummet (Självdestruktion)
+    if (newAllowed.length === 1 && newAllowed[0] === activeRoom.created_by) {
+       if (confirm(`${targetName} är sista medlemmen. Om du kickar hen kommer rummet "${activeRoom.name}" att raderas permanent. Fortsätta?`)) {
+          const { error } = await supabase.from('chat_rooms').delete().eq('id', activeRoom.id);
+          if (error) alert('Kunde inte radera rummet: ' + error.message);
+          else {
+             setActiveRoom(null);
+             alert(`${targetName} kickades och rummet stängdes.`);
+          }
+       }
+       return;
+    }
+
+    const { error } = await supabase.from('chat_rooms').update({
+       allowed_users: newAllowed
+    }).eq('id', activeRoom.id);
+
+    if (error) {
+       alert('Kunde inte sparka ut användaren: ' + error.message);
+       return;
+    }
+
+    // Skicka notis till den som blev kickad
+    await supabase.from('notifications').insert({
+       receiver_id: targetId,
+       actor_id: currentUser.id,
+       type: 'chat_kick',
+       content: `har tagit bort dig från det hemliga rummet "${activeRoom.name}".`,
+       link: '/chattrum'
+    });
+
+    alert(`${targetName} har blivit utkickad.`);
+  };
+
+  const handleRenameRoom = async () => {
+    if (!activeRoom || !currentUser) return;
+    const newName = prompt('Ange nytt namn för rummet:', activeRoom.name);
+    if (!newName || newName.trim() === activeRoom.name) return;
+
+    const { error } = await supabase.from('chat_rooms').update({
+       name: newName.trim()
+    }).eq('id', activeRoom.id);
+
+    if (error) {
+       alert('Kunde inte byta namn: ' + error.message);
+    } else {
+       alert('Rummet har bytt namn!');
+       setActiveRoom({ ...activeRoom, name: newName.trim() });
+    }
+  };
+
+  const handleCreateRoom = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRoomName.trim()) return;
+
+    const { data: roomId, error } = await supabase.rpc('create_chat_room', { 
+       p_name: newRoomName.trim(), 
+       p_is_secret: true 
+    });
+
+    if (error) {
+       if (error.message.includes('DUPLICATE_LIMIT_REACHED')) {
+          alert('Gräns nådd: Du kan max ha 2 egna chattrum samtidigt.');
+       } else {
+          alert('Kunde inte skapa rum: ' + error.message);
+       }
+    } else {
+       alert(`Rummet "${newRoomName}" har skapats!`);
+       setShowCreateModal(false);
+       setNewRoomName('');
+       // Rummet dyker upp via realtime-lyssnaren
+    }
+  };
+
+  const handleInviteUser = async (targetId: string, targetName: string) => {
+    if (!activeRoom || !currentUser) return;
+    
+    const currentAllowed = activeRoom.allowed_users || [];
+    if (currentAllowed.includes(targetId)) {
+       alert(`${targetName} är redan med i rummet!`);
+       return;
+    }
+
+    const newAllowed = [...currentAllowed, targetId];
+    
+    const { error } = await supabase.from('chat_rooms').update({
+       allowed_users: newAllowed
+    }).eq('id', activeRoom.id);
+
+    if (error) {
+       alert('Kunde inte bjuda in användaren: ' + error.message);
+       return;
+    }
+
+    // Skicka notis till den inbjudna
+    await supabase.from('notifications').insert({
+       receiver_id: targetId,
+       actor_id: currentUser.id,
+       type: 'chat_invite',
+       content: `har bjudit in dig till rummet "${activeRoom.name}"!`,
+       link: `/chattrum?room=${encodeURIComponent(activeRoom.name)}`
+    });
+
+    alert(`${targetName} har lagts till i rummet.`);
+  };
+
+  const openInviteModal = async () => {
+     if (!currentUser) return;
+     // Hämta vänner att bjuda in
+     const { data: f1 } = await supabase.from('friendships').select('user_id_2, profiles:profiles!friendships_user_id_2_fkey(id, username)').eq('user_id_1', currentUser.id).eq('status', 'accepted');
+     const { data: f2 } = await supabase.from('friendships').select('user_id_1, profiles:profiles!friendships_user_id_1_fkey(id, username)').eq('user_id_2', currentUser.id).eq('status', 'accepted');
+     
+     const friendProfiles = [
+        ...(f1?.map(f => f.profiles) || []),
+        ...(f2?.map(f => f.profiles) || [])
+     ].filter(p => p !== null);
+
+     setFriends(friendProfiles);
+     setShowInviteModal(true);
+  };
+
   return (
     <div style={{ height: 'calc(100vh - 140px)', display: 'grid', gridTemplateColumns: '250px 1fr 200px', gap: '1.5rem', alignItems: 'stretch' }} className="krypin-layout chat-layout">
       
@@ -401,17 +586,28 @@ function ChattrumContent() {
               }}
             >
               <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1rem' }}>
-                <Hash size={18} opacity={activeRoom?.id === room.id ? 1 : 0.5} /> {room.name} {room.password && <Lock size={14} color={activeRoom?.id === room.id ? "white" : "#ef4444"} />}
+                <Hash size={18} opacity={activeRoom?.id === room.id ? 1 : 0.5} /> {room.name.length > 15 ? room.name.substring(0,15)+'...' : room.name} {room.password && <Lock size={14} color={activeRoom?.id === room.id ? "white" : "#ef4444"} />}
               </span>
             </button>
           ))}
+          
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            style={{ 
+              display: 'flex', alignItems: 'center', gap: '0.75rem',
+              padding: '0.875rem 1rem', borderRadius: '12px',
+              backgroundColor: 'white', color: 'var(--theme-chat)',
+              fontWeight: 'bold', border: '2px dashed var(--theme-chat)',
+              cursor: 'pointer', marginTop: '1rem', transition: 'all 0.2s'
+            }}
+          >
+            <PlusCircle size={20} /> Skapa privat rum
+          </button>
         </div>
       </div>
 
       {/* Mitten: Chatt */}
       {(() => {
-        const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
-        const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
         const isSpectator = activeRoom?.is_secret && isAdmin && !(activeRoom?.allowed_users?.includes(currentUser?.id));
 
         return (
@@ -466,8 +662,37 @@ function ChattrumContent() {
                <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: isSpectator ? '#ef4444' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                  {activeRoom ? activeRoom.name : 'Välj ett rum i listan'}
                  {activeRoom?.password && <Lock size={16} color="#ef4444" />}
+                 {activeRoom?.created_by === currentUser?.id && (
+                    <button onClick={handleRenameRoom} style={{ background: 'none', border: 'none', color: 'var(--theme-chat)', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center' }} title="Byt namn på rummet">
+                       <Edit size={16} />
+                    </button>
+                 )}
                  {isSpectator && <span style={{ fontSize: '0.8rem', backgroundColor: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '999px', marginLeft: '12px' }}>Moderator-läge (Endast läsa)</span>}
                </h2>
+
+               {/* Header Actions (Leave/Invite) */}
+               {activeRoom && activeRoom.is_secret && (
+                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                     {(activeRoom.created_by === currentUser?.id || isAdmin) && (
+                        <button 
+                           onClick={openInviteModal}
+                           style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                           title="Bjud in vänner"
+                        >
+                           <UserPlus size={16} /> Bjud in
+                        </button>
+                     )}
+                     {!isSpectator && (
+                        <button 
+                           onClick={handleLeaveRoom}
+                           style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+                           title="Lämna rummet"
+                        >
+                           <LogOut size={16} /> Lämna
+                        </button>
+                     )}
+                  </div>
+               )}
             </div>
             
             <div className="chat-messages-container" style={{ flex: 1, minHeight: 0, padding: '1.5rem', overflowY: 'auto', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
@@ -552,11 +777,24 @@ function ChattrumContent() {
         </h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', overflowY: 'auto' }}>
           {onlineUsers.map(user => (
-            <div key={user.id} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></div>
-              <span style={{ fontSize: '0.875rem', fontWeight: '500', color: user.id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)' }}>
-                {user.id === currentUser?.id ? 'Du' : `${user.username}`}
-              </span>
+            <div key={user.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10b981' }}></div>
+                <span style={{ fontSize: '0.875rem', fontWeight: '500', color: user.id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)' }}>
+                  {user.id === currentUser?.id ? 'Du' : `${user.username}`}
+                </span>
+              </div>
+
+              {/* Kick button for Owner/Admin */}
+              {activeRoom?.is_secret && (activeRoom.created_by === currentUser?.id || isAdmin) && user.id !== currentUser?.id && (
+                 <button 
+                    onClick={() => handleKickUser(user.id, user.username)}
+                    style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                    title={`Kicka ${user.username}`}
+                 >
+                    <XCircle size={14} />
+                 </button>
+              )}
             </div>
           ))}
         </div>
@@ -634,6 +872,37 @@ function ChattrumContent() {
         }
       `}</style>
 
+      {/* CREATE ROOM MODAL */}
+      {showCreateModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <form onSubmit={handleCreateRoom} className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--theme-chat)' }}><PlusCircle size={24}/> Skapa privat rum</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.85rem' }}>Ge ditt rum ett namn. Du kan max ha 2 egna rum samtidigt.</p>
+            
+            <input 
+              type="text" 
+              value={newRoomName}
+              onChange={e => setNewRoomName(e.target.value)}
+              placeholder="T.ex. Hemliga Klubben"
+              required
+              autoFocus
+              maxLength={30}
+              style={{ width: '100%', padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1.5rem', outline: 'none', fontSize: '1rem' }}
+            />
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button type="button" onClick={() => setShowCreateModal(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                type="submit"
+                style={{ background: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                Skapa Rum
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* REPORT MODAL */}
       {showReportModal && (
         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
@@ -670,6 +939,47 @@ function ChattrumContent() {
               >
                 Skicka Anmälan
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* INVITE MODAL */}
+      {showInviteModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: 'var(--theme-chat)' }}><UserPlus size={24}/> Bjud in Vänner</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1.5rem', fontSize: '0.85rem' }}>Välj en vän att lägga till i rummet "{activeRoom?.name}". De kommer få en notis om inbjudan.</p>
+            
+            <div style={{ maxHeight: '300px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+               {friends.length === 0 ? (
+                  <p style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '1rem' }}>Du har inga vänner att bjuda in ännu...</p>
+               ) : (
+                  friends.map(friend => {
+                     const isMember = (activeRoom?.allowed_users || []).includes(friend.id);
+                     return (
+                        <div key={friend.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px' }}>
+                           <span style={{ fontWeight: '600' }}>{friend.username}</span>
+                           <button 
+                              onClick={() => handleInviteUser(friend.id, friend.username)}
+                              disabled={isMember}
+                              style={{ 
+                                 backgroundColor: isMember ? '#e2e8f0' : 'var(--theme-chat)', 
+                                 color: isMember ? '#94a3b8' : 'white', 
+                                 border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', 
+                                 cursor: isMember ? 'default' : 'pointer' 
+                              }}
+                           >
+                              {isMember ? 'Medlem' : 'Lägg till'}
+                           </button>
+                        </div>
+                     );
+                  })
+               )}
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button onClick={() => setShowInviteModal(false)} style={{ background: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer' }}>Slutför</button>
             </div>
           </div>
         </div>
