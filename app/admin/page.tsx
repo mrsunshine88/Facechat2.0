@@ -727,8 +727,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 {(() => {
                   const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
                   const isCurrentAdmin = u.id === currentUser.id;
-                  // Skydda om det är Root, om det är DU, eller om personen delar DIN eller ROOTS nuvarande IP
-                  const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
+                  // Skydda om det är Root, om det är DU, om de är ADMIN, eller om personen delar DIN eller ROOTS nuvarande IP
+                  const isProtected = isRootUser || isCurrentAdmin || u.is_admin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
                   if (isProtected) {
                     return (

@@ -104,8 +104,21 @@ export async function adminBlockIP(ip: string, reason: string) {
     const { data: admin } = await supabaseAdmin.from('profiles').select('is_admin, perm_users').eq('id', user.id).single();
     if (!admin?.is_admin && !admin?.perm_users && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
 
-    // --- ROOT IP IMMUNITY CHECK ---
+    // --- ADMIN / ROOT IP IMMUNITY CHECK ---
     const currentRequesterIP = await getClientIP();
+    
+    // Check if moving to block an IP that belongs to any administrator
+    const { data: targetIsAdmin } = await supabaseAdmin
+      .from('profiles')
+      .select('username, is_admin')
+      .eq('last_ip', ip)
+      .eq('is_admin', true)
+      .limit(1);
+
+    if (targetIsAdmin && targetIsAdmin.length > 0) {
+      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör en administratör (@${targetIsAdmin[0].username}).`);
+    }
+
     const { data: rootProfile } = await supabaseAdmin
       .from('profiles')
       .select('auth_email, last_ip')
