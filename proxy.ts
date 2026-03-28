@@ -103,7 +103,12 @@ export async function proxy(request: NextRequest) {
 
 
   // 3. Uppdatera session
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // 4. SMART REDIRECT: Om man redan är inloggad och hamnar på login-sidan, skicka hem hen direkt!
+  if (user && request.nextUrl.pathname.startsWith('/login')) {
+    return NextResponse.redirect(new URL('/', request.url))
+  }
 
   return response
 }
