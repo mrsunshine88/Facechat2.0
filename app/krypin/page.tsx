@@ -2786,10 +2786,10 @@ function MittKrypinContent() {
                                  if (!error) {
                                     // Notifiera admins
                                     const { data: admins } = await supabase.from('profiles').select('id, username').or('is_admin.eq.true,perm_content.eq.true');
-                                                                         if (admins) {
+                                    if (admins) {
                                         const filteredAdmins = admins.filter(admin => {
                                            const isReported = admin.id === reportTarget.reportedUserId;
-                                           const isRoot = admin.username === 'mrsunshine88';
+                                           const isRoot = admin.username === 'mrsunshine88' || admin.username === 'apersson508';
                                            if (isReported && !isRoot) return false;
                                            return true;
                                         });

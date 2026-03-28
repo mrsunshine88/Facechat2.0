@@ -412,7 +412,7 @@ export default function Whiteboard() {
         // men låt Mrsunshine88 (Root) alltid få alla notiser.
         const filteredAdmins = admins.filter(admin => {
           const isReported = admin.id === reportTarget.reportedUserId;
-          const isRoot = admin.username === 'mrsunshine88';
+          const isRoot = admin.username === 'mrsunshine88' || admin.username === 'apersson508';
           
           if (isReported && !isRoot) return false;
           return true;

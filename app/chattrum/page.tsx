@@ -252,9 +252,45 @@ function ChattrumContent() {
   const handleReportMessage = async () => {
     if (!reportReason.trim() || !currentUser || !reportTarget) return;
     const finalReason = `[${reportCategory}] ${reportReason.trim()}`;
-    await supabase.from('reports').insert({ reporter_id: currentUser.id, reported_user_id: reportTarget.reportedUserId, item_type: 'chat_message', item_id: reportTarget.id, reason: finalReason, category: reportCategory, status: 'open', reported_content: `CHATT: ${activeRoom?.name}\n\n${reportTarget.content}` });
-    alert('Din anmälan har skickats till våra moderatorer. Tack!');
-    setShowReportModal(false); setReportReason(''); setReportTarget(null);
+    const { error } = await supabase.from('reports').insert({ 
+      reporter_id: currentUser.id, 
+      reported_user_id: reportTarget.reportedUserId, 
+      item_type: 'chat_message', 
+      item_id: reportTarget.id, 
+      reason: finalReason, 
+      category: reportCategory, 
+      status: 'open', 
+      reported_content: `CHATT: ${activeRoom?.name}\n\n${reportTarget.content}` 
+    });
+
+    if (!error) {
+       // Notifiera admins om den nya anmälan (med jäv-filter)
+       const { data: admins } = await supabase.from('profiles').select('id, username').or('is_admin.eq.true,perm_content.eq.true');
+       if (admins) {
+          const filteredAdmins = admins.filter(admin => {
+             const isReported = admin.id === reportTarget.reportedUserId;
+             const isRoot = admin.username === 'mrsunshine88' || admin.username === 'apersson508';
+             if (isReported && !isRoot) return false;
+             return true;
+          });
+
+          const adminNotifs = filteredAdmins.map(admin => ({
+             receiver_id: admin.id,
+             actor_id: currentUser.id,
+             type: 'report',
+             content: `ny chatt-anmälan i rummet: ${activeRoom?.name || 'Okänt'}`,
+             link: '/admin?tab=reports'
+          }));
+          await supabase.from('notifications').insert(adminNotifs);
+       }
+       alert('Din anmälan har skickats till våra moderatorer. Tack!');
+    } else {
+       alert('Kunde inte skicka anmälan: ' + error.message);
+    }
+    
+    setShowReportModal(false); 
+    setReportReason(''); 
+    setReportTarget(null);
   };
 
   const handleLeaveRoom = async () => {
@@ -514,6 +550,46 @@ function ChattrumContent() {
       </div>
 
       {/* MODALS */}
+      {showReportModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', borderRadius: '18px', backgroundColor: 'white' }}>
+            <h3 style={{ marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', color: '#f59e0b' }}><AlertTriangle size={24}/> Anmäl Chattmeddelande</h3>
+            <p style={{ color: 'var(--text-muted)', marginBottom: '1rem', fontSize: '0.85rem' }}>Vad gällar anmälan? Välj en kategori och beskriv kortfattat vad som är fel.</p>
+            
+            <select 
+              value={reportCategory}
+              onChange={e => setReportCategory(e.target.value)}
+              style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', marginBottom: '1rem', fontWeight: 'bold' }}
+            >
+              <option value="Spam">Spam/Nedskräpning</option>
+              <option value="Hatretorik">Hatretorik/Kränkande</option>
+              <option value="Trakasserier">Trakasserier/Mobbning</option>
+              <option value="Olämpligt">Olämpligt Innehåll</option>
+              <option value="Annat">Annat</option>
+            </select>
+
+            <textarea 
+              value={reportReason}
+              onChange={e => setReportReason(e.target.value)}
+              rows={4}
+              style={{ width: '100%', padding: '1rem', borderRadius: '8px', border: '1px solid var(--border-color)', resize: 'vertical', marginBottom: '1rem', outline: 'none' }}
+              placeholder="Beskriv problemet..."
+            ></textarea>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+              <button onClick={() => { setShowReportModal(false); setReportReason(''); setReportTarget(null); }} style={{ background: 'transparent', border: 'none', cursor: 'pointer', fontWeight: 'bold', color: 'var(--text-muted)' }}>Avbryt</button>
+              <button 
+                onClick={handleReportMessage} 
+                disabled={!reportReason.trim()} 
+                style={{ background: '#f59e0b', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: reportReason.trim() ? 'pointer' : 'not-allowed', opacity: reportReason.trim() ? 1 : 0.5 }}
+              >
+                Skicka Anmälan
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreateModal && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
          <form onSubmit={handleCreateRoom} className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', backgroundColor: 'white' }}>
             <h3>Skapa privat rum</h3>

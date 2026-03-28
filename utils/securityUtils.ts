@@ -19,8 +19,13 @@ export function sanitizeCSS(css: string): string {
   cleaned = cleaned.replace(/<\/script>/gi, "");
 
   // 2. Skydd mot CSS-exfiltrering (Inga externa anrop!)
-  // Vi tar bort url(), @import, src: och liknande
-  cleaned = cleaned.replace(/url\s*\([\s\S]*?\)/gi, "none /* blocked */");
+  // Vi tillåter säkra data-uris (för mönster/emojis) men blockerar externa url:er
+  cleaned = cleaned.replace(/url\(\s*(['"]?)(.*?)\1\s*\)/gi, (match, quote, url) => {
+    if (url.startsWith('data:image/')) {
+      return match; // Säkert!
+    }
+    return "none /* blocked */";
+  });
   cleaned = cleaned.replace(/@import\s+[\s\S]*?;/gi, "/* import blocked */");
   cleaned = cleaned.replace(/src\s*:/gi, "disabled-src:");
 

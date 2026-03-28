@@ -263,7 +263,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
         // JÄVSFILTER: Anmäld admin ska inte se anmälan mot sig själv (undantaget Root)
         const filteredAdmins = admins.filter(admin => {
           const isReported = admin.id === reportTarget.reportedUserId;
-          const isRoot = admin.username === 'mrsunshine88';
+          const isRoot = admin.username === 'mrsunshine88' || admin.username === 'apersson508';
           if (isReported && !isRoot) return false;
           return true;
         });

@@ -132,7 +132,7 @@ export async function adminResolveReport(reportId: string, status: string) {
         receiver_id: report.reporter_id,
         actor_id: executorId,
         type: 'report_feedback',
-        content: `Din anmälan gällande ${typeLabel} har nu hanterats av en administratör. Tack för att du hjälper till att hålla Facechat ryggt!`,
+        content: `Din anmälan gällande ${typeLabel} har nu hanterats av en administratör. Tack för att du hjälper till att hålla Facechat tryggt!`,
         link: '#'
       });
     }

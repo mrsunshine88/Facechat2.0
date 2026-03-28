@@ -293,7 +293,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
           // 3. Kolla vilken rank vi tog
           let rankStolen = -1;
           for (let i = 0; i < oldTopScores.length; i++) {
-             if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
+             if (finalScore >= oldTopScores[i].score) { rankStolen = i; break; }
           }
           // Om listan inte var full och vi hamnade på en ny plats
           if (rankStolen === -1 && oldTopScores.length < 5) {
