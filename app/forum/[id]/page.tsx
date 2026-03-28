@@ -32,6 +32,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
   const [newReply, setNewReply] = useState('')
   const [editingPost, setEditingPost] = useState<{ id: string, content: string, title?: string } | null>(null)
   const [currentUser, setCurrentUser] = useState<any>(null)
+  const [blockedIds, setBlockedIds] = useState<string[]>([]);
   
   const [showReportModal, setShowReportModal] = useState(false)
   const [reportTarget, setReportTarget] = useState<any>(null)
@@ -50,20 +51,35 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts', filter: `thread_id=eq.${id}` }, () => fetchThread())
       .subscribe()
 
+    const blockChannel = supabase.channel('forum_blocks')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'user_blocks' }, () => fetchThread())
+      .subscribe()
+
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
 
     return () => { 
       supabase.removeChannel(channel);
+      supabase.removeChannel(blockChannel);
       window.removeEventListener('resize', handleResize);
     }
   }, [id])
 
   async function fetchThread() {
     const { data: { user } } = await supabase.auth.getUser()
+    let currentBlocked: string[] = [];
+    
     if (user) {
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       setCurrentUser(profile)
+
+      // Hämta alla blockeringar (både de jag blockat och de som blockat mig)
+      const { data: blocks } = await supabase.from('user_blocks')
+        .select('blocker_id, blocked_id')
+        .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+      
+      currentBlocked = blocks?.map(b => b.blocker_id === user.id ? b.blocked_id : b.blocker_id) || [];
+      setBlockedIds(currentBlocked);
     }
 
     const { data: threadData } = await supabase.from('forum_threads')
@@ -72,13 +88,31 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
       .single()
 
     if (threadData) {
+      // Om trådstartaren är blockad (av mig eller har blockat mig), kasta ut användaren
+      if (user && currentBlocked.includes(threadData.author_id)) {
+        router.push('/forum');
+        return;
+      }
+
       setThread(threadData)
       const { data: postsData } = await supabase.from('forum_posts')
         .select('*, profiles(username, avatar_url, city, created_at)')
         .eq('thread_id', id)
         .order('created_at', { ascending: true })
 
-      if (postsData) setPosts(postsData)
+      if (postsData) {
+        // Filtrera bort inlägg från personer som är blockerade (reciprok osynlighet)
+        const visiblePosts = postsData.filter(p => !currentBlocked.includes(p.author_id));
+        
+        // Om första inlägget (trådstarten) har råkat bli bortfiltrerat här fast vi är kvar, 
+        // betyder det att trådstartaren är blockad.
+        if (visiblePosts.length === 0 || (postsData[0] && currentBlocked.includes(postsData[0].author_id))) {
+           router.push('/forum');
+           return;
+        }
+
+        setPosts(visiblePosts)
+      }
     }
     setLoading(false)
   }

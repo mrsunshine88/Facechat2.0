@@ -105,17 +105,20 @@ export async function adminBlockIP(ip: string, reason: string) {
     if (!admin?.is_admin && !admin?.perm_users && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
 
     // --- ROOT IP IMMUNITY CHECK ---
+    const currentRequesterIP = await getClientIP();
     const { data: rootProfile } = await supabaseAdmin
       .from('profiles')
       .select('auth_email, last_ip')
-      .eq('auth_email', 'apersson508@gmail.com')
+      .eq('auth_email', ROOT_EMAIL)
       .single();
 
-    if (rootProfile && rootProfile.last_ip === ip) {
-      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den används av Root-ägaren.`);
+    const isRootIP = (rootProfile && rootProfile.last_ip === ip) || (user.email === ROOT_EMAIL && currentRequesterIP === ip);
+
+    if (isRootIP) {
+      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör eller används av Root-ägaren.`);
     }
 
-    const { error } = await supabaseAdmin.from('blocked_ips').insert({ ip, reason });
+    const { error } = await supabaseAdmin.from('blocked_ips').upsert({ ip, reason }, { onConflict: 'ip' });
     if (error) throw error;
 
     return { success: true };

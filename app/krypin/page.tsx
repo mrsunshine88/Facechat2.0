@@ -2237,7 +2237,7 @@ function MittKrypinContent() {
                                           </button>
                                        </>
                                     )}
-                                    {(!isViewerAdmin || isBlocked) && (!isAdminLabel || isBlocked) && (
+                                    {!isViewerAdmin && !isAdminLabel && (
                                        <button onClick={handleToggleBlock} style={{ backgroundColor: isBlocked ? '#fca5a5' : '#ef4444', color: 'white', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.4rem', boxShadow: '0 4px 6px rgba(0,0,0,0.1)', flex: '1 1 auto', justifyContent: 'center' }}>
                                           <ShieldAlert size={16} /> {isBlocked ? 'Häv Blockering' : 'Blockera'}
                                        </button>

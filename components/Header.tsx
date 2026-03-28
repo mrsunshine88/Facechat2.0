@@ -66,7 +66,7 @@ export default function Header() {
         const canManageSupport = isRoot || currentProfile.perm_support;
         
         if (canManageSupport) {
-          const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true);
+          const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false);
           setUnreadSupportCount(count || 0);
         } else {
           const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true);
@@ -133,8 +133,8 @@ export default function Header() {
     const notifChannel = supabase.channel('header-notifs-' + userProfile.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
          // Spela pling-ljud för alla NYA notiser (utom besök)
-         // VIKTIGT: Spela bara ljud om fliken är AKTIV för att undvika dubbel-pling med push-notiser
-         if (payload.new.type !== 'visit' && document.visibilityState === 'visible') {
+         // VIKTIGT: Spela bara ljud om fönstret har FOKUS för att undvika dubbel-pling med push-notiser
+         if (payload.new.type !== 'visit' && document.hasFocus()) {
             try {
                const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
                audio.volume = 0.4;
@@ -155,7 +155,7 @@ export default function Header() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, (payload) => {
          async function refreshCount() {
            if (canManageSupport) {
-             const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true);
+             const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false);
              setUnreadSupportCount(count || 0);
            } else {
              const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', userProfile.id).eq('has_unread_user', true);

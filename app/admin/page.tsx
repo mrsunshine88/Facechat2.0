@@ -345,7 +345,7 @@ const NoAccess = () => (
 // 1. DASHBOARD & STATISTIK (Inkl Händelselogg/Sista inlogg)
 // ==========================================================
 const AdminDashboard = ({ supabase }: { supabase: any }) => {
-  const [stats, setStats] = useState({ users: 0, posts: 0, tickets: 0, online: 0, banned: 0, reports: 0 });
+  const [stats, setStats] = useState({ users: 0, posts: 0, tickets: 0, online: 0, banned: 0, reports: 0, ipBlocks: 0 });
   const [latestLogins, setLatestLogins] = useState<any[]>([]);
 
   useEffect(() => {
@@ -360,7 +360,8 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           { count: ticketsCount },
           { count: bannedCount },
           { count: reportsCount },
-          { count: userBlocksCount }
+          { count: userBlocksCount },
+          { count: ipBlocksCount }
         ] = await Promise.all([
           supabase.from('profiles').select('*', { count: 'exact', head: true }),
           supabase.from('whiteboard').select('*', { count: 'exact', head: true }),
@@ -369,7 +370,8 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('admin_deleted', false),
           supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
           supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
-          supabase.from('user_blocks').select('*', { count: 'exact', head: true })
+          supabase.from('user_blocks').select('*', { count: 'exact', head: true }),
+          supabase.from('blocked_ips').select('*', { count: 'exact', head: true })
         ]);
 
         const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
@@ -381,7 +383,8 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           tickets: ticketsCount || 0,
           online: onlineCount || 0,
           banned: bannedCount || 0,
-          reports: reportsCount || 0
+          reports: reportsCount || 0,
+          ipBlocks: ipBlocksCount || 0
         });
       } catch (err) {
         console.error("Dashboard load error:", err);
@@ -400,6 +403,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, loadDash)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, loadDash)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, loadDash)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, loadDash)
       .subscribe();
 
     return () => {
@@ -431,6 +435,10 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
         <div className="admin-card">
           <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Öppna Anmälningar</h3>
           <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.reports > 0 ? '#ef4444' : '#6b7280' }}>{stats.reports}</p>
+        </div>
+        <div className="admin-card">
+          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Totalt antal IP-spärrar</h3>
+          <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.ipBlocks > 0 ? '#ef4444' : '#6b7280' }}>{stats.ipBlocks}</p>
         </div>
         <div className="admin-card" style={{ border: '1px solid #10b981', backgroundColor: '#ecfdf5' }}>
           <h3 style={{ fontSize: '1rem', color: '#047857', marginBottom: '0.5rem' }}>Inloggade just nu</h3>
@@ -561,8 +569,13 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       })
       .subscribe();
 
+    const ipChannel = supabase.channel('admin_blocked_ips_realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, fetchBlockedIps)
+      .subscribe();
+
     return () => {
       supabase.removeChannel(channel);
+      supabase.removeChannel(ipChannel);
     };
   }, [supabase]);
 
@@ -591,11 +604,12 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
 
   const handleBlockIP = async (ip: string, username: string) => {
-    if (!ip || ip === '127.0.0.1') return alert('Kunde inte identifiera giltig IP för denna användare.');
-    const reason = prompt(`Ange anledning för att spärra IP ${ip} (${username}):`, 'Spam/Missbruk');
+    const cleanIp = ip?.trim();
+    if (!cleanIp || cleanIp === '127.0.0.1') return alert('Kunde inte identifiera giltig IP för denna användare.');
+    const reason = prompt(`Ange anledning för att spärra IP ${cleanIp} (${username}):`, 'Spam/Missbruk');
     if (reason === null) return;
 
-    const res = await adminBlockIP(ip, reason);
+    const res = await adminBlockIP(cleanIp, reason);
     if (res?.error) return alert('Fel: ' + res.error);
     
     await logAdminAction(supabase, currentUser.id, `Spärrade IP-adress ${ip} (${username})`);
@@ -663,7 +677,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
         {users.length === 0 && <p style={{ color: 'var(--text-muted)' }}>Inga användare hittades.</p>}
         {users.map(u => {
           const isAutoBanned = u.ban_reason?.startsWith('System:');
-          const isIpBlocked = blockedIps.some(b => b.ip === u.last_ip);
+          const isIpBlocked = blockedIps.some(b => b.ip?.trim() === u.last_ip?.trim());
           return (
             <div 
               key={u.id} 
@@ -713,7 +727,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 {(() => {
                   const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
                   const isCurrentAdmin = u.id === currentUser.id;
-                  // Skydda om det är Root, om det är DU, eller om personen delar DIN nuvarande IP
+                  // Skydda om det är Root, om det är DU, eller om personen delar DIN eller ROOTS nuvarande IP
                   const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
                   if (isProtected) {
@@ -2058,7 +2072,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     const ticket = tickets.find(t => t.id === id);
     if (!ticket) return;
 
-    await supabase.from('support_tickets').update({ status: 'closed' }).eq('id', id);
+    await supabase.from('support_tickets').update({ status: 'closed', has_unread_admin: false }).eq('id', id);
     await logAdminAction(supabase, currentUser.id, `Stängde supportärende (${id})`);
     
     // NOTIFIERA ANVÄNDAREN!
