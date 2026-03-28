@@ -1428,7 +1428,7 @@ function MittKrypinContent() {
               <div className="card inner-box" style={{ padding: '1.5rem', minHeight: '300px', display: 'flex', flexDirection: 'column', border: 'none', borderRadius: '12px', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)' }}>
                  {currentUser.presentation ? (
                     <div style={{ whiteSpace: 'pre-wrap', lineHeight: '1.7', fontSize: '1rem', color: 'var(--text-main)', overflowWrap: 'break-word' }}>
-                       {currentUser.presentation}
+                       {mask(currentUser.presentation)}
                     </div>
                  ) : (
                     <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '1rem', textAlign: 'center' }}>

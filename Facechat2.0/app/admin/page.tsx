@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser } from 'lucide-react';
+import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, Globe, X } from 'lucide-react';
 import { createBrowserClient } from '@supabase/ssr';
 import { deleteUserAccount } from '../actions/userActions';
+import { adminMassDeleteSpam } from '../actions/adminActions';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 export const logAdminAction = async (supabase: any, adminId: string, action: string) => {
   try {
@@ -202,6 +204,7 @@ const NoAccess = () => (
 const AdminDashboard = ({ supabase }: { supabase: any }) => {
   const [stats, setStats] = useState({ users: 0, posts: 0, tickets: 0, online: 0 });
   const [latestLogins, setLatestLogins] = useState<any[]>([]);
+  const [maintenanceLog, setMaintenanceLog] = useState<any>(null);
 
   useEffect(() => {
     async function loadDash() {
@@ -232,12 +235,33 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
         .order('last_seen', { ascending: false, nullsFirst: false })
         .limit(10);
       if (data) setLatestLogins(data);
+
+      // Nattlig Underhållslogg
+      const { data: maint } = await supabase.from('admin_logs')
+        .select('*')
+        .eq('action', 'Nattligt Underhåll Genomfört (Auto)')
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (maint) setMaintenanceLog(maint);
     }
     loadDash();
   }, [supabase]);
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
+      {maintenanceLog && (
+        <div className="admin-card" style={{ marginBottom: '2rem', borderLeft: '4px solid #10b981', backgroundColor: '#f0fdf4' }}>
+          <h3 style={{ fontSize: '1.25rem', color: '#065f46', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <CheckCircle size={20} /> Diagnosverktyg resultat (Senaste nattkörningen):
+          </h3>
+          <p style={{ color: '#064e3b', fontSize: '0.95rem', fontWeight: 'bold' }}>Datum: {new Date(maintenanceLog.created_at).toLocaleString('sv-SE')}</p>
+          <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: 'rgba(255,255,255,0.5)', borderRadius: '8px', fontSize: '0.875rem', color: '#111', whiteSpace: 'pre-wrap', border: '1px solid #d1fae5' }}>
+            {maintenanceLog.details || 'Inga detaljer sparade.'}
+          </div>
+        </div>
+      )}
+      
       <h2 style={{ fontSize: '2rem', fontWeight: '700', marginBottom: '2rem', color: 'var(--text-main)' }}>Dashboard & Statistik</h2>
       
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1.5rem', marginBottom: '3rem' }}>
@@ -523,6 +547,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 // 3. INNEHÅLL (Whiteboard, Forum, Chattrum)
 // ==========================================================
 const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+  const { mask } = useWordFilter();
   const [posts, setPosts] = useState<any[]>([]);
   const [guestbook, setGuestbook] = useState<any[]>([]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
@@ -585,7 +610,7 @@ const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: a
           <div key={post.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-whiteboard)', padding: '1rem' }}>
             <div>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>@{post.profiles?.username || 'Okänd'} • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
+              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <button onClick={() => handleDelete('whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
               <Trash2 size={20} />
@@ -596,7 +621,7 @@ const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: a
           <div key={post.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-krypin)', padding: '1rem' }}>
             <div>
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>@{post.sender?.username} ➔ @{post.receiver?.username} • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
+              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <button onClick={() => handleDelete('guestbook', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
               <Trash2 size={20} />
@@ -606,8 +631,8 @@ const AdminContent = ({ supabase, currentUser }: { supabase: any, currentUser: a
         {view === 'forum' && forumPosts.map(post => (
           <div key={post.id} className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-forum)', padding: '1rem' }}>
             <div>
-              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>@{post.profiles?.username || 'Okänd'} i tråden "{post.forum_threads?.title}" • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
+              <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>@{post.profiles?.username || 'Okänd'} i tråden "{mask(post.forum_threads?.title || '')}" • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
+              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <button onClick={() => handleDelete('forum_posts', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
               <Trash2 size={20} />
@@ -991,6 +1016,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
 // 6. SUPPORT
 // ==========================================================
 const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+  const { mask } = useWordFilter();
   const [tickets, setTickets] = useState<any[]>([]);
   const [activeTicketId, setActiveTicketId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -1084,7 +1110,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
                           borderBottomLeftRadius: isAdminMsg ? '12px' : '2px',
                           boxShadow: 'var(--shadow-sm)'
                         }}>
-                          <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{m.text}</p>
+                          <p style={{ margin: 0, fontSize: '1rem', lineHeight: '1.5', whiteSpace: 'pre-wrap' }}>{mask(m.text)}</p>
                         </div>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.25rem', alignSelf: isAdminMsg ? 'flex-end' : 'flex-start' }}>
                           {isAdminMsg ? 'Du (Admin)' : `@${ticket.profiles?.username}`} • {new Date(m.time).toLocaleString('sv-SE')}
@@ -1203,10 +1229,14 @@ const AdminLogs = ({ supabase }: { supabase: any }) => {
 // 8. DIAGNOSTIK & VÅRDCENTRAL
 // ==========================================================
 const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+  const { forbiddenWords } = useWordFilter();
+  const [newForbiddenWord, setNewForbiddenWord] = useState('');
   const [running, setRunning] = useState(false);
   const [cssWipeTarget, setCssWipeTarget] = useState('');
   const [lastNightlyResult, setLastNightlyResult] = useState<string | null>(null);
   const [lastNightlyTime, setLastNightlyTime] = useState<string | null>(null);
+  const [massDeleteQuery, setMassDeleteQuery] = useState('');
+  const [massDeleting, setMassDeleting] = useState(false);
   const [results, setResults] = useState<{ id: string, title: string, status: 'idle' | 'running' | 'ok' | 'warning', message: string, fixAction?: () => void }[]>([
     { id: 'latency', title: 'Databasens Responstid (Ping)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'storage', title: 'Lagringsutrymme (Max 50 MB)', status: 'idle', message: 'Väntar på diagnos...' },
@@ -1378,6 +1408,49 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     }
   };
 
+  const handleAddWord = async () => {
+    if (!newForbiddenWord.trim()) return;
+    const { error } = await supabase.from('forbidden_words').insert({ word: newForbiddenWord.trim().toLowerCase() });
+    if (error) alert("Kunde inte lägga till ord: " + error.message);
+    else {
+      setNewForbiddenWord('');
+      await logAdminAction(supabase, currentUser.id, `Lade till ord "${newForbiddenWord.trim()}" i det globala filtret.`);
+    }
+  };
+
+  const handleRemoveWord = async (id: string, word: string) => {
+    const { error } = await supabase.from('forbidden_words').delete().eq('id', id);
+    if (error) alert("Kunde inte ta bort ord: " + error.message);
+    else {
+      await logAdminAction(supabase, currentUser.id, `Tog bort ord "${word}" från filtret.`);
+    }
+  };
+
+  const handleMassDelete = async () => {
+    if (!massDeleteQuery.trim() || massDeleteQuery.length < 3) {
+      alert("Ange minst 3 tecken för att mass-radera.");
+      return;
+    }
+
+    if (confirm(`VARNING: Detta kommer radera ALLA inlägg (Whiteboard, Forum, Gästbok, Chatten, PM) som innehåller texten "${massDeleteQuery}". Är du helt säker? Det går inte att ångra.`)) {
+      setMassDeleting(true);
+      try {
+        const res = await adminMassDeleteSpam(massDeleteQuery);
+        if (res?.error) {
+          alert("Ett fel uppstod: " + res.error);
+        } else {
+          alert(`Mass-radering slutförd! Alla inlägg med "${massDeleteQuery}" är nu borta.`);
+          await logAdminAction(supabase, currentUser.id, `Mass-radera spam: "${massDeleteQuery}"`);
+          setMassDeleteQuery('');
+        }
+      } catch (err: any) {
+        alert("Ett oväntat fel uppstod vid mass-radering.");
+      } finally {
+        setMassDeleting(false);
+      }
+    }
+  };
+
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       {lastNightlyResult && (
@@ -1448,6 +1521,64 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
             Nollställ Design
           </button>
         </div>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: '2rem', padding: '1.5rem', borderTop: '4px solid #ef4444' }}>
+        <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#b91c1c', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Trash2 size={20} /> Akut Mass-radera Spam</h3>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>Sök upp och radera ALLA inlägg som innehåller ett visst ord eller länk (Whiteboard, Forum, Gästbok, Chatten).</p>
+        <div style={{ display: 'flex', gap: '0.75rem' }}>
+          <input
+            type="text"
+            placeholder="Exempel: bit.ly/spam-link"
+            value={massDeleteQuery}
+            onChange={e => setMassDeleteQuery(e.target.value)}
+            style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'white' }}
+          />
+          <button
+            onClick={handleMassDelete}
+            disabled={massDeleting}
+            style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: massDeleting ? 'not-allowed' : 'pointer' }}
+          >
+            {massDeleting ? 'RADERAR...' : 'RADERA ALLT'}
+          </button>
+        </div>
+      </div>
+
+      <div className="admin-card" style={{ marginTop: '2rem', padding: '1.5rem', borderTop: '4px solid #6366f1' }}>
+        <h3 style={{ margin: 0, marginBottom: '0.5rem', color: '#4338ca', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Globe size={20} /> Globalt Ord-filter (Stjärnmarkerar ****)
+        </h3>
+        <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+          Lägg till ord som automatiskt ska bytas ut mot stjärnor i alla inlägg (Chatt, Forum, PM, etc.).
+        </p>
+        <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
+          <input
+            type="text"
+            placeholder="Exempel: fultord123"
+            value={newForbiddenWord}
+            onChange={e => setNewForbiddenWord(e.target.value)}
+            style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'white' }}
+          />
+          <button
+            onClick={handleAddWord}
+            style={{ backgroundColor: '#6366f1', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+          >
+            <Plus size={18} /> LÄGG TILL ORD
+          </button>
+        </div>
+
+        {forbiddenWords.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+            {forbiddenWords.map((w: any) => (
+              <div key={w.id} style={{ backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', padding: '0.4rem 0.75rem', borderRadius: '20px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', border: '1px solid var(--border-color)' }}>
+                {w.word}
+                <button onClick={() => handleRemoveWord(w.id, w.word)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: 0, display: 'flex', alignItems: 'center' }}>
+                  <X size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

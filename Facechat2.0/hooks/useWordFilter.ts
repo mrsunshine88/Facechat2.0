@@ -16,10 +16,10 @@ export function useWordFilter() {
     try {
       const { data } = await supabase
         .from('forbidden_words')
-        .select('word')
+        .select('*')
       
       if (data) {
-        setForbiddenWords(data.map(d => d.word));
+        setForbiddenWords(data);
       }
     } catch (err) {
       console.error("Error fetching forbidden words:", err);
@@ -41,7 +41,8 @@ export function useWordFilter() {
   }, [supabase, fetchWords])
 
   const mask = useCallback((text: string) => {
-    return maskContent(text, forbiddenWords)
+    const wordStrings = forbiddenWords.map((fw: any) => fw.word);
+    return maskContent(text, wordStrings)
   }, [forbiddenWords])
 
   return { mask, forbiddenWords }
