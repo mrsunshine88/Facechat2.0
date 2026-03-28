@@ -155,7 +155,7 @@ function ChattrumContent() {
     // Nollställ online-listan inför rumsbytet
     setOnlineUsers([]);
     
-    fetchMessages(activeRoom.id, activeRoom.is_friends_only);
+    fetchMessages(activeRoom.id);
     
     const roomChannel = supabase.channel(`room-${activeRoom.id}`, {
       config: {
@@ -182,10 +182,10 @@ function ChattrumContent() {
         setOnlineUsers(unique);
       })
       .on('broadcast', { event: 'new_message' }, () => {
-        fetchMessages(activeRoom.id, activeRoom.is_friends_only);
+        fetchMessages(activeRoom.id);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'chat_messages', filter: `room_id=eq.${activeRoom.id}` }, () => {
-        fetchMessages(activeRoom.id, activeRoom.is_friends_only);
+        fetchMessages(activeRoom.id);
       })
       .subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
@@ -203,32 +203,30 @@ function ChattrumContent() {
     };
   }, [activeRoom, currentUser, supabase]);
 
-  async function fetchMessages(roomId: string, isFriendsOnly: boolean) {
+  async function fetchMessages(roomId: string) {
     let blockedIds = blockedIdsRef.current;
 
-    if (isFriendsOnly && currentUser) {
-      const { data: f1 } = await supabase.from('friendships').select('user_id_2').eq('user_id_1', currentUser.id).eq('status', 'accepted');
-      const { data: f2 } = await supabase.from('friendships').select('user_id_1').eq('user_id_2', currentUser.id).eq('status', 'accepted');
-      const friendIds = [...(f1?.map(f => f.user_id_2) || []), ...(f2?.map(f => f.user_id_1) || []), currentUser.id];
-      const safeIds = friendIds.filter(id => !blockedIds.includes(id));
-      
-      const { data } = await supabase.from('chat_messages').select('*, profiles(username)').eq('room_id', roomId).in('author_id', safeIds).order('created_at', { ascending: true }).limit(100);
-      if(data) {
-        setMessages(data);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-      }
-    } else {
-      const { data } = await supabase.from('chat_messages').select('*, profiles(username)').eq('room_id', roomId).order('created_at', { ascending: true }).limit(100);
-      if(data) {
-        const filtered = data.filter((m: any) => !blockedIds.includes(m.author_id));
-        setMessages(filtered);
-        setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
-      }
+    const { data } = await supabase.from('chat_messages').select('*, profiles(username)').eq('room_id', roomId).order('created_at', { ascending: true }).limit(100);
+    if(data) {
+      const filtered = data.filter((m: any) => !blockedIds.includes(m.author_id));
+      setMessages(filtered);
+      setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), 100);
     }
   }
 
   const handleSend = async () => {
     if (!inputVal.trim() || !activeRoom || !currentUser) return;
+
+    // Admin Spectator Check
+    const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
+    const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
+    const isSpectator = activeRoom?.is_secret && isAdmin && !(activeRoom?.allowed_users?.includes(currentUser.id));
+
+    if (isSpectator) {
+       alert('Du är i moderator-läge och kan inte skriva i detta hemliga rum.');
+       return;
+    }
+
     const txt = inputVal.trim();
     setInputVal('');
     const { error } = await supabase.from('chat_messages').insert({
@@ -275,7 +273,7 @@ function ChattrumContent() {
        }
     }
 
-    await fetchMessages(activeRoom.id, activeRoom.is_friends_only);
+    await fetchMessages(activeRoom.id);
     
     // Broadcast to everyone else in the room to refresh
     if (channelRef.current) {
@@ -304,7 +302,7 @@ function ChattrumContent() {
     }
     
     // Force a local refetch to ensure it disappears instantly
-    await fetchMessages(activeRoom.id, activeRoom.is_friends_only);
+    await fetchMessages(activeRoom.id);
     
     // Broadcast delete to others
     if (channelRef.current) {
@@ -411,125 +409,141 @@ function ChattrumContent() {
       </div>
 
       {/* Mitten: Chatt */}
-      <div className="card chat-main-card" style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-        
-        {/* Mobile-only Header Dropdown Button */}
-        <div className="mobile-only-flex" style={{ position: 'sticky', top: '70px', padding: '1rem 1.5rem', backgroundColor: 'var(--theme-chat)', color: 'white', display: 'none', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', zIndex: 10 }} onClick={() => setMobileDropdownOpen(!mobileDropdownOpen)}>
-           <span style={{ fontWeight: 'bold', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-              <Hash size={20} /> {activeRoom ? activeRoom.name : 'Välj chattrum'}
-           </span>
-           <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: 'normal', backgroundColor: 'rgba(255,255,255,0.2)', padding: '0.4rem 0.8rem', borderRadius: '999px' }}>
-              {activeRoom ? 'Ändra' : 'Välj'} {mobileDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-           </span>
-        </div>
+      {(() => {
+        const isRoot = currentUser?.username === 'mrsunshine88' || currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.perm_roles === true;
+        const isAdmin = currentUser?.is_admin || currentUser?.perm_rooms || isRoot;
+        const isSpectator = activeRoom?.is_secret && isAdmin && !(activeRoom?.allowed_users?.includes(currentUser?.id));
 
-        {/* Mobile Dropdown Menu content */}
-        {mobileDropdownOpen && (
-           <div className="mobile-only-block" style={{ position: 'sticky', top: '130px', backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-color)', padding: '1rem', display: 'none', flexDirection: 'column', gap: '0.5rem', maxHeight: '60vh', overflowY: 'auto', zIndex: 9, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
-              <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>TILLGÄNGLIGA RUM</div>
-              {rooms.map(room => (
-                 <button 
-                  key={room.id}
-                  onClick={(e) => { e.stopPropagation(); handleJoinRoom(room); setMobileDropdownOpen(false); }}
-                  style={{ 
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '1rem', borderRadius: '12px',
-                    backgroundColor: activeRoom?.id === room.id ? 'var(--theme-chat)' : 'white',
-                    color: activeRoom?.id === room.id ? 'white' : 'var(--text-main)',
-                    fontWeight: activeRoom?.id === room.id ? 'bold' : '500',
-                    border: '1px solid #e2e8f0',
-                    textAlign: 'left', cursor: 'pointer',
-                    boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
-                  }}
-                 >
-                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.1rem' }}>
-                     <Hash size={20} opacity={activeRoom?.id === room.id ? 1 : 0.5} /> {room.name} {room.password && <Lock size={16} color={activeRoom?.id === room.id ? "white" : "#ef4444"} />}
-                   </span>
-                 </button>
-              ))}
-           </div>
-        )}
+        return (
+          <div 
+            className={`card chat-main-card ${isSpectator ? 'spectator-mode' : ''}`} 
+            style={{ 
+              margin: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden',
+              border: isSpectator ? '3px solid #ef4444' : '1px solid var(--border-color)',
+              boxShadow: isSpectator ? '0 0 20px rgba(239, 68, 68, 0.2)' : 'none'
+            }}
+          >
+            
+            {/* Mobile-only Header Dropdown Button */}
+            <div className="mobile-only-flex" style={{ position: 'sticky', top: '70px', padding: '1rem 1.5rem', backgroundColor: isSpectator ? '#ef4444' : 'var(--theme-chat)', color: 'white', display: 'none', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.1)', zIndex: 10 }} onClick={() => setMobileDropdownOpen(!mobileDropdownOpen)}>
+               <span style={{ fontWeight: 'bold', fontSize: '1.2rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <Hash size={20} /> {activeRoom ? activeRoom.name : 'Välj chattrum'} {isSpectator && <span style={{ fontSize: '0.7rem', backgroundColor: 'white', color: '#ef4444', padding: '2px 8px', borderRadius: '4px', marginLeft: '8px' }}>MODERATOR</span>}
+               </span>
+               <span style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.9rem', fontWeight: 'normal', backgroundColor: 'rgba(255,255,255,0.2)', padding: '0.4rem 0.8rem', borderRadius: '999px' }}>
+                  {activeRoom ? 'Ändra' : 'Välj'} {mobileDropdownOpen ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+               </span>
+            </div>
 
-        {/* Desktop Header */}
-        <div className="hide-on-mobile" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', alignItems: 'center' }}>
-           <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-             {activeRoom ? activeRoom.name : 'Välj ett rum i listan'}
-             {activeRoom?.password && <Lock size={16} color="#ef4444" />}
-           </h2>
-        </div>
-        
-        <div className="chat-messages-container" style={{ flex: 1, minHeight: 0, padding: '1.5rem', overflowY: 'auto', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
-          
-          {(!activeRoom || mobileDropdownOpen) && (
-             <div className="mobile-blur-overlay mobile-only-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)', zIndex: 10, display: 'none' }} onClick={() => {if(activeRoom) setMobileDropdownOpen(false)}}></div>
-          )}
-
-          <div style={{ alignSelf: 'center', backgroundColor: '#e2e8f0', padding: '0.25rem 1rem', borderRadius: '999px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            Välkommen till {activeRoom ? activeRoom.name : 'Chatten'}! (Realtime)
-          </div>
-
-          {!activeRoom && (
-            <p className="hide-on-mobile" style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem', padding: '2rem' }}>Du måste ansluta till ett rum i listan till vänster för att kunna chatta.</p>
-          )}
-
-          {activeRoom && messages.length === 0 && (
-            <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem' }}>Rummet ekar tomt...</p>
-          )}
-          
-          {messages.map(msg => {
-             const timeStr = new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
-             const isOwn = msg.author_id === currentUser?.id;
-             const canModerate = isOwn;
-
-             return (
-               <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
-                   <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isOwn ? 'var(--theme-chat)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
-                      <span className="user-link" onClick={() => window.location.href = `/krypin?u=${msg.profiles?.username}`} style={{ cursor: 'pointer', fontWeight: 'bold' }}>{msg.profiles?.username || 'Okänd'}</span> <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{timeStr}</span>
-                   </span>
-                   <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
-                     {!isOwn && (
-                       <button 
-                         onClick={() => {
-                           setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content });
-                           setShowReportModal(true);
-                         }}
-                         style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: '4px', borderRadius: '50%', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }} 
-                         className="fb-action-btn"
-                         title="Anmäl meddelande"
-                       >
-                         <AlertTriangle size={16} />
-                       </button>
-                     )}
-                     {canModerate && (
-                       <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.6 }} title="Radera inlägg">
-                         <Trash2 size={14} />
-                       </button>
-                     )}
-                   </div>
-                 </div>
-                 <p style={{ color: 'var(--text-main)', margin: 0, wordBreak: 'break-word' }}>{mask(msg.content)}</p>
+            {/* Mobile Dropdown Menu content */}
+            {mobileDropdownOpen && (
+               <div className="mobile-only-block" style={{ position: 'sticky', top: '130px', backgroundColor: '#f8fafc', borderBottom: '1px solid var(--border-color)', padding: '1rem', display: 'none', flexDirection: 'column', gap: '0.5rem', maxHeight: '60vh', overflowY: 'auto', zIndex: 9, boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text-muted)', marginBottom: '0.5rem', paddingLeft: '0.5rem' }}>TILLGÄNGLIGA RUM</div>
+                  {rooms.map(room => (
+                     <button 
+                      key={room.id}
+                      onClick={(e) => { e.stopPropagation(); handleJoinRoom(room); setMobileDropdownOpen(false); }}
+                      style={{ 
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                        padding: '1rem', borderRadius: '12px',
+                        backgroundColor: activeRoom?.id === room.id ? 'var(--theme-chat)' : 'white',
+                        color: activeRoom?.id === room.id ? 'white' : 'var(--text-main)',
+                        fontWeight: activeRoom?.id === room.id ? 'bold' : '500',
+                        border: '1px solid #e2e8f0',
+                        textAlign: 'left', cursor: 'pointer',
+                        boxShadow: '0 1px 2px rgba(0,0,0,0.05)'
+                      }}
+                     >
+                       <span style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '1.1rem' }}>
+                         <Hash size={20} opacity={activeRoom?.id === room.id ? 1 : 0.5} /> {room.name} {room.password && <Lock size={16} color={activeRoom?.id === room.id ? "white" : "#ef4444"} />}
+                       </span>
+                     </button>
+                  ))}
                </div>
-             );
-          })}
-          <div ref={messagesEndRef} />
-        </div>
+            )}
 
-        <div className="chat-input-wrapper" style={{ position: 'sticky', bottom: 0, padding: '1rem', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', gap: '0.75rem', zIndex: 5 }}>
-          <input 
-            type="text" 
-            value={inputVal}
-            onChange={e => setInputVal(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSend()}
-            placeholder={activeRoom ? `Skriv i ${activeRoom.name}...` : 'Låst. Välj ett rum först!'}
-            disabled={!activeRoom}
-            style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid var(--border-color)', borderRadius: '999px', fontFamily: 'inherit', outline: 'none', backgroundColor: activeRoom ? 'white' : '#e2e8f0' }}
-          />
-          <button onClick={handleSend} disabled={!activeRoom} style={{ backgroundColor: activeRoom ? 'var(--theme-chat)' : '#94a3b8', border: 'none', cursor: activeRoom ? 'pointer' : 'not-allowed', color: 'white', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Send size={18} style={{ marginLeft: '-2px', marginTop: '1px' }} />
-          </button>
-        </div>
-      </div>
+            {/* Desktop Header */}
+            <div className="hide-on-mobile" style={{ padding: '1rem 1.5rem', borderBottom: '1px solid var(--border-color)', backgroundColor: isSpectator ? '#fef2f2' : 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+               <h2 style={{ fontSize: '1.25rem', fontWeight: '600', color: isSpectator ? '#ef4444' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                 {activeRoom ? activeRoom.name : 'Välj ett rum i listan'}
+                 {activeRoom?.password && <Lock size={16} color="#ef4444" />}
+                 {isSpectator && <span style={{ fontSize: '0.8rem', backgroundColor: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '999px', marginLeft: '12px' }}>Moderator-läge (Endast läsa)</span>}
+               </h2>
+            </div>
+            
+            <div className="chat-messages-container" style={{ flex: 1, minHeight: 0, padding: '1.5rem', overflowY: 'auto', backgroundColor: '#f8fafc', display: 'flex', flexDirection: 'column', gap: '1rem', position: 'relative' }}>
+              
+              {(!activeRoom || mobileDropdownOpen) && (
+                 <div className="mobile-blur-overlay mobile-only-block" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(255,255,255,0.7)', backdropFilter: 'blur(4px)', zIndex: 10, display: 'none' }} onClick={() => {if(activeRoom) setMobileDropdownOpen(false)}}></div>
+              )}
+
+              <div style={{ alignSelf: 'center', backgroundColor: '#e2e8f0', padding: '0.25rem 1rem', borderRadius: '999px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                Välkommen till {activeRoom ? activeRoom.name : 'Chatten'}! (Realtime)
+              </div>
+
+              {!activeRoom && (
+                <p className="hide-on-mobile" style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem', padding: '2rem' }}>Du måste ansluta till ett rum i listan till vänster för att kunna chatta.</p>
+              )}
+
+              {activeRoom && messages.length === 0 && (
+                <p style={{ textAlign: 'center', color: 'var(--text-muted)', marginTop: '2rem' }}>Rummet ekar tomt...</p>
+              )}
+              
+              {messages.map(msg => {
+                 const timeStr = new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' });
+                 const isOwn = msg.author_id === currentUser?.id;
+                 const canModerate = isOwn || isAdmin;
+
+                 return (
+                   <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem', flexWrap: 'wrap', gap: '0.5rem' }}>
+                       <span style={{ fontSize: '0.75rem', fontWeight: '600', color: isOwn ? 'var(--theme-chat)' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                          <span className="user-link" onClick={() => window.location.href = `/krypin?u=${msg.profiles?.username}`} style={{ cursor: 'pointer', fontWeight: 'bold' }}>{msg.profiles?.username || 'Okänd'}</span> <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{timeStr}</span>
+                       </span>
+                       <div style={{ display: 'flex', gap: '0.5rem', marginLeft: 'auto' }}>
+                         {!isOwn && (
+                           <button 
+                             onClick={() => {
+                               setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content });
+                               setShowReportModal(true);
+                             }}
+                             style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer', padding: '4px', borderRadius: '50%', display: 'flex', alignItems: 'center', transition: 'all 0.2s' }} 
+                             className="fb-action-btn"
+                             title="Anmäl meddelande"
+                           >
+                             <AlertTriangle size={16} />
+                           </button>
+                         )}
+                         {canModerate && (
+                           <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', opacity: 0.6 }} title="Radera inlägg">
+                             <Trash2 size={14} />
+                           </button>
+                         )}
+                       </div>
+                     </div>
+                     <p style={{ color: 'var(--text-main)', margin: 0, wordBreak: 'break-word' }}>{mask(msg.content)}</p>
+                   </div>
+                 );
+              })}
+              <div ref={messagesEndRef} />
+            </div>
+
+            <div className="chat-input-wrapper" style={{ position: 'sticky', bottom: 0, padding: '1rem', paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', gap: '0.75rem', zIndex: 5 }}>
+              <input 
+                type="text" 
+                value={inputVal}
+                onChange={e => setInputVal(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSend()}
+                placeholder={isSpectator ? "Moderator-läge: Endast läsrättigheter" : (activeRoom ? `Skriv i ${activeRoom.name}...` : 'Låst. Välj ett rum först!')}
+                disabled={!activeRoom || isSpectator}
+                style={{ flex: 1, padding: '0.75rem 1rem', border: '1px solid var(--border-color)', borderRadius: '999px', fontFamily: 'inherit', outline: 'none', backgroundColor: (activeRoom && !isSpectator) ? 'white' : '#e2e8f0' }}
+              />
+              <button onClick={handleSend} disabled={!activeRoom || isSpectator} style={{ backgroundColor: (activeRoom && !isSpectator) ? 'var(--theme-chat)' : '#94a3b8', border: 'none', cursor: (activeRoom && !isSpectator) ? 'pointer' : 'not-allowed', color: 'white', width: '44px', height: '44px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Send size={18} style={{ marginLeft: '-2px', marginTop: '1px' }} />
+              </button>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Höger: Deltagare */}
       <div className="card hide-on-mobile" style={{ margin: 0, padding: '1rem', display: 'flex', flexDirection: 'column' }}>
