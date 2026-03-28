@@ -394,8 +394,8 @@ function ChattrumContent() {
                   {room.password && <Lock size={16} />}
                </button>
             ))}
-            <div style={{ marginTop: 'auto', padding: '1rem 0' }}>
-               <button onClick={() => { setShowCreateModal(true); setMobileDropdownOpen(false); }} style={{ width: '100%', padding: '1.2rem', borderRadius: '16px', border: '2px dashed var(--theme-chat)', backgroundColor: 'transparent', color: 'var(--theme-chat)', fontWeight: 'bold', fontSize: '1rem' }}>+ Skapa nytt privat rum</button>
+            <div style={{ marginTop: 'auto', padding: '1rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+               Använd plus-knappen nere i hörnet för att skapa nya rum.
             </div>
           </div>
         )}
@@ -458,12 +458,36 @@ function ChattrumContent() {
       {showInviteModal && <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
          <div className="card" style={{ maxWidth: '400px', width: '100%', padding: '2rem', backgroundColor: 'white' }}>
             <h3>Bjud in vänner</h3>
-            {friends.map(f => (
-               <div key={f.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.5rem 0' }}>
-                  <span>{f.username}</span>
-                  <button onClick={() => handleInviteUser(f.id, f.username)} disabled={activeRoom?.allowed_users?.includes(f.id)}>{activeRoom?.allowed_users?.includes(f.id) ? 'Medlem' : 'Lägg till'}</button>
+            {friends.map(friend => {
+               const isMember = activeRoom?.allowed_users?.includes(friend.id);
+               return (
+               <div key={friend.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '10px', marginBottom: '0.5rem' }}>
+                  <span style={{ fontWeight: '600', alignSelf: 'center' }}>{friend.username}</span>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                     {isMember ? (
+                        <>
+                           <span style={{ color: '#94a3b8', fontSize: '0.8rem', alignSelf: 'center', marginRight: '0.5rem' }}>Medlem</span>
+                           {canManageMembers && friend.id !== currentUser?.id && (
+                              <button 
+                                 onClick={() => { if(confirm(`Kicka ${friend.username}?`)) handleKickUser(friend.id, friend.username); }}
+                                 style={{ backgroundColor: '#fee2e2', color: '#ef4444', border: '1px solid #fecaca', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                              >
+                                 Kicka
+                              </button>
+                           )}
+                        </>
+                     ) : (
+                        <button 
+                           onClick={() => handleInviteUser(friend.id, friend.username)}
+                           style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.4rem 0.8rem', borderRadius: '6px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}
+                        >
+                           Lägg till
+                        </button>
+                     )}
+                  </div>
                </div>
-            ))}
+               );
+            })}
             <button onClick={() => setShowInviteModal(false)}>Klar</button>
          </div>
       </div>}
