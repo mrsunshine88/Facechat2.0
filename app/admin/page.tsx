@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/utils/supabase/client';
 import { deleteUserAccount } from '../actions/userActions';
 import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme, adminMassDeleteSpam } from '../actions/adminActions';
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
@@ -46,10 +46,7 @@ const AdminSkeleton = () => (
   </div>
 );
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');

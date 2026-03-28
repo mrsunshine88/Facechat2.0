@@ -2,6 +2,7 @@
 
 import React from 'react';
 import { Search, Filter, UserPlus } from 'lucide-react';
+import { createClient } from '@/utils/supabase/client';
 
 const CITIES = ["Alingsås", "Arvika", "Askersund", "Avesta", "Boden", "Bollnäs", "Borgholm", "Borlänge", "Borås", "Bräkne-Hoby", "Bålsta", "Båstad", "Djursholm", "Eksjö", "Enköping", "Eskilstuna", "Eslöv", "Fagersta", "Falkenberg", "Falköping", "Falun", "Filipstad", "Flen", "Gislaved", "Gävle", "Göteborg", "Hagfors", "Halla", "Halmstad", "Haparanda", "Hedemora", "Helsingborg", "Hjo", "Hudiksvall", "Huskvarna", "Härnösand", "Hässleholm", "Höganäs", "Jämjö", "Jönköping", "Kallinge", "Kalmar", "Karlshamn", "Karlskoga", "Karlskrona", "Karlstad", "Katrineholm", "Kiruna", "Kramfors", "Kristianstad", "Kristinehamn", "Kumla", "Kungsbacka", "Kungälv", "Köping", "Laholm", "Landskrona", "Lerum", "Lidingö", "Lidköping", "Lindesberg", "Linköping", "Listerby", "Ljungby", "Lomma", "Ludvika", "Luleå", "Lund", "Lycksele", "Lysekil", "Malmö", "Mariefred", "Mariestad", "Marstrand", "Motala", "Mölndal", "Mölnlycke", "Mörrum", "Nacka", "Nora", "Norrköping", "Norrtälje", "Nybro", "Nyköping", "Nynäshamn", "Nässjö", "Nättraby", "Olofström", "Oskarshamn", "Piteå", "Ramdala", "Ronneby", "Rödeby", "Sala", "Sandviken", "Sigtuna", "Simrishamn", "Skanör med Falsterbo", "Skara", "Skellefteå", "Skänninge", "Skövde", "Sollefteå", "Solna", "Staffanstorp", "Stockholm", "Strängnäs", "Strömstad", "Sundsvall", "Säffle", "Säter", "Sävsjö", "Söderhamn", "Söderköping", "Södertälje", "Sölvesborg", "Tidaholm", "Timrå", "Torshälla", "Tranås", "Trelleborg", "Trollhättan", "Trosa", "Tyresö", "Täby", "Uddevalla", "Ulricehamn", "Umeå", "Uppsala", "Vadstena", "Vallentuna", "Varberg", "Vaxholm", "Vetlanda", "Vimmerby", "Visby", "Vänersborg", "Värnamo", "Västervik", "Västerås", "Växjö", "Ystad", "Åkersberga", "Åmål", "Ängelholm", "Örebro", "Öregrund", "Örnsköldsvik", "Östersund", "Östhammar"].sort((a, b) => a.localeCompare(b, 'sv-SE'));
 
@@ -52,11 +53,7 @@ export default function SokOchSpana() {
 
   React.useEffect(() => {
     async function fetchPeople() {
-      const { createBrowserClient } = await import('@supabase/ssr');
-      const supabase = createBrowserClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-      );
+      const supabase = createClient();
       
       const { data: { user } } = await supabase.auth.getUser();
       

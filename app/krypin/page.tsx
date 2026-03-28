@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, Book, Users, Star, Settings, User, FileEdit, Search, Shield, HelpCircle, AlertTriangle, CheckCircle, Eye, Camera, Clock, Trash2, Eraser, ShieldAlert, ShieldOff, MessageSquare, Moon, Heart, Zap, Coffee, Ghost, Sun, Gamepad2, Undo, Music, Volume2, VolumeX, ArrowLeft } from 'lucide-react';
 import { PROFILE_SONGS } from './songs';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/utils/supabase/client';
 import SnakeGame from '@/components/SnakeGame';
 import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
 import { sanitizeCSS } from '@/utils/securityUtils';
@@ -176,10 +176,7 @@ export default function MittKrypin() {
    )
 }
 
-const supabase = createBrowserClient(
-   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 function MittKrypinContent() {
    const router = useRouter();

@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { Book, Shield, HelpCircle, User, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/utils/supabase/client';
 import { deleteUserAccount, updateUserProfile } from '../actions/userActions';
+import { NOTIF_SOUNDS, getSoundUrl } from '@/utils/sounds';
 
 const INTERESTS = [
   "Bakning", "Bilar och meckande", "Brädspel", "Båtliv och segling", "Camping",
@@ -50,10 +51,7 @@ const PrivacyToggle = ({ label, isVisible, onToggle }: { label: string, isVisibl
   );
 };
 
-const supabase = createBrowserClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const supabase = createClient();
 
 export default function MinaSidor() {
   const [activeTab, setActiveTab] = useState('Konto');
@@ -89,6 +87,7 @@ export default function MinaSidor() {
   const [showInterests, setShowInterests] = useState(false);
   const [userInterests, setUserInterests] = useState<string[]>([]);
   const [isPushEnabled, setIsPushEnabled] = useState(false);
+  const [selectedSound, setSelectedSound] = useState('default');
 
   useEffect(() => {
     async function checkSub() {
@@ -128,6 +127,7 @@ export default function MinaSidor() {
             setShowZipcode(secrets?.show_zipcode || false);
             setShowInterests(profile.show_interests || false);
             setUserInterests(profile.interests || []);
+            setSelectedSound(profile.notif_sound || 'default');
           } else {
             setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
             setNewUsername(user.email?.split('@')[0] || 'Unknown');
@@ -194,6 +194,16 @@ export default function MinaSidor() {
         return;
       }
       setCurrentUser({ ...currentUser, username: newUsername.trim() });
+    }
+
+    // Update Notification Sound
+    if (selectedSound !== currentUser.notif_sound) {
+      const res = await updateUserProfile({ notif_sound: selectedSound });
+      if (res.error) {
+        setCustomAlert('Kunde inte spara ljudinställning: ' + res.error);
+        return;
+      }
+      setCurrentUser({ ...currentUser, notif_sound: selectedSound });
     }
 
     // Har användaren fyllt i ett nytt lösenord? Update det vi Auth API.
@@ -492,6 +502,14 @@ export default function MinaSidor() {
     }
   };
 
+  const handleTestSound = () => {
+    if (selectedSound === 'none') return;
+    const url = getSoundUrl(selectedSound);
+    const audio = new Audio(url);
+    audio.volume = 0.5;
+    audio.play().catch(console.error);
+  };
+
   if (!currentUser) return <div style={{ padding: '2rem', minHeight: '100vh', backgroundColor: 'var(--bg-color)' }}>Laddar Mina Sidor...</div>;
 
   return (
@@ -663,6 +681,33 @@ export default function MinaSidor() {
                         ))}
                       </div>
                    </div>
+                </div>
+
+                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginBottom: '1.5rem' }}>
+                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>🔔 Aviseringsljud (Nostalgi!)</h3>
+                  <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-end', backgroundColor: 'var(--bg-color)', padding: '1.5rem', borderRadius: '12px' }}>
+                    <div style={{ flex: 1 }}>
+                       <label style={{ display: 'block', fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Välj ljud för nya notiser:</label>
+                       <select 
+                          value={selectedSound} 
+                          onChange={(e) => setSelectedSound(e.target.value)}
+                          style={{ width: '100%', padding: '0.75rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none', backgroundColor: 'white' }}
+                       >
+                          {NOTIF_SOUNDS.map(s => (
+                             <option key={s.id} value={s.id}>{s.name}</option>
+                          ))}
+                       </select>
+                    </div>
+                    <button 
+                       type="button" 
+                       onClick={handleTestSound}
+                       disabled={selectedSound === 'none'}
+                       style={{ padding: '0.75rem 1.5rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : 'var(--theme-chat)', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer' }}
+                    >
+                       Testa ljud 🔊
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.5rem' }}>Detta ljud spelas upp när du får nya notiser medan du har Facechat öppet.</p>
                 </div>
                 <button type="submit" style={{ alignSelf: 'flex-start', border: 'none', cursor: 'pointer', backgroundColor: 'var(--theme-krypin)', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px' }}>Spara uppgifter</button>
              </form>

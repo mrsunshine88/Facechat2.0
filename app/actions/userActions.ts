@@ -244,7 +244,13 @@ export async function saveKrypinDesign(draftCss: string, presentationText: strin
 /**
  * Uppdaterar användarens profil (username, city, intressen) på ett säkert sätt.
  */
-export async function updateUserProfile(payload: { username?: string, city?: string, interests?: string[], show_interests?: boolean }) {
+export async function updateUserProfile(payload: { 
+  username?: string, 
+  city?: string, 
+  interests?: string[], 
+  show_interests?: boolean,
+  notif_sound?: string
+}) {
   try {
     const serverSupabase = await createServerClient();
     const { data: { user } } = await serverSupabase.auth.getUser();

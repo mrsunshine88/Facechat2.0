@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, use } from 'react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { 
   MessageSquare, 
@@ -40,10 +40,7 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
   const [reportCategory, setReportCategory] = useState('Spam')
   const [showDuplicateModal, setShowDuplicateModal] = useState(false)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     fetchThread()

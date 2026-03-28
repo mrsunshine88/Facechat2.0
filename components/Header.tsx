@@ -3,9 +3,10 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
 import { updateUserIP } from '@/app/actions/securityActions'
+import { getSoundUrl } from '@/utils/sounds'
 
 export default function Header() {
   const pathname = usePathname()
@@ -21,10 +22,7 @@ export default function Header() {
   // OPTIMERING: Spara tidpunkt för senaste tunga admin-hämtningen för att undvika seghet vid sidbyte
   const lastAdminFetch = useRef<number>(0);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     if (isBlockedRoute) return;
@@ -142,14 +140,18 @@ export default function Header() {
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
          // Spela pling-ljud för alla NYA notiser (utom besök)
          // VIKTIGT: Spela bara ljud om fönstret har FOKUS för att undvika dubbel-pling med push-notiser
-         if (payload.new.type !== 'visit' && document.hasFocus()) {
-            try {
-               const audio = new Audio('https://assets.mixkit.co/active_storage/sfx/2869/2869-preview.mp3'); 
-               audio.volume = 0.4;
-               audio.play().catch(() => {}); 
-            } catch (e) {}
-         }
-         fetchPersonligaNotiser();
+          if (payload.new.type !== 'visit' && document.hasFocus()) {
+            const soundId = userProfile.notif_sound || 'default';
+            if (soundId !== 'none') {
+               try {
+                  const url = getSoundUrl(soundId);
+                  const audio = new Audio(url); 
+                  audio.volume = 0.4;
+                  audio.play().catch(() => {}); 
+               } catch (e) {}
+            }
+          }
+          fetchPersonligaNotiser();
       })
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
          fetchPersonligaNotiser();
@@ -252,10 +254,7 @@ export default function Header() {
   if (isAdminRoute || isLoginRoute) return null
 
   const handleLogout = async () => {
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    )
+    const supabase = createClient()
     await supabase.auth.signOut()
     router.push('/login')
     router.refresh()

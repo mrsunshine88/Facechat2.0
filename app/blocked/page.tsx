@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { ShieldAlert, Mail, ArrowLeft, Lock, Send, MessageSquare, User, LifeBuoy, CheckCircle } from 'lucide-react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { updateUserIP } from '@/app/actions/securityActions'
 
 export default function BlockedPage() {
@@ -17,10 +17,7 @@ export default function BlockedPage() {
   const [sending, setSending] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     async function init() {

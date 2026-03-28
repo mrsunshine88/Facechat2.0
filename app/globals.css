@@ -50,7 +50,7 @@ body {
 .main-header {
   background-color: var(--bg-menu); color: var(--text-menu);
   height: 64px; display: flex; align-items: center; justify-content: space-between;
-  padding: 0 2rem; position: sticky; top: 0; z-index: 50; box-shadow: var(--shadow-md);
+  padding: 0 2rem; position: sticky; top: 0; z-index: 1000; box-shadow: var(--shadow-md);
 }
 .logo { font-weight: 800; font-size: 1.5rem; letter-spacing: -0.05em; color: #ffffff; }
 .nav-links { display: flex; gap: 0.5rem; }

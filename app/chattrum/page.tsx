@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { Send, Users, Hash, Lock, Trash2, ChevronDown, ChevronUp, ShieldAlert, AlertTriangle, LogOut, UserPlus, XCircle, Edit, PlusCircle, Plus } from 'lucide-react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/utils/supabase/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useWordFilter } from '@/hooks/useWordFilter';
 
@@ -42,10 +42,7 @@ function ChattrumContent() {
   const channelRef = useRef<any>(null);
   const currentUserRef = useRef<any>(null);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   useEffect(() => {
     async function loadUser() {

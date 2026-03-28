@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient } from '@/utils/supabase/client';
 import { Trophy, Gamepad2, AlertCircle, ArrowLeft, Volume2, VolumeX } from 'lucide-react';
 
 type GameType = 'menu' | 'snake' | 'racing' | 'breakout' | 'invaders' | 'tetris';
@@ -29,10 +29,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
   
   const selectedMenuIndex = useRef(0);
 
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  );
+  const supabase = createClient();
 
   const BG_COLOR = '#879e86'; // Classic Nokia green/grey 
   const FG_COLOR = '#000000'; // Black LCD

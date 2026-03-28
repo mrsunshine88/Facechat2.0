@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { LayoutGrid, User, MessagesSquare, MessageSquare } from 'lucide-react'
 
 export default function Dashboard() {
@@ -10,10 +10,7 @@ export default function Dashboard() {
   const [nickname, setNickname] = useState('Användare')
   const [loading, setLoading] = useState(true)
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     async function getUser() {

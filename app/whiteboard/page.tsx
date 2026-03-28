@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, AlertTriangle, Edit2, ShieldAlert } from 'lucide-react'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useWordFilter } from '@/hooks/useWordFilter'
 
@@ -51,10 +51,7 @@ export default function Whiteboard() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   useEffect(() => {
     const init = async () => {
