@@ -11,13 +11,15 @@ export function maskContent(text: string, forbiddenWords: string[]): string {
   const sortedWords = [...forbiddenWords].sort((a, b) => b.length - a.length);
 
   sortedWords.forEach(word => {
-    if (!word.trim()) return;
-    
+    const trimmedWord = word.trim();
+    if (!trimmedWord) return;
+
     // Escape special regex characters in the word
-    const escapedWord = word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const escapedWord = trimmedWord.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // Case-insensitive regex with global flag
-    const regex = new RegExp(escapedWord, 'gi');
+    // Case-insensitive regex with global flag and word boundaries
+    // We use \b to ensure we only match whole words
+    const regex = new RegExp(`\\b${escapedWord}\\b`, 'gi');
     
     maskedText = maskedText.replace(regex, (match) => '*'.repeat(match.length));
   });
