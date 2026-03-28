@@ -7,6 +7,7 @@ import { createBrowserClient } from '@supabase/ssr';
 import { deleteUserAccount } from '../actions/userActions';
 import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme, adminMassDeleteSpam } from '../actions/adminActions';
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 const ADMIN_TABS = [
   { id: 'dashboard', label: 'Översikt', icon: Activity },
@@ -1257,6 +1258,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 // 3. INNEHÅLL (Whiteboard, Forum, Chattrum)
 // ==========================================================
 const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, currentUser: any, perms: { content: boolean, chat: boolean } }) => {
+  const { mask } = useWordFilter();
   const [posts, setPosts] = useState<any[]>([]);
   const [guestbook, setGuestbook] = useState<any[]>([]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
@@ -1429,7 +1431,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>
                 {post.profiles?.username || 'Okänd'} {post.is_comment ? '(Kommentar)' : '(Huvudinlägg)'} • {new Date(post.created_at).toLocaleString('sv-SE')}
               </p>
-              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
+              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <div className="admin-card-actions">
               <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
@@ -1442,7 +1444,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           <div key={post.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid var(--theme-krypin)', padding: '1rem' }}>
             <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{post.sender?.username || 'Okänd'} ➔ {post.receiver?.username || 'Okänd'} • {new Date(post.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{post.content}</p>
+              <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <div className="admin-card-actions">
               <button onClick={() => handleDelete('guestbook', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
@@ -1459,7 +1461,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                 <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: 'bold', color: isStarter ? 'var(--theme-forum)' : 'var(--text-muted)', marginBottom: '0.5rem' }}>
                   {isStarter ? '📂 [TRÅDSTART]' : '💬 [KOMMENTAR]'} • {post.profiles?.username || 'Okänd'} i "{post.forum_threads?.title || 'Raderad Tråd'}" • {new Date(post.created_at).toLocaleString('sv-SE')}
                 </p>
-                <p style={{ margin: 0, color: 'var(--text-main)', fontStyle: isStarter ? 'italic' : 'normal', fontSize: '0.9rem' }}>{post.content}</p>
+                <p style={{ margin: 0, color: 'var(--text-main)', fontStyle: isStarter ? 'italic' : 'normal', fontSize: '0.9rem' }}>{mask(post.content)}</p>
               </div>
               <div className="admin-card-actions" style={{ display: 'flex', gap: '0.5rem', flexShrink: 0, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
                 {isStarter ? (
@@ -1491,7 +1493,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
           <div key={msg.id} className="admin-card admin-responsive-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderLeft: '4px solid #3b82f6', padding: '1rem' }}>
             <div className="admin-card-content">
               <p style={{ margin: 0, fontSize: '0.75rem', fontWeight: '600', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>{msg.profiles?.username || 'Okänd'} i rummet "{msg.chat_rooms?.name || 'Okänt'}" • {new Date(msg.created_at).toLocaleString('sv-SE')}</p>
-              <p style={{ margin: 0, paddingRight: '1rem', fontStyle: msg.is_gif ? 'italic' : 'normal', color: msg.is_gif ? '#8b5cf6' : 'var(--text-main)' }}>{msg.is_gif ? '[GIF/BILD Skickad]' : msg.content}</p>
+              <p style={{ margin: 0, paddingRight: '1rem', fontStyle: msg.is_gif ? 'italic' : 'normal', color: msg.is_gif ? '#8b5cf6' : 'var(--text-main)' }}>{msg.is_gif ? '[GIF/BILD Skickad]' : mask(msg.content)}</p>
             </div>
             <div className="admin-card-actions">
               <button onClick={() => handleDelete('chat_messages', msg.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera chattmeddelande">

@@ -14,12 +14,12 @@ export function maskContent(text: string, forbiddenWords: string[]): string {
     // Escape special regex characters in the word
     const escapedWord = word.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     
-    // Case-insensitive regex with Swedish-safe word boundaries
-    // We avoid \b because it doesn't support ÅÄÖ. 
-    const regex = new RegExp(`(^|[^a-zA-Z0-9åäöÅÄÖ])${escapedWord}(?=$|[^a-zA-Z0-9åäöÅÄÖ])`, 'gi');
+    // Simple case-insensitive global regex for substring matching
+    // This ensures variations like "Coolt" are masked if "cool" is forbidden.
+    const regex = new RegExp(escapedWord, 'gi');
     
-    maskedText = maskedText.replace(regex, (match, p1) => {
-      return p1 + '*'.repeat(word.trim().length);
+    maskedText = maskedText.replace(regex, (match) => {
+      return '*'.repeat(match.length);
     });
   });
 
