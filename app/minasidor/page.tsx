@@ -110,70 +110,61 @@ export default function MinaSidor() {
 
 
   useEffect(() => {
-    async function fetchUser() {
+    async function init() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const loadProfile = async () => {
-          const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
-          const profile = profList && profList.length > 0 ? profList[0] : null;
-          const { data: secList } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1);
-          const secrets = secList && secList.length > 0 ? secList[0] : null;
-          
-          if (profile) {
-            setCurrentUser({ ...profile, email: user.email, ...secrets });
-            setNewUsername(profile.username);
-            setShowPhone(secrets?.show_phone || false);
-            setShowAddress(secrets?.show_address || false);
-            setShowZipcode(secrets?.show_zipcode || false);
-            setShowInterests(profile.show_interests || false);
-            setUserInterests(profile.interests || []);
-            setSelectedSound(profile.notif_sound || 'default');
-          } else {
-            setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
-            setNewUsername(user.email?.split('@')[0] || 'Unknown');
-          }
-        };
+      if (!user) return;
 
-        await loadProfile();
+      const loadData = async () => {
+        // 1. Hämta ALLT parallellt för din profil (Blixtsnabbt!)
+        const [profRes, secRes, ticketsRes] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).limit(1),
+          supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1),
+          supabase.from('support_tickets').select('*').eq('user_id', user.id).eq('user_deleted', false).order('created_at', { ascending: false })
+        ]);
 
-        // Realtime profile listener
-        const sub = supabase.channel('minasidor-self-update')
-          .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => {
-            loadProfile();
-          }).subscribe();
+        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
+        const secrets = secRes.data && secRes.data.length > 0 ? secRes.data[0] : null;
         
-        return () => { supabase.removeChannel(sub); };
-      }
-    }
-    fetchUser();
-  }, []);
+        if (profile) {
+          setCurrentUser({ ...profile, email: user.email, ...secrets });
+          setNewUsername(profile.username);
+          setShowPhone(secrets?.show_phone || false);
+          setShowAddress(secrets?.show_address || false);
+          setShowZipcode(secrets?.show_zipcode || false);
+          setShowInterests(profile.show_interests || false);
+          setUserInterests(profile.interests || []);
+          setSelectedSound(profile.notif_sound || 'default');
+        } else {
+          setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
+          setNewUsername(user.email?.split('@')[0] || 'Unknown');
+        }
 
-  useEffect(() => {
-    if (currentUser?.id) {
-      const fetchMyTickets = async () => {
-        const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false });
-        if (data) setMyTickets(data);
+        if (ticketsRes.data) setMyTickets(ticketsRes.data);
       };
-      
-      fetchMyTickets();
 
-      // Realtime listener for my tickets
-      const channel = supabase.channel(`user-support-${currentUser.id}`)
-        .on('postgres_changes', { 
-           event: '*', 
-           schema: 'public', 
-           table: 'support_tickets', 
-           filter: `user_id=eq.${currentUser.id}` 
-        }, () => {
-           fetchMyTickets();
+      await loadData();
+
+      // Realtime listeners
+      const profileSub = supabase.channel('minasidor-self-update')
+        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => loadData())
+        .subscribe();
+      
+      const ticketSub = supabase.channel(`user-support-${user.id}`)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${user.id}` }, () => {
+           // Vi kan hämta bara tickets här för att spara bandbredd vid realtime-uppdatering
+           supabase.from('support_tickets').select('*').eq('user_id', user.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
+              if (data) setMyTickets(data);
+           });
         })
         .subscribe();
 
       return () => {
-        supabase.removeChannel(channel);
+        supabase.removeChannel(profileSub);
+        supabase.removeChannel(ticketSub);
       };
     }
-  }, [currentUser?.id, supabase]);
+    init();
+  }, [supabase]);
 
   const tabs = [
     { id: 'Konto', icon: User },

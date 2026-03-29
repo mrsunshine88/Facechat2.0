@@ -347,8 +347,10 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
 
   useEffect(() => {
     async function loadDash() {
-      // Dash Stats - Parallelliserade för snabbare laddning!
       try {
+        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
+        
+        // Dash Stats - ALLT PARALLELLT NU! 🎷💎🚀
         const [
           { count: usersCount },
           { count: wbCount },
@@ -358,7 +360,9 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           { count: bannedCount },
           { count: reportsCount },
           { count: userBlocksCount },
-          { count: ipBlocksCount }
+          { count: ipBlocksCount },
+          { count: onlineCount },
+          loginsRes
         ] = await Promise.all([
           supabase.from('profiles').select('*', { count: 'exact', head: true }),
           supabase.from('whiteboard').select('*', { count: 'exact', head: true }),
@@ -368,11 +372,10 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
           supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
           supabase.from('user_blocks').select('*', { count: 'exact', head: true }),
-          supabase.from('blocked_ips').select('*', { count: 'exact', head: true })
+          supabase.from('blocked_ips').select('*', { count: 'exact', head: true }),
+          supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_seen', fifteenMinsAgo),
+          supabase.from('profiles').select('username, last_seen, created_at, is_banned').order('last_seen', { ascending: false, nullsFirst: false }).limit(10)
         ]);
-
-        const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-        const { count: onlineCount } = await supabase.from('profiles').select('*', { count: 'exact', head: true }).gt('last_seen', fifteenMinsAgo);
 
         setStats({
           users: usersCount || 0,
@@ -383,16 +386,11 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           reports: reportsCount || 0,
           ipBlocks: ipBlocksCount || 0
         });
+
+        if (loginsRes.data) setLatestLogins(loginsRes.data);
       } catch (err) {
         console.error("Dashboard load error:", err);
       }
-
-      // Senaste inloggade
-      const { data } = await supabase.from('profiles')
-        .select('username, last_seen, created_at, is_banned')
-        .order('last_seen', { ascending: false, nullsFirst: false })
-        .limit(10);
-      if (data) setLatestLogins(data);
     }
     loadDash();
 
@@ -556,8 +554,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     }
     
     checkBan();
-    fetchUsers();
-    fetchBlockedIps();
+    Promise.all([fetchUsers(), fetchBlockedIps()]);
 
     const channel = supabase.channel('admin_users_realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {

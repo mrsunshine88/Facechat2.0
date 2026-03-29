@@ -22,44 +22,70 @@ export default function Forumet() {
 
   useEffect(() => {
     async function init() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profList } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1);
-        const profile = profList && profList.length > 0 ? profList[0] : null;
+      try {
+        // 1. Hämta ALLT parallellt direkt (Maximal fart!)
+        const [sessionRes, threadsRes] = await Promise.all([
+          supabase.auth.getSession(),
+          supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false })
+        ]);
+
+        const user = sessionRes.data.session?.user;
+        if (!user) {
+          if (threadsRes.data) setThreads(threadsRes.data);
+          setLoading(false);
+          return;
+        }
+
+        // 2. Hämta profil och blockeringar samtidigt
+        const [profRes, blocksRes] = await Promise.all([
+          supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1),
+          supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+        ]);
+
+        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
         setCurrentUser(profile);
+
+        // Filtrera trådar baserat på blockeringar
+        let blockedIds: string[] = [];
+        if (blocksRes.data) {
+          blockedIds = blocksRes.data.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+        }
+
+        if (threadsRes.data) {
+          const filtered = threadsRes.data.filter((t: any) => !blockedIds.includes(t.author_id));
+          setThreads(filtered);
+        }
+        setLoading(false);
+      } catch (err) {
+        console.error("Forum init error:", err);
+        setLoading(false);
       }
-      // Nu anropar vi fetchThreads när vi är klara med getUser, för att slippa krockat anrop
-      fetchThreads(user);
     }
     init();
 
     const sub = supabase.channel('real-forum')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => fetchThreads())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => fetchThreads())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => init())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => init())
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
   }, []);
 
-  async function fetchThreads(passedUser?: any) {
-    const user = passedUser || (await supabase.auth.getUser()).data.user;
-    let blockedIds: string[] = [];
-    if (user) {
-       const { data: bData } = await supabase.from('user_blocks').select('*')
-           .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-       if (bData) {
-           bData.forEach((b: any) => {
-             blockedIds.push(b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
-           });
-       }
-    }
+  async function fetchThreads() {
+     // Denna används nu mest för manuella uppdateringar, så vi återanvänder logiken i init eller förenklar
+     const { data: { session } } = await supabase.auth.getSession();
+     const user = session?.user;
+     
+     const [threadsRes, blocksRes] = await Promise.all([
+        supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }),
+        user ? supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`) : Promise.resolve({ data: [] })
+     ]);
 
-    const { data } = await supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false });
-    if(data) {
-       const filtered = data.filter((t: any) => !blockedIds.includes(t.author_id));
-       setThreads(filtered);
-    }
-    setLoading(false);
+     if (threadsRes.data) {
+        const blockedIds = blocksRes.data ? blocksRes.data.map((b: any) => b.blocker_id === user?.id ? b.blocked_id : b.blocker_id) : [];
+        const filtered = threadsRes.data.filter((t: any) => !blockedIds.includes(t.author_id));
+        setThreads(filtered);
+     }
   }
 
   const handleCreateThread = async (e: React.FormEvent) => {

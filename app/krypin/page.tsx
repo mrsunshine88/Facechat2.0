@@ -330,61 +330,49 @@ function MittKrypinContent() {
       let globalChannel: any;
 
       async function initData() {
-         // FELSÄKRA: Använd getSession() för att undvika "Lock stole it" contention (stability fix)
-         const { data: { session } } = await supabase.auth.getSession();
-         const user = session?.user;
-         if (!user) { window.location.href = '/login'; return; }
-
-         // Hämta spärrade ord för det REVERSIBLA filtret + lyssna efter ändringar!
-         const fetchForbiddenWords = async () => {
-            const { data: words } = await supabase.from('forbidden_words').select('word');
-            if (words) setForbiddenWords(words.map(w => w.word));
-         };
-         fetchForbiddenWords();
-
-         const wordFilterChannel = supabase.channel('global-word-filter')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'forbidden_words' }, fetchForbiddenWords)
-            .subscribe();
-
-         // Hämta egen IP och kolla spärr listan (Säkerhet)
-         try {
-            const ipRes = await fetch('https://api64.ipify.org?format=json').then(r => r.json());
-            if (ipRes && ipRes.ip) {
-               setUserIp(ipRes.ip);
-               const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
-               if (bData && bData.length > 0) setIsIpBlocked(true);
-            }
-         } catch (e) { console.error("IP check failed", e); }
-
-         const { data: myProfList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
-         const myProfile = myProfList && myProfList.length > 0 ? myProfList[0] : null;
-
-         // FIX FÖR "ANVÄNDARE"-FELET: Bättre fallback om DB svajar
-         const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
-         const fallbackName = user.email?.split('@')[0] || 'Medlem';
-         const viewer = myProfile || { id: user.id, username: isRoot ? 'apersson508' : fallbackName, is_admin: isRoot, perm_content: isRoot };
-         setViewerUser(viewer);
-
          let profileToView: any = null;
          let iBlocked = false;
          let blockedMe = false;
 
          try {
-            // Parallell hämta targetProfile och blockeringar
-            const [targetRes, blocksRes] = await Promise.all([
-               targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: myProfile ? [myProfile] : [] }),
-               supabase.from('user_blocks').select('*').or(`blocker_id.eq.${viewer.id},blocked_id.eq.${viewer.id}`)
+            // 1. Hämta session och ord-filter parallellt (SNABBARE!)
+            const [sessionRes, wordsRes] = await Promise.all([
+               supabase.auth.getSession(),
+               supabase.from('forbidden_words').select('word')
             ]);
 
-            profileToView = targetRes.data && targetRes.data.length > 0 ? targetRes.data[0] : null;
+            const user = sessionRes.data.session?.user;
+            if (!user) { window.location.href = '/login'; return; }
+            if (wordsRes.data) setForbiddenWords(wordsRes.data.map(w => w.word));
+
+            // 2. Parallellisera IP-check, Profil-hämtning och Blockeringar
+            // Detta är den STORA trimmningen - vi väntar inte längre på IP-servicen innan vi hämtar profilen!
+            const [ipRes, myProfRes, targetRes, blocksRes] = await Promise.all([
+               fetch('https://api64.ipify.org?format=json').then(r => r.json()).catch(() => ({ ip: '' })),
+               supabase.from('profiles').select('*').eq('id', user.id).limit(1),
+               targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: [] }),
+               supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+            ]);
+
+            // Hantera IP-spärr (Icke-blockerande för resten av sidan)
+            if (ipRes && ipRes.ip) {
+               setUserIp(ipRes.ip);
+               const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
+               if (bData && bData.length > 0) setIsIpBlocked(true);
+            }
+
+            const myProfile = myProfRes.data && myProfRes.data.length > 0 ? myProfRes.data[0] : null;
+            const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
+            const fallbackName = user.email?.split('@')[0] || 'Medlem';
+            const viewer = myProfile || { id: user.id, username: isRoot ? 'apersson508' : fallbackName, is_admin: isRoot, perm_content: isRoot };
+            setViewerUser(viewer);
+
+            profileToView = targetRes.data && targetRes.data.length > 0 ? targetRes.data[0] : (targetUsername ? null : viewer);
+            
             if (!profileToView) {
-               if (!targetUsername) {
-                  profileToView = viewer;
-               } else {
-                  setCustomAlert('Hittade inte användaren ' + targetUsername);
-                  window.location.href = '/krypin';
-                  return;
-               }
+               setCustomAlert('Hittade inte användaren ' + targetUsername);
+               window.location.href = '/krypin';
+               return;
             }
             setCurrentUser(profileToView);
 
@@ -410,30 +398,27 @@ function MittKrypinContent() {
                }
             }
 
-            // Parallell hämta gästbok, vänner och mejl
-            Promise.all([
+            // 3. Parallell hämta gästbok, vänner och mejl (Sista steget)
+            await Promise.all([
                fetchGuestbook(profileToView.id),
                fetchFriends(profileToView.id, viewer.id),
                !targetUsername ? fetchMessages(viewer.id) : Promise.resolve()
             ]);
+
+            // Sätt upp realtime listener (CLEANUP-SÄKRAD)
+            if (globalChannel) supabase.removeChannel(globalChannel);
+            globalChannel = supabase.channel('realtime_krypin_' + profileToView.id)
+               .on('postgres_changes', { event: '*', schema: 'public', table: 'guestbook' }, () => fetchGuestbook(profileToView.id))
+               .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchMessages(user.id))
+               .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
+                  if (payload.new.id === user.id && payload.new.is_banned) window.location.href = '/bannad';
+                  if (payload.new.id === profileToView.id) setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
+               })
+               .subscribe();
          } catch (err) {
             console.error("Init data error:", err);
          }
-
-         if (!profileToView) return;
-
-         // Sätt upp realtime listener (CLEANUP-SÄKRAD)
-         if (globalChannel) supabase.removeChannel(globalChannel);
-         globalChannel = supabase.channel('realtime_krypin_' + profileToView.id)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'guestbook' }, () => fetchGuestbook(profileToView.id))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchMessages(user.id))
-            .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
-               if (payload.new.id === user.id && payload.new.is_banned) window.location.href = '/bannad';
-               if (payload.new.id === profileToView.id) setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
-            })
-            .subscribe();
       }
-
       initData();
 
       return () => {

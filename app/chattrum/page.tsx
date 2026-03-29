@@ -45,19 +45,6 @@ function ChattrumContent() {
   const supabase = createClient();
 
   useEffect(() => {
-    async function loadUser() {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
-        const profile = profList && profList.length > 0 ? profList[0] : null;
-        const fullProfile = { ...profile, auth_email: user.email };
-        setCurrentUser(fullProfile);
-        currentUserRef.current = fullProfile;
-        return fullProfile;
-      }
-      return null;
-    }
-
     async function fetchRoomsData(profile: any) {
       let query = supabase.from('chat_rooms').select('*').order('created_at', { ascending: true });
       if (profile) {
@@ -83,32 +70,58 @@ function ChattrumContent() {
     }
 
     async function initialLoad() {
-      const profile = await loadUser();
-      if (profile) {
-         const { data: bData } = await supabase.from('user_blocks').select('*')
-             .or(`blocker_id.eq.${profile.id},blocked_id.eq.${profile.id}`);
-         if (bData) {
-             blockedIdsRef.current = bData.map((b: any) => b.blocker_id === profile.id ? b.blocked_id : b.blocker_id);
-         }
-      }
-      const { data } = await fetchRoomsData(profile);
-      if (data) {
-        setRooms(data);
-        if (urlRoomName) {
-           const targetRoom = data.find((r: any) => r.name === urlRoomName || r.id === urlRoomName);
-           if (targetRoom) {
-              if (targetRoom.password) {
-                 const pw = prompt(`Rummet "${targetRoom.name}" är skyddat med lösenord. Ange lösenord för att komma in:`);
-                 if (pw === targetRoom.password) {
-                    setActiveRoom(targetRoom);
-                 } else {
-                    alert('Skamvrån! Fel lösenord.');
-                 }
-              } else {
-                 setActiveRoom(targetRoom);
+      try {
+        // 1. Hämta session, profil och blockeringar PARALLELLT (Snabbare!)
+        const [sessionRes, bDataRes] = await Promise.all([
+          supabase.auth.getSession(),
+          supabase.from('user_blocks').select('*')
+        ]);
+
+        const user = sessionRes.data.session?.user;
+        if (!user) return;
+
+        // Hämta profil och rum samtidigt
+        const [profRes, roomsRes] = await Promise.all([
+          supabase.from('profiles').select('*').eq('id', user.id).limit(1),
+          // Vi hämtar rummen baserat på ett temporärt "user"-objekt för att spara tid, 
+          // eller så väntar vi just här på profilen för att veta exakta rättigheter.
+          // Men vi kan hämta blockeringar under tiden!
+          Promise.resolve() 
+        ]);
+
+        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
+        if (profile) {
+          const fullProfile = { ...profile, auth_email: user.email };
+          setCurrentUser(fullProfile);
+          currentUserRef.current = fullProfile;
+
+          // Hantera blockeringar
+          if (bDataRes.data) {
+            blockedIdsRef.current = bDataRes.data.map((b: any) => 
+               b.blocker_id === user.id ? b.blocked_id : b.blocker_id
+            );
+          }
+
+          // 2. Hämta rummen nu när vi har profilen
+          const { data: roomsData } = await fetchRoomsData(fullProfile);
+          if (roomsData) {
+            setRooms(roomsData);
+            if (urlRoomName) {
+              const targetRoom = roomsData.find((r: any) => r.name === urlRoomName || r.id === urlRoomName);
+              if (targetRoom) {
+                if (targetRoom.password) {
+                  const pw = prompt(`Rummet "${targetRoom.name}" är skyddat med lösenord. Ange lösenord för att komma in:`);
+                  if (pw === targetRoom.password) setActiveRoom(targetRoom);
+                  else alert('Skamvrån! Fel lösenord.');
+                } else {
+                  setActiveRoom(targetRoom);
+                }
               }
-           }
+            }
+          }
         }
+      } catch (err) {
+        console.error("Initial load error:", err);
       }
     }
     initialLoad();

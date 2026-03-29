@@ -55,13 +55,28 @@ export default function Whiteboard() {
 
   useEffect(() => {
     const init = async () => {
-       const { data: { session } } = await supabase.auth.getSession();
-       const user = session?.user;
-       if (user) {
-          const { data: prof } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-          if (prof) setCurrentUser(prof);
+       try {
+          // 1. Hämta session och data parallellt (Snabbare!)
+          const sessionPromise = supabase.auth.getSession();
+          
+          const { data: { session } } = await sessionPromise;
+          const user = session?.user;
+          
+          if (user) {
+             // Hämta profil och kör fetchData parallellt
+             await Promise.all([
+                supabase.from('profiles').select('*').eq('id', user.id).single().then(({data}) => {
+                   if (data) setCurrentUser(data);
+                }),
+                fetchData()
+             ]);
+          } else {
+             fetchData();
+          }
+       } catch (err) {
+          console.error("Whiteboard init error:", err);
+          fetchData();
        }
-       fetchData();
     };
     init();
 
