@@ -38,46 +38,52 @@ export default function Header() {
        return;
     }
     
-    async function syncHeader() {
+    // UI UPDATES ONLY (Runs on page change)
+    async function syncHeaderUI() {
        setIsAndroid(/android/i.test(navigator.userAgent));
        setUserProfile({ ...profile, auth_email: user?.email });
        
-       // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT (Max en gång var 60:e sekund för prestanda)
-       if (user?.id) {
-         const now = Date.now();
-         if (now - lastHeartbeatRef.current > 60000) {
-           lastHeartbeatRef.current = now;
-           setTimeout(() => {
-             if (isLoggingOut.current) return;
-
-             // SESSION LOCK CHECK (A/B Nycklar)
-             supabase.from('profiles').select('session_key').eq('id', user.id).single().then(res => {
-               const localSess = localStorage.getItem('facechat_session_key');
-               if (res.data?.session_key && localSess && res.data.session_key !== localSess) {
-                 isLoggingOut.current = true;
-                 supabase.auth.signOut().then(() => {
-                   window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
-                 });
-                 return;
-               }
-               // Allt OK - Uppdatera klockslag och IP
-               supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-               updateUserIP(user.id);
-             });
-           }, 0);
-         }
-       }
-       
-       // Fetch unread support tickets (SERVER ACTION - BYPASS CORS & HANG)
+       // Hämta olästa support-ärenden (Bara vid sidbyte för att hålla siffran aktuell)
        getUnreadSupportCountAction().then(res => {
          if (res && typeof res.count === 'number') {
             setUnreadSupportCount(res.count);
          }
        });
-
     }
-    syncHeader();
-  }, [pathname, profile, user])
+    syncHeaderUI();
+  }, [pathname, profile, user]);
+
+  // BACKGROUND SECURITY HEARTBEAT (Runs once on mount + every 60s)
+  useEffect(() => {
+    if (!user?.id || isLoggingOut.current) return;
+
+    function runHeartbeat() {
+      const now = Date.now();
+      if (now - lastHeartbeatRef.current > 60000) {
+        lastHeartbeatRef.current = now;
+        
+        // SESSION LOCK CHECK (A/B Nycklar)
+        supabase.from('profiles').select('session_key').eq('id', user.id).single().then(res => {
+          if (isLoggingOut.current) return;
+          const localSess = localStorage.getItem('facechat_session_key');
+          if (res.data?.session_key && localSess && res.data.session_key !== localSess) {
+            isLoggingOut.current = true;
+            supabase.auth.signOut().then(() => {
+              window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
+            });
+            return;
+          }
+          // Allt OK - Uppdatera klockslag och IP
+          supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+          updateUserIP(user.id);
+        });
+      }
+    }
+
+    runHeartbeat(); // Kör direkt vid mount
+    const interval = setInterval(runHeartbeat, 60000); // Kolla sedan varje minut
+    return () => clearInterval(interval);
+  }, [user?.id]);
 
   // Notiser (Kopplat till Supabase)
   const [notifications, setNotifications] = useState<any[]>([])
@@ -103,8 +109,8 @@ export default function Header() {
 
       try {
         if (retryCount === 0) {
-          // Ge UserContext ett rejält försprång vid login (800ms) för att undvika DB-lås-krock
-          await new Promise(res => setTimeout(res, 800));
+          // Ge UserContext ett rejält försprång vid login (1.5s) för att undvika DB-lås-krock
+          await new Promise(res => setTimeout(res, 1500));
         }
 
         if (!isMounted || isLoggingOut.current) return;
@@ -115,10 +121,10 @@ export default function Header() {
         const res = await updateUserIP(user?.id || 'guest');
         if (isLoggingOut.current) return;
         
-        if (res?.error && res.error.includes('lock') && retryCount < 2) {
+        if (res?.error && res.error.includes('lock') && retryCount < 4) {
           if (isLoggingOut.current) return;
           console.warn(`[Header] Auth lock conflict during IP check. Retrying... (${retryCount+1})`);
-          await new Promise(res => setTimeout(res, 500));
+          await new Promise(res => setTimeout(res, 1000));
           return setupIpGuard(retryCount + 1);
         }
 
@@ -126,13 +132,13 @@ export default function Header() {
         if (!myIp) {
           if (isLoggingOut.current) return;
           
-          if (retryCount < 3) {
-            console.warn(`[Header] Could not determine IP. Retrying in 2s... (${retryCount + 1}/3)`);
-            await new Promise(r => setTimeout(r, 2000));
+          if (retryCount < 5) {
+            console.warn(`[Header] Could not determine IP. Retrying in 3s... (${retryCount + 1}/5)`);
+            await new Promise(r => setTimeout(r, 3000));
             return setupIpGuard(retryCount + 1);
           }
           
-          console.error('[Header] IP Guard failed after 3 attempts.');
+          console.error('[Header] IP Guard failed after multiple attempts.');
           return;
         }
 

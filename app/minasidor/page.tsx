@@ -115,11 +115,10 @@ export default function MinaSidor() {
       if (!user) return;
 
       const loadData = async () => {
-        // 1. Hämta ALLT parallellt för din profil (Blixtsnabbt!)
-        const [profRes, secRes, ticketsRes] = await Promise.all([
+        // 1. Hämta ENDAST nödvändig profil-data parallellt (Blixtsnabb start!)
+        const [profRes, secRes] = await Promise.all([
           supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-          supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1),
-          supabase.from('support_tickets').select('*').eq('user_id', user.id).eq('user_deleted', false).order('created_at', { ascending: false })
+          supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1)
         ]);
 
         const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
@@ -138,8 +137,6 @@ export default function MinaSidor() {
           setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
           setNewUsername(user.email?.split('@')[0] || 'Unknown');
         }
-
-        if (ticketsRes.data) setMyTickets(ticketsRes.data);
       };
 
       await loadData();
@@ -149,22 +146,40 @@ export default function MinaSidor() {
         .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => loadData())
         .subscribe();
       
-      const ticketSub = supabase.channel(`user-support-${user.id}`)
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${user.id}` }, () => {
-           // Vi kan hämta bara tickets här för att spara bandbredd vid realtime-uppdatering
-           supabase.from('support_tickets').select('*').eq('user_id', user.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
-              if (data) setMyTickets(data);
-           });
-        })
-        .subscribe();
-
       return () => {
         supabase.removeChannel(profileSub);
-        supabase.removeChannel(ticketSub);
       };
     }
     init();
   }, [supabase]);
+
+  // OPTIMERING: Hämta endast support-ärenden när man faktiskt klickar på Support-fliken
+  useEffect(() => {
+    if (activeTab === 'Support' && currentUser?.id) {
+       // Hämta ärenden
+       supabase.from('support_tickets')
+         .select('*')
+         .eq('user_id', currentUser.id)
+         .eq('user_deleted', false)
+         .order('created_at', { ascending: false })
+         .then(({data}) => {
+            if (data) setMyTickets(data);
+         });
+       
+       // Starta lyssnare för just detta ärende
+       const ticketSub = supabase.channel(`user-support-realtime-${currentUser.id}`)
+         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${currentUser.id}` }, () => {
+            supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
+               if (data) setMyTickets(data);
+            });
+         })
+         .subscribe();
+       
+       return () => {
+         supabase.removeChannel(ticketSub);
+       };
+    }
+  }, [activeTab, currentUser?.id]);
 
   const tabs = [
     { id: 'Konto', icon: User },

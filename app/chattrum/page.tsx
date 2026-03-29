@@ -71,7 +71,12 @@ function ChattrumContent() {
 
     async function initialLoad() {
       try {
-        // 1. Hämta session, profil och blockeringar PARALLELLT (Snabbare!)
+        // OPTIMERING: Hämta publika rum DIREKT för att slippa tom lista
+        supabase.from('chat_rooms').select('*').or('is_secret.eq.false,is_secret.is.null').order('created_at', { ascending: true }).then(({data}) => {
+           if (data) setRooms(data);
+        });
+
+        // 1. Hämta session och blockeringar
         const [sessionRes, bDataRes] = await Promise.all([
           supabase.auth.getSession(),
           supabase.from('user_blocks').select('*')
@@ -80,16 +85,10 @@ function ChattrumContent() {
         const user = sessionRes.data.session?.user;
         if (!user) return;
 
-        // Hämta profil och rum samtidigt
-        const [profRes, roomsRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-          // Vi hämtar rummen baserat på ett temporärt "user"-objekt för att spara tid, 
-          // eller så väntar vi just här på profilen för att veta exakta rättigheter.
-          // Men vi kan hämta blockeringar under tiden!
-          Promise.resolve() 
-        ]);
+        // 2. Hämta profil
+        const { data: pData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const profile = pData;
 
-        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
         if (profile) {
           const fullProfile = { ...profile, auth_email: user.email };
           setCurrentUser(fullProfile);
@@ -102,7 +101,7 @@ function ChattrumContent() {
             );
           }
 
-          // 2. Hämta rummen nu när vi har profilen
+          // 3. Hämta utökad rumslista (inkl. privata/admin rum)
           const { data: roomsData } = await fetchRoomsData(fullProfile);
           if (roomsData) {
             setRooms(roomsData);
