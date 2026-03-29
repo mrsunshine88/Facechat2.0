@@ -103,6 +103,12 @@ export default function Login() {
             setLoading(false);
             return;
           }
+
+          // --- SINGLE SESSION ENFORCEMENT ---
+          // Skapa en unik nyckel för denna inloggning
+          const newSessionKey = crypto.randomUUID();
+          await supabase.from('profiles').update({ session_key: newSessionKey }).eq('id', signInData.user.id);
+          localStorage.setItem('facechat_session_key', newSessionKey);
         }
         
         if (rememberMe) {

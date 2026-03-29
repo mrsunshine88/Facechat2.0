@@ -10,7 +10,7 @@ export default function Dashboard() {
   const router = useRouter()
   const { user, profile, loading } = useUser()
   
-  if (loading) return null
+  if (loading || (user && !profile)) return null
 
   const nickname = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 

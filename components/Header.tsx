@@ -27,8 +27,10 @@ export default function Header() {
   
   const lastAdminFetch = useRef<number>(0);
   const lastHeartbeatRef = useRef<number>(0);
+  const isLoggingOut = useRef(false);
 
   const supabase = createClient()
+
 
   useEffect(() => {
     if (isBlockedRoute || !profile) {
@@ -46,8 +48,22 @@ export default function Header() {
          if (now - lastHeartbeatRef.current > 60000) {
            lastHeartbeatRef.current = now;
            setTimeout(() => {
-             supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-             updateUserIP(user.id);
+             if (isLoggingOut.current) return;
+
+             // SESSION LOCK CHECK (A/B Nycklar)
+             supabase.from('profiles').select('session_key').eq('id', user.id).single().then(res => {
+               const localSess = localStorage.getItem('facechat_session_key');
+               if (res.data?.session_key && localSess && res.data.session_key !== localSess) {
+                 isLoggingOut.current = true;
+                 supabase.auth.signOut().then(() => {
+                   window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
+                 });
+                 return;
+               }
+               // Allt OK - Uppdatera klockslag och IP
+               supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+               updateUserIP(user.id);
+             });
            }, 0);
          }
        }
@@ -72,12 +88,9 @@ export default function Header() {
   const [onlineCount, setOnlineCount] = useState(1)
   const [snakeTicker, setSnakeTicker] = useState<number | null>(null)
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
-  
-  // STOP-SIGNAL FÖR UTLOGGNING (Fixar 5-6s delay)
-  const isLoggingOut = useRef(false);
-
 
   const [showOnlineModal, setShowOnlineModal] = useState(false);
+
   const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
 
   // AKUT FIX: Återställd blixtsnabb IP-dörrvakt (Hundradels-reaktion!)
@@ -98,19 +111,24 @@ export default function Header() {
 
 
         // Hämta IP (Snabb variant)
+        if (isLoggingOut.current) return;
         const res = await updateUserIP(user?.id || 'guest');
+        if (isLoggingOut.current) return;
         
         if (res?.error && res.error.includes('lock') && retryCount < 2) {
-           console.warn(`[Header] Auth lock conflict during IP check. Retrying... (${retryCount+1})`);
-           await new Promise(res => setTimeout(res, 500));
-           return setupIpGuard(retryCount + 1);
+          if (isLoggingOut.current) return;
+          console.warn(`[Header] Auth lock conflict during IP check. Retrying... (${retryCount+1})`);
+          await new Promise(res => setTimeout(res, 500));
+          return setupIpGuard(retryCount + 1);
         }
 
         const myIp = res?.ip;
         if (!myIp) {
+          if (isLoggingOut.current) return;
           console.error('[Header] Could not determine IP for Guard.');
           return;
         }
+
 
         // 1. Initial koll för att se om vi är spärrade NU
         const { data: bData, error: bError } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
@@ -145,17 +163,20 @@ export default function Header() {
              }
           });
       } catch (err: any) {
+        if (isLoggingOut.current) return;
         console.error('[Header] Critical failure in IP Guard:', err);
         // Sista utväg: Försök igen om en stund om det var ett låsningsfel
         if (err.message?.includes('lock') && retryCount < 2) {
            setTimeout(() => setupIpGuard(retryCount + 1), 1000);
         }
       }
+
     }
 
-    if (!userLoading) {
+    if (!userLoading && !isLoggingOut.current) {
       setupIpGuard();
     }
+
 
     return () => {
       isMounted = false;

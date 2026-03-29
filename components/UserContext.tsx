@@ -33,7 +33,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
           const delay = (retryCount + 1) * 500;
           console.warn(`Auth lock contested (Attempt ${retryCount + 1}/3), retrying in ${delay}ms...`);
           await new Promise(res => setTimeout(res, delay));
-          return fetchUserAndProfile(retryCount + 1);
+          return await fetchUserAndProfile(retryCount + 1);
         }
         throw sessionError;
       }
@@ -53,6 +53,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
            window.location.href = '/login?error=Ditt konto är avstängt.';
            return;
         }
+        // SINGLE SESSION ENFORCEMENT
+        // Om vi har en nyckel i databasen och en lokalt, men de inte stämmer överens: LOGGA UT
+        const localSess = localStorage.getItem('facechat_session_key');
+        if (profData?.session_key && localSess && profData.session_key !== localSess) {
+           console.warn("[SECURITY] Session key mismatch. Another device is active.");
+           await supabase.auth.signOut();
+           window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
+           return;
+        }
+
         setProfile(profData);
       } else {
         setProfile(null);
@@ -64,7 +74,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
          setLoading(false); // Släpp laddningen så UI inte hänger
       }
     } finally {
-      if (retryCount === 0 || !loading) {
+      // VIKTIGT: Sätt loading=false bara om det är det sista/översta anropet
+      if (retryCount === 0) {
         setLoading(false);
       }
     }
