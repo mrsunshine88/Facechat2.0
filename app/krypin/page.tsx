@@ -911,7 +911,7 @@ function MittKrypinContent() {
                   const cvs = document.createElement('canvas');
                   let width = img.width;
                   let height = img.height;
-                  const MAX_SIZE = 800;
+                  const MAX_SIZE = 400;
 
                   if (width > height) {
                      if (width > MAX_SIZE) {
@@ -932,8 +932,8 @@ function MittKrypinContent() {
 
                   cvs.toBlob(
                      (blob) => { if (blob) resolve(blob); else reject(new Error('Canvas misslyckades')); },
-                     'image/jpeg',
-                     0.85
+                     'image/webp',
+                     0.8
                   );
                };
                img.onerror = (err) => reject(err);
@@ -2065,7 +2065,7 @@ function MittKrypinContent() {
                                  <div key={idx} onClick={() => { setShowVisitorsModal(false); router.push(`/krypin?u=${v.actor?.username}`); }} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0.75rem', backgroundColor: '#f8fafc', borderRadius: '8px', cursor: 'pointer', border: '1px solid #e2e8f0' }} className="hover-lift">
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
                                        <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden' }}>
-                                          {v.actor?.avatar_url && <img src={v.actor?.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                          {v.actor?.avatar_url && <img src={v.actor?.avatar_url} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                                        </div>
                                        <strong style={{ color: 'var(--text-main)' }}>{v.actor?.username}</strong>
                                     </div>
@@ -2105,7 +2105,7 @@ function MittKrypinContent() {
 
                      <div style={{ position: 'relative', width: '100px', height: '100px', marginBottom: '1rem', cursor: 'pointer' }}>
                         <div className="profile-frame" style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', boxSizing: 'border-box' }}>
-                           {currentUser.avatar_url ? <img src={cleanUrl(currentUser.avatar_url) || ''} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : ''}
+                           {currentUser.avatar_url ? <img src={cleanUrl(currentUser.avatar_url) || ''} alt="Profile" loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : ''}
                         </div>
                         {isMyProfile && (
                            <div
@@ -2379,7 +2379,7 @@ function MittKrypinContent() {
                                        <div key={i} style={{ padding: '1rem', border: '1px solid #fcd34d', backgroundColor: '#fffbeb', borderRadius: '8px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }} onClick={() => router.push(`?u=${req.username}`)}>
                                              <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#fcd34d', overflow: 'hidden' }}>
-                                                {req.avatar_url && <img src={req.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
+                                                {req.avatar_url && <img src={req.avatar_url} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
                                              </div>
                                              <span style={{ fontWeight: 'bold' }}>{req.username} vill bli din vän!</span>
                                           </div>
@@ -2405,7 +2405,7 @@ function MittKrypinContent() {
                                     {friends.filter(f => !globalBlockedIds.has(f.id)).map((f, i) => (
                                        <div key={i} className="card hover-lift" style={{ padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer' }} onClick={() => window.location.href = `/krypin?u=${f.username}`}>
                                           <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', overflow: 'hidden', flexShrink: 0 }}>
-                                             {f.avatar_url ? <img src={f.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} />}
+                                             {f.avatar_url ? <img src={f.avatar_url} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} />}
                                           </div>
                                           <span style={{ fontWeight: 'bold', color: 'var(--text-main)' }}>{f.username}</span>
                                           {isMyProfile && (
@@ -2452,7 +2452,7 @@ function MittKrypinContent() {
                                              {composeSearchResults.map(u => (
                                                 <div key={u.id} onClick={() => { setIsComposingNew(false); setSelectedThreadUserId(u.id); setComposeSearchQuery(''); setComposeSearchResults([]); }} style={{ padding: '0.75rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', borderRadius: '12px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', boxShadow: '0 1px 2px rgba(0,0,0,0.05)' }} className="hover-lift">
                                                    <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                                      {u.avatar_url ? <img src={u.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} color="white" />}
+                                                      {u.avatar_url ? <img src={u.avatar_url} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} color="white" />}
                                                    </div>
                                                    <strong style={{ color: 'var(--text-main)', fontSize: '1.1rem' }}>{u.username}</strong>
                                                    <span style={{ marginLeft: 'auto', fontSize: '0.8rem', color: 'var(--theme-krypin)', fontWeight: 'bold' }}>Skriv till {u.username} ➔</span>

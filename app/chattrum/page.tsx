@@ -509,7 +509,10 @@ function ChattrumContent() {
           {activeRoom && messages.map(msg => (
              <div key={msg.id} style={{ display: 'flex', flexDirection: 'column' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.25rem' }}>
-                   <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: msg.author_id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)', cursor: 'pointer' }} onClick={() => window.location.href=`/krypin?u=${msg.profiles?.username}`}>{msg.profiles?.username || 'Okänd'} <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span></span>
+                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: msg.author_id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)', cursor: 'pointer' }} onClick={() => window.location.href=`/krypin?u=${msg.profiles?.username}`}>
+                      {msg.profiles?.avatar_url && <img src={msg.profiles.avatar_url} loading="lazy" style={{ width: '20px', height: '20px', borderRadius: '50%', marginRight: '0.5rem', verticalAlign: 'middle' }} />}
+                      {msg.profiles?.username || 'Okänd'} <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span>
+                    </span>
                    <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {msg.author_id !== currentUser?.id && <button onClick={() => { setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content }); setShowReportModal(true); }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer' }}><AlertTriangle size={14}/></button>}
                       {msg.author_id === currentUser?.id && <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>}

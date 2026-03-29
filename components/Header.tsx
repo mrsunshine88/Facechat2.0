@@ -399,7 +399,7 @@ export default function Header() {
                            <div key={user.id} onClick={() => { setShowOnlineModal(false); router.push(`/krypin?u=${user.username}`); }} 
                               style={{ padding: '0.75rem 1rem', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '1rem', cursor: 'pointer', transition: 'all 0.1s' }} className="hover-bg-gray">
                               <div style={{ width: '45px', height: '45px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0, border: '2px solid #10b981' }}>
-                                 {user.avatar_url ? <img src={user.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={24} color="white" />}
+                                 {user.avatar_url ? <img src={user.avatar_url} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={24} color="white" />}
                               </div>
                               <div style={{ flex: 1 }}>
                                  <div style={{ fontWeight: 'bold', fontSize: '1.05rem', color: 'var(--text-main)' }}>{user.username}</div>
@@ -454,7 +454,7 @@ export default function Header() {
                         style={{ padding: '0.8rem 1rem', borderBottom: '1px solid var(--border-color)', backgroundColor: notif.unread ? '#e0f2fe' : 'transparent', display: 'flex', gap: '0.75rem', cursor: 'pointer' }}
                         className="hover-bg-gray">
                         <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: '#e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                          {notif.avatar ? <img src={notif.avatar} style={{width:'100%', height:'100%', objectFit:'cover'}}/> : <User size={20} color="#64748b"/>}
+                          {notif.avatar ? <img src={notif.avatar} loading="lazy" style={{width:'100%', height:'100%', objectFit:'cover'}}/> : <User size={20} color="#64748b"/>}
                         </div>
                         <div style={{ wordBreak: 'break-word', paddingRight: '0.5rem' }}>
                           <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-main)' }}><strong>@{notif.user}</strong> {notif.text}</p>

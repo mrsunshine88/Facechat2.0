@@ -84,8 +84,8 @@ BEGIN
 
     -- 5. BILD-OPTIMERING: Tvinga 800px bredd på alla avatarer
     WITH upd AS (
-        UPDATE public.profiles SET avatar_url = avatar_url || '?width=800&resize=contain'
-        WHERE avatar_url IS NOT NULL AND avatar_url != '' AND avatar_url NOT LIKE '%?width=800%'
+        UPDATE public.profiles SET avatar_url = avatar_url || '?width=400&format=webp&quality=80'
+        WHERE avatar_url IS NOT NULL AND avatar_url != '' AND avatar_url NOT LIKE '%width=400%'
         RETURNING 1
     ) SELECT count(*) INTO optimized_images FROM upd;
 
