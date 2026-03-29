@@ -646,7 +646,7 @@ export default function MinaSidor() {
                             type="button"
                             onClick={async () => {
                                const newStatus = !currentUser?.notif_sound_enabled;
-                               setCurrentUser(prev => ({ ...prev, notif_sound_enabled: newStatus }));
+                               setCurrentUser((prev: any) => ({ ...prev, notif_sound_enabled: newStatus }));
                                await updateUserProfile({ notif_sound_enabled: newStatus });
                             }}
                             style={{ 
