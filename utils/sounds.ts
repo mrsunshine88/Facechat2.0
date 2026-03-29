@@ -20,7 +20,7 @@ export const NOTIF_SOUNDS: NotifSound[] = [
   { id: 'robot', name: 'Robot Beep', url: 'https://assets.mixkit.co/active_storage/sfx/2853/2853-preview.mp3' },
   { id: 'wood', name: 'Wood Knock', url: 'https://assets.mixkit.co/active_storage/sfx/2854/2854-preview.mp3' },
   { id: 'nature', name: 'Fågelkvitter', url: 'https://assets.mixkit.co/active_storage/sfx/2849/2849-preview.mp3' },
-  { id: 'msn', name: 'MSN Messenger (Klassisk)', url: 'https://www.soundboard.com/handler/DownLoadTrack.ashx?cliptitle=msn+new+message&filename=ms/msn_new_message.mp3' },
+  { id: 'msn', name: 'MSN Messenger (Klassisk)', url: '/sounds/msn.mp3' },
 ];
 
 export function getSoundUrl(id: string): string {
