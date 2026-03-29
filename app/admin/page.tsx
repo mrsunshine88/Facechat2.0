@@ -2432,7 +2432,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     { id: 'orphaned_avatars', title: 'Oanvända Profilbilder (Rensning)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'sync', title: 'Databashälsa (Profiler vs Auth)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'links', title: 'Innehållshälsa (Döda länkar)', status: 'idle', message: 'Väntar på diagnos...' },
-    { id: 'images', title: 'Bild-optimering (800px Max)', status: 'idle', message: 'Väntar på diagnos...' },
+    { id: 'images', title: 'Bild-optimering (400px WebP)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'notifications', title: 'Skräpdata (Gamla Notiser > 30d)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'reports', title: 'Ignorerade Anmälningar (> 7d)', status: 'idle', message: 'Väntar på diagnos...' },
     { id: 'avatars', title: 'Profilbilder (Trasiga Länkar)', status: 'idle', message: 'Väntar på diagnos...' },

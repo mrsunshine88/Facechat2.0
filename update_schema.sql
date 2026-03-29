@@ -250,13 +250,13 @@ RETURNS integer AS $$
 DECLARE
   affected_rows integer;
 BEGIN
-  -- Lägger på Supabase Image Transformation (width=800) på alla avatarer som saknar det
+  -- Rensar gamla transformations-parametrar och lägger på den nya standarden (400px WebP 80%)
   WITH updated AS (
     UPDATE public.profiles 
-    SET avatar_url = avatar_url || '?width=400&format=webp&quality=80'
+    SET avatar_url = split_part(avatar_url, '?', 1) || '?width=400&format=webp&quality=80'
     WHERE avatar_url IS NOT NULL 
       AND avatar_url != '' 
-      AND avatar_url NOT LIKE '%width=400%'
+      AND avatar_url NOT LIKE '%width=400&format=webp&quality=80%'
     RETURNING 1
   )
   SELECT count(*) INTO affected_rows FROM updated;
