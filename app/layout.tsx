@@ -1,4 +1,6 @@
+import React, { Suspense } from 'react'
 import type { Metadata } from 'next'
+
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/Header'
@@ -41,8 +43,11 @@ export default function RootLayout({
       <body className={inter.className}>
         <UserProvider>
           <div className="app-container">
-            <ProgressBar />
+            <Suspense fallback={null}>
+              <ProgressBar />
+            </Suspense>
             <Header />
+
             <main className="main-content">
 
               {children}
