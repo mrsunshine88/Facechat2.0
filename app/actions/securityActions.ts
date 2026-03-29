@@ -126,18 +126,12 @@ export async function adminBlockIP(ip: string, reason: string) {
 
     const { data: rootProfile } = await getAdminClient()
       .from('profiles')
-      .select('auth_email, last_ip')
+      .select('last_ip')
       .eq('auth_email', ROOT_EMAIL)
       .single();
 
-    // SÄKERHETSSKYDD: Skydda Root-IP (mejladress) och den aktuella administratörens egen IP.
-    const isRootTarget = (rootProfile && rootProfile.last_ip === ip);
-    const isSelfIP = (currentRequesterIP === ip);
-    // Om användaren är Root, se till att deras inloggade IP alltid är skyddad live.
-    const isRootLiveIP = (user.email === ROOT_EMAIL && currentRequesterIP === ip);
-
-    if (isRootTarget || isSelfIP || isRootLiveIP) {
-      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad för Root-ägaren eller din aktuella session.`);
+    if (rootProfile && rootProfile.last_ip === ip) {
+      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör Root-ägaren.`);
     }
 
     const { error } = await getAdminClient().from('blocked_ips').upsert({ ip, reason }, { onConflict: 'ip' });

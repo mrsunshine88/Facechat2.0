@@ -148,7 +148,7 @@ export default function AdminPanel() {
 
   if (!userProfile) return <AdminSkeleton />;
 
-  const isRoot = userProfile?.auth_email === 'apersson508@gmail.com';
+  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username?.toLowerCase() === 'mrsunshine88';
   const canManageUsers = isRoot || userProfile.perm_users === true;
   const canManageContent = isRoot || userProfile.perm_content === true;
   const canManageRooms = isRoot || userProfile.perm_rooms === true;
@@ -498,11 +498,11 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     const { data } = await q;
     if (data) {
       const dbUsers = [...data];
-      const meIdx = dbUsers.findIndex(u => u.auth_email === 'apersson508@gmail.com' || u.id === currentUser.id);
+      const meIdx = dbUsers.findIndex(u => u.username?.toLowerCase() === 'admin' || u.username?.toLowerCase() === 'apersson508' || u.username?.toLowerCase() === 'mrsunshine88' || u.id === currentUser.id);
       if (meIdx !== -1) {
         const me = dbUsers.splice(meIdx, 1)[0];
         dbUsers.unshift(me);
-      } else if (currentUser?.auth_email === 'apersson508@gmail.com') {
+      } else if (currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.username?.toLowerCase() === 'mrsunshine88') {
         dbUsers.unshift({
           id: currentUser.id || 'root-fallback',
           username: currentUser.username || 'mrsunshine88',
@@ -514,7 +514,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
         });
       }
       
-      const rootAdmin = dbUsers.find(u => u.auth_email === 'apersson508@gmail.com');
+      const rootAdmin = dbUsers.find(u => u.auth_email === 'apersson508@gmail.com' || u.username?.toLowerCase() === 'apersson508' || u.username?.toLowerCase() === 'mrsunshine88');
       if (rootAdmin && rootAdmin.last_ip) {
         setProtectedIp(rootAdmin.last_ip);
       }
@@ -568,11 +568,12 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
   }, [search, supabase, currentUser.id]);
 
   const handleToggleBlock = async (user: any) => {
-    if (user.auth_email === 'apersson508@gmail.com' || user.id === currentUser.id) {
-       return alert('Detta konto är skyddat som Master-Admin.');
+    if (user.username?.toLowerCase() === 'apersson508' || user.username?.toLowerCase() === 'mrsunshine88' || user.id === currentUser.id) {
+       return alert('Detta konto är skyddat som Super-Admin.');
     }
     const newStatus = !user.is_banned;
 
+    // Optimistic UI for User Ban
     setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_banned: newStatus } : u));
 
     const res = await toggleBlockUser(user.id, newStatus);
@@ -616,8 +617,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
    };
 
   const handleDeleteUser = async (user: any) => {
-    if (user.auth_email === 'apersson508@gmail.com' || user.id === currentUser.id) {
-       return alert('Nix, du kan inte radera Master-Admin!');
+    if (user.username?.toLowerCase() === 'apersson508' || user.username?.toLowerCase() === 'mrsunshine88' || user.id === currentUser.id) {
+       return alert('Nix, du kan inte radera the creator!');
     }
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');
     if (confirm(`VARNING: Detta tar bort ${user.username} och allt deras innehåll för alltid. Är du helt säker?`)) {
@@ -693,10 +694,11 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 )}
 
                 {(() => {
-                  const isRootUser = u.auth_email === 'apersson508@gmail.com';
-                  const isMe = u.id === currentUser.id;
+                  const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.username?.toLowerCase() === 'mrsunshine88' || u.auth_email === 'apersson508@gmail.com';
+                  const isCurrentAdmin = u.id === currentUser.id;
                   
-                  const isProtected = isRootUser || isMe || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
+                  // Skydda om det är Root, om det är DU, eller om personen delar DIN eller ROOTS nuvarande IP
+                  const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
                   if (isProtected) {
                     return (
