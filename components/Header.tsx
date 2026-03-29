@@ -18,6 +18,7 @@ export default function Header() {
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
+  const [isAndroid, setIsAndroid] = useState(false)
   
   // OPTIMERING: Spara tidpunkt för senaste tunga admin-hämtningen för att undvika seghet vid sidbyte
   const lastAdminFetch = useRef<number>(0);
@@ -47,7 +48,8 @@ export default function Header() {
           return;
         }
 
-        // Snabb-fallback för att fylla ut setUserProfile direkt
+        // Snabb-fallback för att fylla ut setUserProfile direkt (Stora Trimmarn: Android Edition 🎷💎🚀)
+        setIsAndroid(/android/i.test(navigator.userAgent));
         const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
         const fallbackName = user.user_metadata?.username || user.email?.split('@')[0] || 'Medlem';
 
@@ -62,23 +64,29 @@ export default function Header() {
           setUserProfile(finalProfile)
         }
         
-        // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE
-        supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-        updateUserIP(user.id);
+        // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE (I bakgrunden!)
+        setTimeout(() => {
+          supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+          updateUserIP(user.id);
+        }, 0);
         
-        // Fetch unread support tickets (OPTIMERAD: Max en gång i minuten vid sidbyte för att undvika seghet)
+        // Fetch unread support tickets (PARALLELLISERAD & OPTIMERAD!)
         const currentProfile = profile || { is_admin: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_support: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_roles: user.email?.toLowerCase() === 'apersson508@gmail.com' };
         const isSuperAdmin = user.email?.toLowerCase() === 'apersson508@gmail.com' || currentProfile.perm_roles;
         const canManageSupport = isSuperAdmin || currentProfile.perm_support;
         
         const now = Date.now();
-        if (canManageSupport && (now - lastAdminFetch.current > 60000)) {
-          const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false);
-          setUnreadSupportCount(count || 0);
-          lastAdminFetch.current = now;
-        } else if (!canManageSupport) {
-          const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true);
-          setUnreadSupportCount(count || 0);
+        if (now - lastAdminFetch.current > 60000) {
+           if (canManageSupport) {
+             supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
+                setUnreadSupportCount(count || 0);
+             });
+           } else {
+             supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
+                setUnreadSupportCount(count || 0);
+             });
+           }
+           lastAdminFetch.current = now;
         }
 
       } else {
@@ -381,7 +389,7 @@ export default function Header() {
 
           {/* ONLINE MODAL */}
           {showOnlineModal && (
-            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowOnlineModal(false)}>
+            <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', backdropFilter: isAndroid ? 'blur(2px)' : 'blur(8px)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} onClick={() => setShowOnlineModal(false)}>
                <div className="card" style={{ maxWidth: '450px', width: '100%', maxHeight: '80vh', display: 'flex', flexDirection: 'column', padding: 0, borderRadius: '24px', overflow: 'hidden', boxShadow: '0 25px 50px -12px rgba(0,0,0,0.5)', animation: 'modalBounce 0.4s ease-out', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)' }} onClick={e => e.stopPropagation()}>
                   <div style={{ padding: '1.5rem', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'var(--bg-color)' }}>
                      <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: '800', display: 'flex', alignItems: 'center', gap: '0.75rem', color: 'var(--text-main)' }}>

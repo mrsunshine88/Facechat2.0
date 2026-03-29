@@ -214,6 +214,7 @@ function MittKrypinContent() {
    const [isSending, setIsSending] = useState(false); // Förhindra 22-inläggs-felet
    const [forbiddenWords, setForbiddenWords] = useState<string[]>([]);
    const [showDuplicateModal, setShowDuplicateModal] = useState(false);
+   const [isAndroid, setIsAndroid] = useState(false);
 
    // Sök & Skicka PM States
    const [composeModalOpen, setComposeModalOpen] = useState(false);
@@ -335,6 +336,10 @@ function MittKrypinContent() {
          let blockedMe = false;
 
          try {
+            // Android-detektering för grafisk lättnad (Stora Trimmarn: Android Edition)
+            const isAndroidValue = /android/i.test(navigator.userAgent);
+            setIsAndroid(isAndroidValue);
+
             // 1. Hämta session och ord-filter parallellt (SNABBARE!)
             const [sessionRes, wordsRes] = await Promise.all([
                supabase.auth.getSession(),
@@ -345,21 +350,24 @@ function MittKrypinContent() {
             if (!user) { window.location.href = '/login'; return; }
             if (wordsRes.data) setForbiddenWords(wordsRes.data.map(w => w.word));
 
-            // 2. Parallellisera IP-check, Profil-hämtning och Blockeringar
-            // Detta är den STORA trimmningen - vi väntar inte längre på IP-servicen innan vi hämtar profilen!
-            const [ipRes, myProfRes, targetRes, blocksRes] = await Promise.all([
-               fetch('https://api64.ipify.org?format=json').then(r => r.json()).catch(() => ({ ip: '' })),
+            // 2. Parallellisera Profil-hämtning och Blockeringar (INTE IP-check!)
+            // I Android-versionen kör vi IP-checken helt i bakgrunden för att slippa "tuggande" nätverksväntan.
+            const [myProfRes, targetRes, blocksRes] = await Promise.all([
                supabase.from('profiles').select('*').eq('id', user.id).limit(1),
                targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: [] }),
                supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
             ]);
 
-            // Hantera IP-spärr (Icke-blockerande för resten av sidan)
-            if (ipRes && ipRes.ip) {
-               setUserIp(ipRes.ip);
-               const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
-               if (bData && bData.length > 0) setIsIpBlocked(true);
-            }
+            // Bakgrunds-IP-check (Denna väntar inte sidan på!)
+            fetch('https://api64.ipify.org?format=json')
+               .then(r => r.json())
+               .then(async ipRes => {
+                  if (ipRes && ipRes.ip) {
+                     setUserIp(ipRes.ip);
+                     const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
+                     if (bData && bData.length > 0) setIsIpBlocked(true);
+                  }
+               }).catch(() => console.log('IP check background failed'));
 
             const myProfile = myProfRes.data && myProfRes.data.length > 0 ? myProfRes.data[0] : null;
             const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
@@ -1339,6 +1347,15 @@ function MittKrypinContent() {
         @media (min-width: 769px) {
            .hide-on-desktop { display: none !important; }
         }
+
+        /* Stora Trimmarn: Android Edition - Grafikoptimering 🎷💎🚀 */
+        ${isAndroid ? `
+           .card, .inner-box, .krypin-sidebar, .status-badge { 
+              backdrop-filter: blur(4px) !important; 
+              -webkit-backdrop-filter: blur(4px) !important;
+              box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1) !important;
+           }
+        ` : ''}
       `}</style>
 
          {/* STUNNING 2026 LUNARSTORM EDITOR MODAL */}
