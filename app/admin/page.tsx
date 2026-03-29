@@ -117,7 +117,7 @@ export default function AdminPanel() {
   // Hämta ANMÄLNINGAR count (Open)
   useEffect(() => {
     if (userProfile) {
-  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username === 'mrsunshine88';
+      const isRoot = userProfile.auth_email === 'apersson508@gmail.com';
       const canManageContent = isRoot || userProfile.perm_content === true;
 
       if (canManageContent) {
@@ -148,7 +148,7 @@ export default function AdminPanel() {
 
   if (!userProfile) return <AdminSkeleton />;
 
-  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username === 'mrsunshine88';
+  const isRoot = userProfile?.auth_email === 'apersson508@gmail.com';
   const canManageUsers = isRoot || userProfile.perm_users === true;
   const canManageContent = isRoot || userProfile.perm_content === true;
   const canManageRooms = isRoot || userProfile.perm_rooms === true;
@@ -324,10 +324,6 @@ export default function AdminPanel() {
   );
 }
 
-// Skjut upp definitionen eller flytta ner den - men använd function för hoisting om möjligt, 
-// eller bara flytta den ovanför AdminPanel.
-// Jag flyttar den ovanför AdminPanel för säkerhets skull.
-
 const NoAccess = () => (
   <div style={{ maxWidth: '600px', margin: '10vh auto', textAlign: 'center', padding: '3rem', backgroundColor: 'var(--bg-card)', borderRadius: '12px', border: '1px dashed #ef4444' }}>
     <ShieldAlert size={48} color="#ef4444" style={{ marginBottom: '1rem' }} />
@@ -336,9 +332,6 @@ const NoAccess = () => (
   </div>
 );
 
-// ==========================================================
-// 1. DASHBOARD & STATISTIK (Inkl Händelselogg/Sista inlogg)
-// ==========================================================
 const AdminDashboard = ({ supabase }: { supabase: any }) => {
   const [stats, setStats] = useState({ users: 0, posts: 0, tickets: 0, online: 0, banned: 0, reports: 0, ipBlocks: 0 });
   const [latestLogins, setLatestLogins] = useState<any[]>([]);
@@ -348,7 +341,6 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
       try {
         const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         
-        // Dash Stats - ALLT PARALLELLT NU! 🎷💎🚀
         const [
           { count: usersCount },
           { count: wbCount },
@@ -471,7 +463,6 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           </table>
         </div>
 
-        {/* Mobile List View */}
         <div className="hide-on-desktop" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {latestLogins.map((user, idx) => {
             const dateObj = new Date(user.last_seen || user.created_at);
@@ -493,9 +484,6 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
   );
 };
 
-// ==========================================================
-// 2. ANVÄNDARE (Blocka, Avblocka, Radera)
-// ==========================================================
 const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [blockedIps, setBlockedIps] = useState<any[]>([]);
@@ -508,25 +496,25 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       q = q.ilike('username', `%${query}%`);
     }
     const { data } = await q;
-    // Tvinga in root-mailen/användaren "apersson508" högst upp om de finns
     if (data) {
       const dbUsers = [...data];
-      const meIdx = dbUsers.findIndex(u => u.username?.toLowerCase() === 'admin' || u.username?.toLowerCase() === 'apersson508' || u.id === currentUser.id);
+      const meIdx = dbUsers.findIndex(u => u.auth_email === 'apersson508@gmail.com' || u.id === currentUser.id);
       if (meIdx !== -1) {
         const me = dbUsers.splice(meIdx, 1)[0];
         dbUsers.unshift(me);
-      } else if (currentUser?.auth_email?.toLowerCase() === 'apersson508@gmail.com' || currentUser?.username?.toLowerCase() === 'admin') {
+      } else if (currentUser?.auth_email === 'apersson508@gmail.com') {
         dbUsers.unshift({
           id: currentUser.id || 'root-fallback',
-          username: currentUser.username || 'apersson508',
+          username: currentUser.username || 'mrsunshine88',
+          auth_email: 'apersson508@gmail.com',
           is_admin: true,
           perm_users: true, perm_content: true, perm_rooms: true,
           perm_support: true, perm_logs: true, perm_roles: true, perm_chat: true,
           perm_diagnostics: true, perm_stats: true
         });
       }
-      // Sätt protectedIp (Root-Admin) direkt från listan för att slippa RPC-anrop
-      const rootAdmin = dbUsers.find(u => u.auth_email === 'apersson508@gmail.com' || u.username?.toLowerCase() === 'apersson508');
+      
+      const rootAdmin = dbUsers.find(u => u.auth_email === 'apersson508@gmail.com');
       if (rootAdmin && rootAdmin.last_ip) {
         setProtectedIp(rootAdmin.last_ip);
       }
@@ -557,7 +545,6 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     const channel = supabase.channel('admin_users_realtime')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
         setUsers(prev => prev.map(u => u.id === payload.new.id ? { ...u, ...payload.new } : u));
-        // FIX: Ta bort rekursiv fetchUsers för att undvika 503-loop
       })
       .subscribe();
 
@@ -571,7 +558,6 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     };
   }, [supabase]);
 
-  // Sök-loggning (Debounced)
   useEffect(() => {
     if (search.trim().length > 1) {
       const timer = setTimeout(() => {
@@ -581,44 +567,58 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     }
   }, [search, supabase, currentUser.id]);
 
-
-
   const handleToggleBlock = async (user: any) => {
-    if (user.username?.toLowerCase() === 'apersson508' || user.id === currentUser.id) return alert('Detta konto är skyddat som Super-Admin.');
-    if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte blockeras.');
+    if (user.auth_email === 'apersson508@gmail.com' || user.id === currentUser.id) {
+       return alert('Detta konto är skyddat som Master-Admin.');
+    }
     const newStatus = !user.is_banned;
+
+    setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_banned: newStatus } : u));
+
     const res = await toggleBlockUser(user.id, newStatus);
-    if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
+    if (res?.error) {
+       setUsers(prev => prev.map(u => u.id === user.id ? { ...u, is_banned: !newStatus } : u));
+       return alert('Fel: ' + res.error);
+    }
     await logAdminAction(supabase, currentUser.id, `${newStatus ? 'Blockerade' : 'Avblockerade'} ${user.username}`);
-    fetchUsers(search);
-  };
-
-
+   };
 
   const handleBlockIP = async (ip: string, username: string) => {
     const cleanIp = ip?.trim();
-    if (!cleanIp || cleanIp === '127.0.0.1') return alert('Kunde inte identifiera giltig IP för denna användare.');
-    const reason = prompt(`Ange anledning för att spärra IP ${cleanIp} (${username}):`, 'Spam/Missbruk');
+    if (!cleanIp || cleanIp === '127.0.0.1') return alert('Kunde inte identifiera giltig IP.');
+    const reason = prompt(`Ange anledning för att spärra IP ${cleanIp}:`, 'Spam/Missbruk');
     if (reason === null) return;
 
+    const tempBlock = { ip: cleanIp, reason, created_at: new Date().toISOString() };
+    setBlockedIps(prev => [tempBlock, ...prev]);
+
     const res = await adminBlockIP(cleanIp, reason);
-    if (res?.error) return alert('Fel: ' + res.error);
+    if (res?.error) {
+       setBlockedIps(prev => prev.filter(b => b.ip !== cleanIp));
+       return alert('Säkerhetsstopp: ' + res.error);
+    }
     
     await logAdminAction(supabase, currentUser.id, `Spärrade IP-adress ${ip} (${username})`);
-    fetchBlockedIps();
-  };
+   };
 
   const handleUnblockIP = async (ip: string) => {
     if (confirm(`Vill du ta bort spärren för IP ${ip}?`)) {
+      const oldBlocks = [...blockedIps];
+      setBlockedIps(prev => prev.filter(b => b.ip !== ip));
+
       const res = await adminUnblockIP(ip);
-      if (res?.error) return alert('Fel: ' + res.error);
+      if (res?.error) {
+         setBlockedIps(oldBlocks);
+         return alert('Fel: ' + res.error);
+      }
       await logAdminAction(supabase, currentUser.id, `Tog bort IP-spärr för ${ip}`);
-      fetchBlockedIps();
     }
-  };
+   };
 
   const handleDeleteUser = async (user: any) => {
-    if (user.username?.toLowerCase() === 'apersson508' || user.id === currentUser.id) return alert('Inkorrekt, du kan inte radera the creator.');
+    if (user.auth_email === 'apersson508@gmail.com' || user.id === currentUser.id) {
+       return alert('Nix, du kan inte radera Master-Admin!');
+    }
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');
     if (confirm(`VARNING: Detta tar bort ${user.username} och allt deras innehåll för alltid. Är du helt säker?`)) {
       const res = await deleteUserAccount(user.id);
@@ -629,30 +629,6 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
       await logAdminAction(supabase, currentUser.id, `Raderade kontot ${user.username} permanent från systemet`);
       fetchUsers(search);
     }
-  };
-
-  const handleResetAvatar = async (user: any) => {
-    if (!confirm(`Vill du verkligen ta bort profilbilden för ${user.username}?`)) return;
-    const res = await adminResetAvatar(user.id);
-    if (res?.error) return alert('Fel: ' + res.error);
-    await logAdminAction(supabase, currentUser.id, `Raderade profilbild för ${user.username}`);
-    fetchUsers(search);
-  };
-
-  const handleResetPresentation = async (user: any) => {
-    if (!confirm(`Vill du verkligen rensa presentationstexten för ${user.username}?`)) return;
-    const res = await adminResetPresentation(user.id);
-    if (res?.error) return alert('Fel: ' + res.error);
-    await logAdminAction(supabase, currentUser.id, `Rensade presentation för ${user.username}`);
-    fetchUsers(search);
-  };
-
-  const handleResetTheme = async (user: any) => {
-    if (!confirm(`Vill du verkligen nollställa designtemat för ${user.username}?`)) return;
-    const res = await adminResetTheme(user.id);
-    if (res?.error) return alert('Fel: ' + res.error);
-    await logAdminAction(supabase, currentUser.id, `Nollställde tema/CSS för ${user.username}`);
-    fetchUsers(search);
   };
 
   return (
@@ -717,10 +693,10 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 )}
 
                 {(() => {
-                  const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
-                  const isCurrentAdmin = u.id === currentUser.id;
-                  // Skydda om det är Root, om det är DU, eller om personen delar DIN eller ROOTS nuvarande IP
-                  const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
+                  const isRootUser = u.auth_email === 'apersson508@gmail.com';
+                  const isMe = u.id === currentUser.id;
+                  
+                  const isProtected = isRootUser || isMe || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
                   if (isProtected) {
                     return (
