@@ -78,33 +78,71 @@ export default function Header() {
   // AKUT FIX: Återställd blixtsnabb IP-dörrvakt (Hundradels-reaktion!)
   useEffect(() => {
     let channel: any;
+    let isMounted = true;
 
-    async function setupIpGuard() {
-      // Hämta IP (Snabb variant)
-      const res = await updateUserIP(user?.id || 'guest');
-      const myIp = res?.ip;
-      if (!myIp) return;
+    async function setupIpGuard(retryCount = 0) {
+      try {
+        if (retryCount === 0) {
+          // Ge UserContext ett litet försprång för att undvika auth-lås-krock
+          await new Promise(res => setTimeout(res, 150));
+        }
 
-      // 1. Initial koll för att se om vi är spärrade NU
-      const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
-      const currentlyBlocked = bData && bData.length > 0;
-      
-      if (currentlyBlocked && !isBlockedRoute) {
-        window.location.href = '/blocked';
-      } else if (!currentlyBlocked && isBlockedRoute) {
-        window.location.href = '/';
+        if (!isMounted) return;
+
+        // Hämta IP (Snabb variant)
+        const res = await updateUserIP(user?.id || 'guest');
+        
+        if (res?.error && res.error.includes('lock') && retryCount < 2) {
+           console.warn(`[Header] Auth lock conflict during IP check. Retrying... (${retryCount+1})`);
+           await new Promise(res => setTimeout(res, 500));
+           return setupIpGuard(retryCount + 1);
+        }
+
+        const myIp = res?.ip;
+        if (!myIp) {
+          console.error('[Header] Could not determine IP for Guard.');
+          return;
+        }
+
+        // 1. Initial koll för att se om vi är spärrade NU
+        const { data: bData, error: bError } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
+        
+        if (bError && bError.message?.includes('lock') && retryCount < 2) {
+           await new Promise(res => setTimeout(res, 500));
+           return setupIpGuard(retryCount + 1);
+        }
+
+        const currentlyBlocked = bData && bData.length > 0;
+        
+        if (currentlyBlocked && !isBlockedRoute) {
+          window.location.href = '/blocked';
+        } else if (!currentlyBlocked && isBlockedRoute) {
+          window.location.href = '/';
+        }
+
+        // 2. Realtidshantering (Samma sekund!)
+        if (channel) supabase.removeChannel(channel);
+        
+        channel = supabase.channel('ip_guard_blixt')
+          .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
+            if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
+              window.location.href = '/blocked';
+            } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
+              window.location.href = '/';
+            }
+          })
+          .subscribe((status) => {
+             if (status === 'SUBSCRIBED') {
+                // console.log('[Header] IP Guard Active for: ' + myIp);
+             }
+          });
+      } catch (err: any) {
+        console.error('[Header] Critical failure in IP Guard:', err);
+        // Sista utväg: Försök igen om en stund om det var ett låsningsfel
+        if (err.message?.includes('lock') && retryCount < 2) {
+           setTimeout(() => setupIpGuard(retryCount + 1), 1000);
+        }
       }
-
-      // 2. Realtidshantering (Samma sekund!)
-      channel = supabase.channel('ip_guard_blixt')
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
-          if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
-            window.location.href = '/blocked';
-          } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
-            window.location.href = '/';
-          }
-        })
-        .subscribe();
     }
 
     if (!userLoading) {
@@ -112,6 +150,7 @@ export default function Header() {
     }
 
     return () => {
+      isMounted = false;
       if (channel) supabase.removeChannel(channel);
     };
   }, [userLoading, isBlockedRoute]);

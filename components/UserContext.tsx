@@ -23,9 +23,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isSecurityInit = useRef(false);
 
-  const fetchUserAndProfile = async () => {
+  const fetchUserAndProfile = async (retryCount = 0) => {
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      
+      if (sessionError) {
+        // Om låset är upptaget, vänta och försök igen en gång
+        if (sessionError.message?.includes('lock') && retryCount < 1) {
+          console.warn('Auth lock contested, retrying fetchUserAndProfile...');
+          await new Promise(res => setTimeout(res, 500));
+          return fetchUserAndProfile(retryCount + 1);
+        }
+        throw sessionError;
+      }
+
       const currentUser = session?.user || null;
       setUser(currentUser);
 
@@ -45,10 +56,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user/profile:', error);
+      // Fallback if lock issue persists
+      if (error.message?.includes('lock')) {
+         setLoading(false); // Släpp laddningen så UI inte hänger
+      }
     } finally {
-      setLoading(false);
+      if (retryCount === 0 || !loading) {
+        setLoading(false);
+      }
     }
   };
 
