@@ -72,6 +72,10 @@ export default function Header() {
   const [onlineCount, setOnlineCount] = useState(1)
   const [snakeTicker, setSnakeTicker] = useState<number | null>(null)
   const [blockedUserIds, setBlockedUserIds] = useState<string[]>([]);
+  
+  // STOP-SIGNAL FÖR UTLOGGNING (Fixar 5-6s delay)
+  const isLoggingOut = useRef(false);
+
 
   const [showOnlineModal, setShowOnlineModal] = useState(false);
   const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
@@ -82,13 +86,16 @@ export default function Header() {
     let isMounted = true;
 
     async function setupIpGuard(retryCount = 0) {
+      if (isLoggingOut.current) return; // Stoppa omedelbart vid utloggning!
+
       try {
         if (retryCount === 0) {
-          // Ge UserContext ett litet försprång för att undvika auth-lås-krock
-          await new Promise(res => setTimeout(res, 150));
+          // Ge UserContext ett rejält försprång vid login (800ms) för att undvika DB-lås-krock
+          await new Promise(res => setTimeout(res, 800));
         }
 
-        if (!isMounted) return;
+        if (!isMounted || isLoggingOut.current) return;
+
 
         // Hämta IP (Snabb variant)
         const res = await updateUserIP(user?.id || 'guest');
@@ -313,10 +320,12 @@ export default function Header() {
   if (isAdminRoute || isLoginRoute) return null
 
   const handleLogout = async () => {
+    isLoggingOut.current = true; // Signalera STOPP till IP Guard
     const supabase = createClient()
     await supabase.auth.signOut()
     window.location.replace('/login')
   }
+
 
   return (
     <>

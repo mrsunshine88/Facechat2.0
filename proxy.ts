@@ -72,11 +72,17 @@ export async function proxy(request: NextRequest) {
     let user: any = null;
 
     try {
+      // --- OPTIMERING FÖR SNABBARE LOGIN ---
+      // Om vi är på login-sidan behöver vi bara veta om IP är spärrad. 
+      // Vi sparar 2-4 sekunder genom att skippa de tyngsta anropen här!
+      const isLogin = request.nextUrl.pathname === '/login';
+      
       const [rootResult, blockResult, authResult] = await Promise.all([
-        supabase.rpc('get_root_admin_ip'),
+        !isLogin ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
         supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
-        supabase.auth.getUser()
+        !isLogin ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
       ]);
+
 
       rootIp = rootResult.data;
       isBlocked = blockResult.data;
