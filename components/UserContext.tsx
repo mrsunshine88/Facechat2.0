@@ -55,10 +55,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // REALTIDSKOLL: Lyssna på ändringar i din egen profil (t.ex. vid blockering/banning)
+    let profileSubscription: any = null;
+    if (user) {
+      profileSubscription = supabase
+        .channel(`self-profile-${user.id}`)
+        .on('postgres_changes', { 
+            event: 'UPDATE', 
+            schema: 'public', 
+            table: 'profiles', 
+            filter: `id=eq.${user.id}` 
+        }, (payload) => {
+          setProfile(payload.new);
+          // Omedelbar utsparkning om kontot blir bannat!
+          if (payload.new.is_banned) {
+            supabase.auth.signOut().then(() => {
+                window.location.href = '/login?error=Ditt konto har blivit avstängt.';
+            });
+          }
+        })
+        .subscribe();
+    }
+
     return () => {
       subscription.unsubscribe();
+      if (profileSubscription) supabase.removeChannel(profileSubscription);
     };
-  }, []);
+  }, [user?.id]);
 
   return (
     <UserContext.Provider value={{ user, profile, loading, refreshProfile: fetchUserAndProfile }}>

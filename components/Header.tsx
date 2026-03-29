@@ -46,20 +46,16 @@ export default function Header() {
        // Fetch unread support tickets (PARALLELLISERAD & OPTIMERAD!)
        const isSuperAdmin = user?.email?.toLowerCase() === 'apersson508@gmail.com' || profile.perm_roles;
        const canManageSupport = isSuperAdmin || profile.perm_support;
-       
-       const now = Date.now();
-       if (now - lastAdminFetch.current > 60000) {
-          if (canManageSupport) {
-            supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
-               setUnreadSupportCount(count || 0);
-            });
-          } else {
-            supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
-               setUnreadSupportCount(count || 0);
-            });
-          }
-          lastAdminFetch.current = now;
-       }
+              const now = Date.now();
+        if (canManageSupport) {
+          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
+             setUnreadSupportCount(count || 0);
+          });
+        } else {
+          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
+             setUnreadSupportCount(count || 0);
+          });
+        }
     }
     syncHeader();
   }, [pathname, profile, user])
@@ -76,6 +72,47 @@ export default function Header() {
 
   const [showOnlineModal, setShowOnlineModal] = useState(false);
   const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
+
+  // AKUT FIX: Realtidskoll för IP-spärrar (Omdirigerar direkt vid blockering/upplåsning)
+  useEffect(() => {
+    let channel: any;
+
+    async function handleIpSecurity() {
+      // Hämta klientens IP via server-action
+      const res = await updateUserIP(user?.id || 'guest');
+      const myIp = res?.ip;
+      if (!myIp) return;
+
+      // 1. Initial koll för att se om vi ska vara spärrade eller inte
+      const { data: blockedData } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
+      const isCurrentlyBlocked = blockedData && blockedData.length > 0;
+
+      if (isCurrentlyBlocked && !isBlockedRoute) {
+        router.push('/blocked');
+      } else if (!isCurrentlyBlocked && isBlockedRoute) {
+        router.push('/');
+      }
+
+      // 2. Lyssna i realtid på ändringar i spärr-listan
+      channel = supabase.channel('ip_security_realtime')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
+          if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
+            router.push('/blocked');
+          } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
+            router.push('/');
+          }
+        })
+        .subscribe();
+    }
+
+    if (!userLoading) {
+      handleIpSecurity();
+    }
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [user?.id, userLoading, isBlockedRoute, router]);
 
   // Master Realtime Feed
   useEffect(() => {
