@@ -75,6 +75,47 @@ export default function Header() {
   const [showOnlineModal, setShowOnlineModal] = useState(false);
   const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
 
+  // AKUT FIX: Återställd blixtsnabb IP-dörrvakt (Hundradels-reaktion!)
+  useEffect(() => {
+    let channel: any;
+
+    async function setupIpGuard() {
+      // Hämta IP (Snabb variant)
+      const res = await updateUserIP(user?.id || 'guest');
+      const myIp = res?.ip;
+      if (!myIp) return;
+
+      // 1. Initial koll för att se om vi är spärrade NU
+      const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
+      const currentlyBlocked = bData && bData.length > 0;
+      
+      if (currentlyBlocked && !isBlockedRoute) {
+        window.location.href = '/blocked';
+      } else if (!currentlyBlocked && isBlockedRoute) {
+        window.location.href = '/';
+      }
+
+      // 2. Realtidshantering (Samma sekund!)
+      channel = supabase.channel('ip_guard_blixt')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
+          if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
+            window.location.href = '/blocked';
+          } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
+            window.location.href = '/';
+          }
+        })
+        .subscribe();
+    }
+
+    if (!userLoading) {
+      setupIpGuard();
+    }
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [userLoading, isBlockedRoute]);
+
   // Master Realtime Feed
   useEffect(() => {
     if (!userProfile || isBlockedRoute) return;

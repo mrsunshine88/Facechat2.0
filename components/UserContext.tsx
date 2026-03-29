@@ -82,50 +82,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
-  // MASTER SECURITY GUARD (Samma sekund-fix!)
+  // MASTER SECURITY GUARD (Banniing & Upplåsning!)
   useEffect(() => {
-    if (loading || isSecurityInit.current) return;
-    isSecurityInit.current = true;
+    if (loading || !user?.id) return;
 
     let securityChannel: any;
 
-    async function setupSecurity() {
-      // 1. Hämta IP direkt (och uppdatera profilen i bakgrunden)
-      const res = await updateUserIP(user?.id || 'guest');
-      const myIp = res?.ip;
-      if (!myIp) return;
-
-      // 2. Initial koll (Är jag spärrad NU?)
-      const { data: ipBlock } = await supabase.from('blocked_ips').select('ip').eq('ip', myIp);
-      const currentlyIpBlocked = ipBlock && ipBlock.length > 0;
-      
-      const isBlockedPage = pathname === '/blocked';
-
-      if (currentlyIpBlocked && !isBlockedPage) {
-        router.replace('/blocked');
-      } else if (!currentlyIpBlocked && isBlockedPage) {
-        router.replace('/');
-      }
-
-      // 3. REALTID: Lyssna på ALLT (IP-spärrar, Bans och Profil-uppdateringar)
-      securityChannel = supabase.channel('master_security_guard')
-        // Lyssna på IP-spärrar
-        .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
-          if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
-            router.replace('/blocked');
-          } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
-             // Om vi är på block-sidan, skicka tillbaka till start direkt!
-             if (window.location.pathname === '/blocked') {
-                window.location.href = '/';
-             }
-          }
-        })
-        // Lyssna på din egen profil-rad (för Banning och Behörigheter)
+    securityChannel = supabase.channel('profile_security_blixt')
         .on('postgres_changes', { 
             event: 'UPDATE', 
             schema: 'public', 
             table: 'profiles', 
-            filter: user?.id ? `id=eq.${user.id}` : undefined 
+            filter: `id=eq.${user.id}` 
         }, (payload: any) => {
           if (!payload.new) return;
           setProfile(payload.new);
@@ -136,15 +104,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
           }
         })
         .subscribe();
-    }
-
-    setupSecurity();
 
     return () => {
        if (securityChannel) supabase.removeChannel(securityChannel);
-       isSecurityInit.current = false;
     };
-  }, [user?.id, loading, pathname, router]);
+  }, [user?.id, loading]);
 
   return (
     <UserContext.Provider value={{ user, profile, loading, refreshProfile: fetchUserAndProfile }}>

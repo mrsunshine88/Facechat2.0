@@ -571,6 +571,23 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     }
   }, [search, supabase, currentUser.id]);
 
+  const handleIpSecurity = async (userId: string, targetIp: string, isBlocked: boolean) => {
+    if (!currentUser || !targetIp) return;
+    
+    // OPTIMISTIC: Uppdatera listan direkt för blixtsnabb respons
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, is_ip_blocked: isBlocked } : u));
+
+    if (isBlocked) {
+      await supabase.from('blocked_ips').insert({ 
+        ip: targetIp, 
+        reason: 'Spam/Missbruk', 
+        created_by: currentUser.id 
+      });
+    } else {
+      await supabase.from('blocked_ips').delete().eq('ip', targetIp);
+    }
+  };
+
   const handleToggleBlock = async (user: any) => {
     if (user.username?.toLowerCase() === 'apersson508' || user.username?.toLowerCase() === 'mrsunshine88' || user.id === currentUser.id || user.auth_email === 'apersson508@gmail.com') {
        return alert('Detta konto är skyddat som Master-Admin.');
@@ -586,7 +603,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
        return alert('Fel: ' + res.error);
     }
     await logAdminAction(supabase, currentUser.id, `${newStatus ? 'Blockerade' : 'Avblockerade'} ${user.username}`);
-   };
+  };
 
   const handleBlockIP = async (ip: string, username: string) => {
     const cleanIp = ip?.trim();
