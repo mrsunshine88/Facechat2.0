@@ -1629,14 +1629,13 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
 
     if (isAdminRoom) {
       // AUTOMATISK SYNK FÖR ADMIN-RUMMET!
-      // Vi hämtar alla som har NÅGON form av admin-rättighet
-      // Vi har tagit bort 'auth_email' då den kolumnen inte finns fysiskt i profiles-tabellen (vilket orsakade 400-fel)
-      const adminFilter = 'is_admin.eq.true,perm_users.eq.true,perm_content.eq.true,perm_rooms.eq.true,perm_roles.eq.true,perm_support.eq.true,perm_logs.eq.true,perm_stats.eq.true,perm_diagnostics.eq.true,perm_chat.eq.true,perm_images.eq.true,username.eq."mrsunshine88",username.eq."apersson508"';
+      // Vi hämtar alla som är AKTIVA administratörer (is_admin = true)
+      // Eller som har någon av de kritiska super-rollerna
+      const adminFilter = 'is_admin.eq.true,perm_roles.eq.true,username.eq."mrsunshine88",username.eq."apersson508"';
       
       supabase.from('profiles').select('id, username').or(adminFilter).then(({ data, error }: any) => {
         if (error) {
            console.error("[ADMIN_ROOM_SYNC] Fel vid hämtning av admins:", error.message);
-           // Fallback om något fortfarande strular
            supabase.from('profiles').select('id, username').eq('is_admin', true).then(({ data: d }: any) => {
              if (d) setMembers(d);
            });
@@ -1645,6 +1644,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
         }
       });
     } else if (room.allowed_users && room.allowed_users.length > 0) {
+
 
 
       supabase.from('profiles').select('id, username').in('id', room.allowed_users).then(({ data }: any) => {
@@ -1980,10 +1980,19 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
     if (user.perm_roles && user.is_admin) return alert('Du kan inte ta bort ett Root-konto!');
 
     const res = await adminUpdatePermissions(user.id, {
-      is_admin: false, perm_users: false, perm_content: false, perm_rooms: false,
-      perm_roles: false, perm_support: false, perm_logs: false, perm_chat: false,
-      perm_diagnostics: false, perm_stats: false
+      is_admin: false, 
+      perm_users: false, 
+      perm_content: false, 
+      perm_rooms: false,
+      perm_roles: false, 
+      perm_support: false, 
+      perm_logs: false, 
+      perm_chat: false,
+      perm_diagnostics: false, 
+      perm_stats: false,
+      perm_images: false // VIKTIGT: Nollställ även bild-moderering!
     });
+
     if (res?.error) return alert('Fel: ' + res.error);
 
     await logAdminAction(supabase, currentUser.id, `Tog bort Admin-status från ${user.username}`);
