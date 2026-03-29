@@ -4,8 +4,9 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Shield, Users, Database, AlertTriangle, Activity, Search, ShieldAlert, LogOut, LifeBuoy, Trash2, CheckCircle, Ban, PlayCircle, Lock, Edit2, Plus, Terminal, History, Wrench, Eraser, UserPlus, EyeOff, Globe, X } from 'lucide-react';
 import { createClient } from '@/utils/supabase/client';
-import { deleteUserAccount } from '../actions/userActions';
+import { deleteUserAccount, getUnreadSupportCountAction } from '../actions/userActions';
 import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme, adminMassDeleteSpam } from '../actions/adminActions';
+
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
 import { useWordFilter } from '@/hooks/useWordFilter';
 import { useUser } from '@/components/UserContext';
@@ -96,11 +97,10 @@ export default function AdminPanel() {
 
     if (canManageSupport) {
       const fetchUnread = async () => {
-        const { count } = await supabase.from('support_tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('status', 'open')
-          .eq('has_unread_admin', true);
-        if (count !== null) setUnreadSupportCount(count);
+        const res = await getUnreadSupportCountAction();
+        if (res && typeof res.count === 'number') {
+           setUnreadSupportCount(res.count);
+        }
       };
 
       fetchUnread();
@@ -112,6 +112,7 @@ export default function AdminPanel() {
 
       return () => { supabase.removeChannel(sub); };
     }
+
   }, [userProfile, supabase]);
 
   // Hämta ANMÄLNINGAR count (Open)
@@ -346,7 +347,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           { count: wbCount },
           { count: gbCount },
           { count: fCount },
-          { count: ticketsCount },
+          ticketsRes,
           { count: bannedCount },
           { count: reportsCount },
           { count: userBlocksCount },
@@ -358,7 +359,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           supabase.from('whiteboard').select('*', { count: 'exact', head: true }),
           supabase.from('guestbook').select('*', { count: 'exact', head: true }),
           supabase.from('forum_posts').select('*', { count: 'exact', head: true }),
-          supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('status', 'open').eq('admin_deleted', false),
+          getUnreadSupportCountAction(),
           supabase.from('profiles').select('*', { count: 'exact', head: true }).eq('is_banned', true),
           supabase.from('reports').select('*', { count: 'exact', head: true }).eq('status', 'open'),
           supabase.from('user_blocks').select('*', { count: 'exact', head: true }),
@@ -370,7 +371,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
         setStats({
           users: usersCount || 0,
           posts: userBlocksCount || 0,
-          tickets: ticketsCount || 0,
+          tickets: ticketsRes?.count || 0,
           online: onlineCount || 0,
           banned: bannedCount || 0,
           reports: reportsCount || 0,

@@ -411,30 +411,72 @@ export async function getUnreadSupportCountAction() {
     const canManageSupport = isSuperAdmin || profile.is_admin || profile.perm_support;
 
     if (canManageSupport) {
-      // Admin: Räkna alla ohanterade ärenden som inte är raderade
+      // Admin: Räkna alla öppna ohanterade ärenden som inte är raderade
       const { count, error } = await supabaseAdmin
         .from('support_tickets')
         .select('*', { count: 'exact', head: true })
         .eq('has_unread_admin', true)
+        .eq('status', 'open')
         .eq('admin_deleted', false);
       
       if (error) throw error;
       return { count: count || 0 };
     } else {
-      // Vanlig användare: Räkna bara egna olästa svar
+      // Vanlig användare: Räkna bara egna olästa svar på öppna ärenden
       const { count, error } = await supabaseAdmin
         .from('support_tickets')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id)
-        .eq('has_unread_user', true);
+        .eq('has_unread_user', true)
+        .eq('status', 'open');
       
       if (error) throw error;
       return { count: count || 0 };
     }
+
   } catch (err: any) {
     console.error("Error in getUnreadSupportCountAction:", err);
     return { count: 0, error: err.message };
   }
 }
+
+/**
+ * Hämtar alla användar-ID:n som är blockerade av eller blockerar den inloggade användaren.
+ * Används för att slippa CORS-fel i Header-menyn.
+ */
+export async function getUserBlocksAction() {
+  try {
+    const serverSupabase = await createServerClient();
+    const { data: { user } } = await serverSupabase.auth.getUser();
+
+    if (!user) return { data: [] };
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    const { data, error } = await supabaseAdmin
+      .from('user_blocks')
+      .select('blocker_id, blocked_id')
+      .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
+
+    if (error) throw error;
+
+    // Returnera en lista på alla unika ID:n som är involverade i blockeringen
+    const blockIds = new Set<string>();
+    data.forEach(b => {
+      blockIds.add(b.blocker_id);
+      blockIds.add(b.blocked_id);
+    });
+
+    return { data: Array.from(blockIds) };
+  } catch (err: any) {
+    console.error("Error in getUserBlocksAction:", err);
+    return { data: [], error: err.message };
+  }
+}
+
 
 

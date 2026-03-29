@@ -6,7 +6,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
 import { updateUserIP } from '@/app/actions/securityActions'
-import { getUnreadSupportCountAction } from '@/app/actions/userActions'
+import { getUnreadSupportCountAction, getUserBlocksAction } from '@/app/actions/userActions'
+
 
 import { getSoundUrl } from '@/utils/sounds'
 import { useUser } from './UserContext'
@@ -161,9 +162,9 @@ export default function Header() {
     
     // 1. Fetch alla personliga notiser
     async function fetchPersonligaNotiser() {
-      const { data: bData } = await supabase.from('user_blocks').select('*')
-          .or(`blocker_id.eq.${userProfile.id},blocked_id.eq.${userProfile.id}`);
-      const blockedIds = bData ? bData.map((b: any) => b.blocker_id === userProfile.id ? b.blocked_id : b.blocker_id) : [];
+      // --- SERVER ACTION FÖR BLOCKERINGAR (BYPASS CORS) ---
+      const { data: serverBlockIds } = await getUserBlocksAction();
+      const blockedIds: string[] = serverBlockIds || [];
       setBlockedUserIds(blockedIds);
 
       const { data: notifsData } = await supabase.from('notifications')
