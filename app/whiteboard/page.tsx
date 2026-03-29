@@ -5,6 +5,7 @@ import { Heart, MessageCircle, Share2, MoreHorizontal, Trash2, User, Send, Alert
 import { createClient } from '@/utils/supabase/client'
 import { useRouter } from 'next/navigation'
 import { useWordFilter } from '@/hooks/useWordFilter'
+import { useUser } from '@/components/UserContext'
 
 const WhiteboardSkeleton = () => (
    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
@@ -31,10 +32,9 @@ const WhiteboardSkeleton = () => (
 export default function Whiteboard() {
   const router = useRouter()
   const { mask } = useWordFilter()
+  const { profile: currentUser, loading: userLoading } = useUser()
   const [posts, setPosts] = useState<any[]>([])
   const [newPostContent, setNewPostContent] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [currentUser, setCurrentUser] = useState<any>(null)
   
   const [showReportModal, setShowReportModal] = useState(false)
   const [reportTarget, setReportTarget] = useState<any>(null)
@@ -54,31 +54,8 @@ export default function Whiteboard() {
   const supabase = createClient()
 
   useEffect(() => {
-    const init = async () => {
-       try {
-          // 1. Hämta session och data parallellt (Snabbare!)
-          const sessionPromise = supabase.auth.getSession();
-          
-          const { data: { session } } = await sessionPromise;
-          const user = session?.user;
-          
-          if (user) {
-             // Hämta profil och kör fetchData parallellt
-             await Promise.all([
-                supabase.from('profiles').select('*').eq('id', user.id).single().then(({data}) => {
-                   if (data) setCurrentUser(data);
-                }),
-                fetchData()
-             ]);
-          } else {
-             fetchData();
-          }
-       } catch (err) {
-          console.error("Whiteboard init error:", err);
-          fetchData();
-       }
-    };
-    init();
+    if (userLoading) return;
+    fetchData();
 
     const channel = supabase.channel('realtime whiteboard complex')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard' }, () => fetchData())
@@ -87,22 +64,11 @@ export default function Whiteboard() {
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
-  }, [])
+  }, [userLoading, supabase])
 
   async function fetchData() {
-    // Vi använder nu currentUser från state för att slippa anropa getUser() hela tiden (Lock contention fix)
-    let profileToUse = currentUser;
+    const profileToUse = currentUser;
     let blockedUserIds: string[] = [];
-
-    if (!profileToUse) {
-       // Om vi inte har currentUser än, gör en snabb koll (men bara om nödvändigt)
-       const { data: { user } } = await supabase.auth.getUser();
-       if (user) {
-          const { data: p } = await supabase.from('profiles').select('*').eq('id', user.id).single();
-          profileToUse = p;
-          if (p) setCurrentUser(p);
-       }
-    }
 
     if (profileToUse) {
       const { data: blocksRes } = await supabase.from('user_blocks').select('*').or(`blocker_id.eq.${profileToUse.id},blocked_id.eq.${profileToUse.id}`);
@@ -116,7 +82,6 @@ export default function Whiteboard() {
 
     let postsData = [];
     if (profileToUse) {
-      // THE ALGORITHM 
       const { data } = await supabase.rpc('get_newsfeed', { viewer_id: profileToUse.id })
       if(data && data.length > 0) {
          const pIds = data.map((x:any) => x.id);
@@ -128,7 +93,6 @@ export default function Whiteboard() {
       if (data) postsData = data;
     }
 
-    // Resolve parent_posts if they exist
     const parentPostIds = postsData.map(p => p.parent_id).filter(Boolean);
     let resolvedParentPosts: any[] = [];
     if (parentPostIds.length > 0) {
@@ -173,8 +137,6 @@ export default function Whiteboard() {
     } else {
        setPosts([]);
     }
-    
-    setLoading(false)
   }
 
   const handlePost = async () => {
@@ -570,8 +532,8 @@ export default function Whiteboard() {
 
       {/* Flöde */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-        {loading && <WhiteboardSkeleton />}
-        {!loading && posts.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Inga inlägg hittades i din nätverkszon. Bli den första att skriva något!</p>}
+        {userLoading && posts.length === 0 && <WhiteboardSkeleton />}
+        {!userLoading && posts.length === 0 && <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '2rem' }}>Inga inlägg hittades i din nätverkszon. Bli den första att skriva något!</p>}
         
         {posts.map(post => {
           const isOwnPost = currentUser?.id === post.author_id;

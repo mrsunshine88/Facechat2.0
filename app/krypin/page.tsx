@@ -350,7 +350,7 @@ function MittKrypinContent() {
              // 2. Parallelize everything
              const [targetRes, blocksRes, wordsRes] = await Promise.all([
                 targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: [activeUser] }),
-                supabase.from('user_blocks').select('*').or(`blocker_id.eq.${activeUser.id},blocked_id.eq.${activeUser.id}`),
+                activeUser?.id ? supabase.from('user_blocks').select('*').or(`blocker_id.eq.${activeUser.id},blocked_id.eq.${activeUser.id}`) : Promise.resolve({ data: [] }),
                 supabase.from('forbidden_words').select('word')
              ]);
 

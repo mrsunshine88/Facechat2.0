@@ -59,7 +59,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const currentUser = session?.user || null;
       setUser(currentUser);
       if (currentUser) {
-        fetchUserAndProfile();
+        // Om vi redan har sessionen här, använd den istället för att anropa getSession igen!
+        supabase.from('profiles').select('*').eq('id', currentUser.id).single().then(({data}) => {
+          if (data) {
+            if (data.is_banned) {
+               supabase.auth.signOut();
+               window.location.href = '/login?error=Ditt konto är avstängt.';
+            } else {
+               setProfile(data);
+            }
+          }
+          setLoading(false);
+        });
       } else {
         setProfile(null);
         setLoading(false);
