@@ -130,7 +130,7 @@ function ChattrumContent() {
          const { data } = await fetchRoomsData(currentUserRef.current);
          if (data) {
             setRooms(data);
-            if (payload.event === 'DELETE' && activeRoom?.id === payload.old.id) {
+            if (payload.event === 'DELETE' && activeRoomRef.current?.id === payload.old.id) {
                setActiveRoom(null);
                alert('Detta rummet har stängts eller raderats.');
             }
@@ -139,7 +139,13 @@ function ChattrumContent() {
       .subscribe();
 
     return () => { supabase.removeChannel(roomsChannel); };
-  }, [supabase, urlRoomName, activeRoom?.id]);
+  }, [supabase, urlRoomName]);
+
+  // Ref för att rums-lyssnaren ska veta vilket rum som är aktivt utan att ladda om hela listan
+  const activeRoomRef = useRef<any>(null);
+  useEffect(() => {
+    activeRoomRef.current = activeRoom;
+  }, [activeRoom]);
 
   const handleJoinRoom = (room: any) => {
     if (activeRoom?.id === room.id) {

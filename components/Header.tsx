@@ -55,7 +55,7 @@ export default function Header() {
 
   // BACKGROUND SECURITY HEARTBEAT (Runs once on mount + every 60s)
   useEffect(() => {
-    if (!user?.id || isLoggingOut.current) return;
+    if (!user?.id || isLoggingOut.current || isLoginRoute) return;
 
     function runHeartbeat() {
       const now = Date.now();

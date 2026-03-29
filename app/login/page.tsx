@@ -43,6 +43,9 @@ export default function Login() {
     e.preventDefault()
     setLoading(true)
     setError('')
+    
+    // Städa bort gamla felmeddelanden från adressfältet omedelbart
+    router.replace('/login', { scroll: false });
 
     try {
       if (isRegistering) {
