@@ -932,7 +932,7 @@ function MittKrypinContent() {
 
                   cvs.toBlob(
                      (blob) => { if (blob) resolve(blob); else reject(new Error('Canvas misslyckades')); },
-                     'image/webp',
+                     'image/jpeg',
                      0.8
                   );
                };
@@ -946,7 +946,7 @@ function MittKrypinContent() {
          setCustomAlert('Optimerar och krymper bilden... 🚀');
          const compressedBlob = await compressImage(file);
 
-         const fileExt = 'webp';
+         const fileExt = 'jpg';
          const fileName = `${currentUser.id}-${Math.random().toString(36).substring(7)}.${fileExt}`;
          const filePath = `${fileName}`;
 
@@ -954,7 +954,7 @@ function MittKrypinContent() {
          const oldAvatarUrl = currentUser.avatar_url;
 
          // 2. Upload to Supabase Storage Bucket 'avatars'
-         const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressedBlob, { contentType: 'image/webp' });
+         const { error: uploadError } = await supabase.storage.from('avatars').upload(filePath, compressedBlob, { contentType: 'image/jpeg' });
 
          if (uploadError) {
             if (uploadError.message.includes("Bucket not found")) {

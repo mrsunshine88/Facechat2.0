@@ -82,13 +82,13 @@ BEGIN
     -- 4. BILD-RENSNING: Herrelösa filer i storage
     SELECT public.cleanup_orphan_avatars_v4() INTO cleared_orphan_files;
 
-    -- 5. BILD-OPTIMERING: Tvinga 400px WebP (80%) på alla avatarer genom att rensa gamla parametrar
+    -- 5. BILD-OPTIMERING: Tvinga 400px Jpeg (80%) på alla avatarer genom att rensa gamla parametrar
     WITH upd AS (
         UPDATE public.profiles 
-        SET avatar_url = split_part(avatar_url, '?', 1) || '?width=400&format=webp&quality=80'
+        SET avatar_url = split_part(avatar_url, '?', 1) || '?width=400&quality=80'
         WHERE avatar_url IS NOT NULL 
           AND avatar_url != '' 
-          AND avatar_url NOT LIKE '%width=400&format=webp&quality=80%'
+          AND avatar_url NOT LIKE '%width=400&quality=80%'
         RETURNING 1
     ) SELECT count(*) INTO optimized_images FROM upd;
 
