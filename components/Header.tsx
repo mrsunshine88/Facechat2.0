@@ -6,6 +6,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
 import { updateUserIP } from '@/app/actions/securityActions'
+import { getUnreadSupportCountAction } from '@/app/actions/userActions'
+
 import { getSoundUrl } from '@/utils/sounds'
 import { useUser } from './UserContext'
 
@@ -22,8 +24,8 @@ export default function Header() {
   const [userProfile, setUserProfile] = useState<any>(null)
   const [isAndroid, setIsAndroid] = useState(false)
   
-  // OPTIMERING: Spara tidpunkt för senaste tunga admin-hämtningen för att undvika seghet vid sidbyte
   const lastAdminFetch = useRef<number>(0);
+  const lastHeartbeatRef = useRef<number>(0);
 
   const supabase = createClient()
 
@@ -37,27 +39,25 @@ export default function Header() {
        setIsAndroid(/android/i.test(navigator.userAgent));
        setUserProfile({ ...profile, auth_email: user?.email });
        
-       // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE (I bakgrunden!)
+       // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT (Max en gång var 60:e sekund för prestanda)
        if (user?.id) {
-         setTimeout(() => {
-           supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-           updateUserIP(user.id);
-         }, 0);
+         const now = Date.now();
+         if (now - lastHeartbeatRef.current > 60000) {
+           lastHeartbeatRef.current = now;
+           setTimeout(() => {
+             supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+             updateUserIP(user.id);
+           }, 0);
+         }
        }
        
-       // Fetch unread support tickets (PARALLELLISERAD & OPTIMERAD!)
-       const isSuperAdmin = user?.email?.toLowerCase() === 'apersson508@gmail.com' || profile.perm_roles;
-       const canManageSupport = isSuperAdmin || profile.perm_support;
-       
-       if (canManageSupport) {
-         supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
-            setUnreadSupportCount(count || 0);
-         });
-       } else if (user?.id) {
-         supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
-            setUnreadSupportCount(count || 0);
-         });
-       }
+       // Fetch unread support tickets (SERVER ACTION - BYPASS CORS & HANG)
+       getUnreadSupportCountAction().then(res => {
+         if (res && typeof res.count === 'number') {
+            setUnreadSupportCount(res.count);
+         }
+       });
+
     }
     syncHeader();
   }, [pathname, profile, user])
@@ -223,14 +223,13 @@ export default function Header() {
     const supportChannel = supabase.channel('support_updates')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, (payload) => {
          async function refreshCount() {
-           if (canManageSupport) {
-             const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false);
-             setUnreadSupportCount(count || 0);
-           } else {
-             const { count } = await supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', userProfile.id).eq('has_unread_user', true);
-             setUnreadSupportCount(count || 0);
-           }
+           getUnreadSupportCountAction().then(res => {
+             if (res && typeof res.count === 'number') {
+                setUnreadSupportCount(res.count);
+             }
+           });
          }
+
          refreshCount();
       }).subscribe();
     // 5. Lyssna på Online Presence
@@ -298,7 +297,7 @@ export default function Header() {
        supabase.removeChannel(arcadeChannel);
        supabase.removeChannel(profileChannel);
     };
-  }, [userProfile, supabase])
+  }, [userProfile?.id, supabase]) // OPTIMERING: Beror nu bara på ID, inte hela profilen (stoppar loopar!)
 
   const simulateNotification = () => {
     // Legacy demo function (kept for failsafes)

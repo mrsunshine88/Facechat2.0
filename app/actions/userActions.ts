@@ -382,3 +382,59 @@ export async function toggleUserBlockAction(targetUserId: string, shouldBlock: b
   }
 }
 
+/**
+ * Hämtar antal olästa support-ärenden (Server Action för att undvika CORS).
+ */
+export async function getUnreadSupportCountAction() {
+  try {
+    const serverSupabase = await createServerClient();
+    const { data: { user } } = await serverSupabase.auth.getUser();
+
+    if (!user) return { count: 0 };
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // Hämta profil för att kolla behörighet
+    const { data: profile } = await supabaseAdmin
+      .from('profiles')
+      .select('is_admin, perm_support, perm_roles, auth_email')
+      .eq('id', user.id)
+      .single();
+
+    if (!profile) return { count: 0 };
+
+    const isSuperAdmin = profile.auth_email?.toLowerCase() === 'apersson508@gmail.com' || profile.perm_roles;
+    const canManageSupport = isSuperAdmin || profile.is_admin || profile.perm_support;
+
+    if (canManageSupport) {
+      // Admin: Räkna alla ohanterade ärenden som inte är raderade
+      const { count, error } = await supabaseAdmin
+        .from('support_tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('has_unread_admin', true)
+        .eq('admin_deleted', false);
+      
+      if (error) throw error;
+      return { count: count || 0 };
+    } else {
+      // Vanlig användare: Räkna bara egna olästa svar
+      const { count, error } = await supabaseAdmin
+        .from('support_tickets')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('has_unread_user', true);
+      
+      if (error) throw error;
+      return { count: count || 0 };
+    }
+  } catch (err: any) {
+    console.error("Error in getUnreadSupportCountAction:", err);
+    return { count: 0, error: err.message };
+  }
+}
+
+

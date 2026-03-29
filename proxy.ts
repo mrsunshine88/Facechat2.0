@@ -65,49 +65,58 @@ export async function proxy(request: NextRequest) {
                    request.nextUrl.pathname === '/favicon.ico';
 
   if (!isStatic && !request.nextUrl.pathname.startsWith('/blocked')) {
-    // --- 1. ROOT-BYPASS (SÄKERHET FÖR MRSUNSHINE88) ---
-    // Hämtar IP för apersson508@gmail.com
-    const { data: rootIp, error: rootError } = await supabase.rpc('get_root_admin_ip');
-    
-    if (rootError) {
-      console.error(`[PROXY] Fel vid hämtning av Root-IP: ${rootError.message}`);
+    // --- PARALLELLISERA KONTROLLER FÖR ATT MINSKA LATENCY (FÖRBÄTTRING) ---
+    // Try-catch skyddar mot att hela sidan kraschar (500) om databasen laggar!
+    let rootIp: string | null = null;
+    let isBlocked: any = null;
+    let user: any = null;
+
+    try {
+      const [rootResult, blockResult, authResult] = await Promise.all([
+        supabase.rpc('get_root_admin_ip'),
+        supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
+        supabase.auth.getUser()
+      ]);
+
+      rootIp = rootResult.data;
+      isBlocked = blockResult.data;
+      user = authResult.data?.user;
+
+      if (rootResult.error) console.error(`[PROXY] Root-IP Fel: ${rootResult.error.message}`);
+      if (blockResult.error && blockResult.error.code !== 'PGRST116') {
+         console.error(`[PROXY] IP-spärr Fel: ${blockResult.error.message}`);
+      }
+    } catch (e: any) {
+      console.error("[PROXY] Akut fel i säkerhetskontroll:", e.message);
+      // Vid extremt fel (databasen helt nere), tillåt passage för att inte låsa ut alla, 
+      // men logga felet så det kan åtgärdas.
     }
 
+    // 1. ROOT-BYPASS (Logik för apersson508@gmail.com)
     if (rootIp) {
       const cleanRootIp = rootIp.replace(/^.*:ffff:/, '');
       if (ip === cleanRootIp) {
-        // Om det är ägarens IP, släpp förbi direkt (Total Immunitet)
-        // console.log(`[PROXY] 🛡️ Root Bypass aktiv: ${ip}`);
-        return response;
+         if (user && request.nextUrl.pathname.startsWith('/login')) {
+            return NextResponse.redirect(new URL('/', request.url));
+         }
+         return response;
       }
     }
 
-    // --- 2. KOLLA SPÄRRILISTAN (HUVUDSKYDD) ---
-    const { data: isBlocked, error: blockError } = await supabase
-      .from('blocked_ips')
-      .select('ip, reason')
-      .eq('ip', ip)
-      .single();
-
-    if (blockError && blockError.code !== 'PGRST116') {
-      console.error(`[PROXY] Databasfel vid IP-kontroll (!): ${blockError.message}`);
-      // Tips: Om du ser Permission Denied här, kör fix_ip_blocking_rls.sql
-    }
-
+    // 2. KOLLA SPÄRRILISTAN (HUVUDSKYDD)
     if (isBlocked) {
       console.log(`[PROXY] 🛑 BLOCKERAT IP FÖRSÖKER ANSLUTA: ${ip} (Anledning: ${isBlocked.reason})`);
       return NextResponse.redirect(new URL('/blocked', request.url));
     }
+
+    // 3. SMART REDIRECT FÖR INLOGGADE
+    if (user && request.nextUrl.pathname.startsWith('/login')) {
+      return NextResponse.redirect(new URL('/', request.url))
+    }
   }
-
-
-
-  // 3. Uppdatera session
-  const { data: { user } } = await supabase.auth.getUser()
-
-  // 4. SMART REDIRECT: Om man redan är inloggad och hamnar på login-sidan, skicka hem hen direkt!
-  if (user && request.nextUrl.pathname.startsWith('/login')) {
-    return NextResponse.redirect(new URL('/', request.url))
+ else {
+    // Om det är en statisk fil, kolla bara login-redirect (vid behov)
+    // Men oftast behövs inte auth-check vid statiska filer pga prestanda
   }
 
   return response
