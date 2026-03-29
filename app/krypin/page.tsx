@@ -6,7 +6,7 @@ import { Mail, Book, Users, Star, Settings, User, FileEdit, Search, Shield, Help
 import { PROFILE_SONGS } from './songs';
 import { createClient } from '@/utils/supabase/client';
 import SnakeGame from '@/components/SnakeGame';
-import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
+import { isUserConfirmed, saveKrypinDesign, toggleUserBlockAction } from '../actions/userActions';
 import { sanitizeCSS } from '@/utils/securityUtils';
 import { useWordFilter } from '@/hooks/useWordFilter';
 import { useUser } from '@/components/UserContext';
@@ -1063,53 +1063,32 @@ function MittKrypinContent() {
    const handleToggleBlock = async () => {
       if (!viewerUser || !currentUser) return;
 
-      // Check if I am an admin (Admins should not block)
-      const isViewerAdmin = viewerUser.is_admin ||
-         viewerUser.perm_users ||
-         viewerUser.perm_content ||
-         viewerUser.perm_rooms ||
-         viewerUser.perm_roles ||
-         viewerUser.perm_support ||
-         viewerUser.perm_logs ||
-         viewerUser.perm_stats ||
-         viewerUser.perm_diagnostics ||
-         viewerUser.perm_chat;
-
-      // Check if target is an admin (Protected)
-      const isAdminTarget = currentUser.is_admin ||
-         currentUser.perm_users ||
-         currentUser.perm_content ||
-         currentUser.perm_rooms ||
-         currentUser.perm_roles ||
-         currentUser.perm_support ||
-         currentUser.perm_logs ||
-         currentUser.perm_stats ||
-         currentUser.perm_diagnostics ||
-         currentUser.perm_chat;
-
-      if (isViewerAdmin && !isBlocked) {
-         setCustomAlert('Som administratör kan du inte blockera användare personligen. Använd modereringsverktygen i adminpanelen om en användare bryter mot reglerna.');
-         return;
-      }
-
-      if (isAdminTarget && !isBlocked) {
-         setCustomAlert('Det går inte att blockera en administratör då de måste kunna kommunicera med dig gällande support och regler.');
-         return;
-      }
-
       if (isBlocked) {
          if (!confirm('Vill du häva blockeringen mot denna användare?')) return;
-         await supabase.from('user_blocks').delete().eq('blocker_id', viewerUser.id).eq('blocked_id', currentUser.id);
-         setIsBlocked(false);
-         setGlobalBlockedIds(prev => { const next = new Set(prev); if (!hasBlockedMe) next.delete(currentUser.id); return next; });
-         setCustomAlert('Blockeringen är hävd.');
+         
+         const result = await toggleUserBlockAction(currentUser.id, false);
+         if (result.success) {
+            setIsBlocked(false);
+            setGlobalBlockedIds(prev => { 
+               const next = new Set(prev); 
+               if (!hasBlockedMe) next.delete(currentUser.id); 
+               return next; 
+            });
+            setCustomAlert('Blockeringen är hävd.');
+         } else {
+            setCustomAlert('Misslyckades att häva blockering: ' + (result.error || 'Okänt fel'));
+         }
       } else {
          if (!confirm('Är du säker på att du vill blockera denna användare? Ni kommer inte kunna se varandras profiler eller kommunicera längre.')) return;
 
-         const { error } = await supabase.from('user_blocks').insert({ blocker_id: viewerUser.id, blocked_id: currentUser.id });
-         if (!error) {
+         const result = await toggleUserBlockAction(currentUser.id, true);
+         if (result.success) {
             setIsBlocked(true);
-            setGlobalBlockedIds(prev => { const next = new Set(prev); next.add(currentUser.id); return next; });
+            setGlobalBlockedIds(prev => { 
+               const next = new Set(prev); 
+               next.add(currentUser.id); 
+               return next; 
+            });
             setCustomAlert('Användaren har blivit blockerad. Du skickas nu tillbaka till ditt krypin.');
 
             // Immediate redirect as requested
@@ -1117,7 +1096,7 @@ function MittKrypinContent() {
                window.location.href = '/krypin';
             }, 1200);
          } else {
-            setCustomAlert('Misslyckades att blockera: ' + error.message);
+            setCustomAlert('Misslyckades att blockera: ' + (result.error || 'Okänt fel'));
          }
       }
    };

@@ -304,3 +304,81 @@ export async function updateUserProfile(payload: {
     return { error: err.message || 'Kunde inte uppdatera profilen.' };
   }
 }
+
+/**
+ * Hanterar blockering/avblockering av en användare (Client -> Server Action).
+ * Detta kringgår CORS-problem i frontend.
+ */
+export async function toggleUserBlockAction(targetUserId: string, shouldBlock: boolean) {
+  try {
+    const serverSupabase = await createServerClient();
+    const { data: { user } } = await serverSupabase.auth.getUser();
+
+    if (!user) {
+      return { error: 'Du måste vara inloggad för att utföra denna åtgärd.' };
+    }
+
+    if (user.id === targetUserId) {
+      return { error: 'Du kan inte blockera dig själv.' };
+    }
+
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
+
+    // 1. Säkerhetskontroll: Kan inte blockera Root eller Admins
+    const { data: targetProfile } = await supabaseAdmin
+      .from('profiles')
+      .select('username, is_admin, perm_users, perm_content, perm_rooms, perm_roles, perm_support, perm_logs, perm_stats, perm_diagnostics, perm_chat, auth_email')
+      .eq('id', targetUserId)
+      .single();
+
+    if (targetProfile) {
+      const isAdmin = targetProfile.is_admin || 
+                      targetProfile.perm_users || 
+                      targetProfile.perm_content || 
+                      targetProfile.perm_rooms || 
+                      targetProfile.perm_roles || 
+                      targetProfile.perm_support || 
+                      targetProfile.perm_logs || 
+                      targetProfile.perm_stats || 
+                      targetProfile.perm_diagnostics || 
+                      targetProfile.perm_chat;
+      
+      const isRoot = targetProfile.auth_email === 'apersson508@gmail.com' || 
+                     targetProfile.username?.toLowerCase() === 'mrsunshine88';
+
+      if (isAdmin || isRoot) {
+        return { error: 'Det går inte att blockera en administratör.' };
+      }
+    }
+
+    // 2. Utför åtgärd
+    if (shouldBlock) {
+      const { error } = await supabaseAdmin
+        .from('user_blocks')
+        .insert({ blocker_id: user.id, blocked_id: targetUserId });
+      
+      if (error && error.code !== '23505') { // Ignorera om redan blockad (unikt index)
+        throw error;
+      }
+      return { success: true, status: 'blocked' };
+    } else {
+      const { error } = await supabaseAdmin
+        .from('user_blocks')
+        .delete()
+        .eq('blocker_id', user.id)
+        .eq('blocked_id', targetUserId);
+      
+      if (error) throw error;
+      return { success: true, status: 'unblocked' };
+    }
+
+  } catch (err: any) {
+    console.error("Error in toggleUserBlockAction:", err);
+    return { error: err.message || 'Ett oväntat fel uppstod vid blockering.' };
+  }
+}
+
