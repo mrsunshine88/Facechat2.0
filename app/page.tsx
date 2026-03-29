@@ -7,7 +7,7 @@ import { LayoutGrid, User, MessagesSquare, MessageSquare } from 'lucide-react'
 
 export default function Dashboard() {
   const router = useRouter()
-  const [nickname, setNickname] = useState('Användare')
+  const [nickname, setNickname] = useState('')
   const [loading, setLoading] = useState(true)
   
   const supabase = createClient()
@@ -17,17 +17,20 @@ export default function Dashboard() {
       const { data: { session } } = await supabase.auth.getSession()
       const user = session?.user
       if (user) {
+        // Snabb-fallback från sessionen direkt (innan DB-frågan är klar)
+        const fastName = user.user_metadata?.username || user.email?.split('@')[0] || 'Medlem';
+        setNickname(fastName);
+
         if (!user.email_confirmed_at) {
           await supabase.auth.signOut();
           router.push('/login?error=Du måste bekräfta din e-postadress innan du kan logga in.');
           return;
         }
-        const { data: profList } = await supabase.from('profiles').select('username').eq('id', user.id).limit(1)
-        const profile = profList && profList.length > 0 ? profList[0] : null
+
+        // Hämta den officiella profilen
+        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
         if (profile?.username) {
           setNickname(profile.username)
-        } else if (user.email) {
-          setNickname(user.email.split('@')[0])
         }
       }
       setLoading(false)

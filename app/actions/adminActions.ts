@@ -200,7 +200,7 @@ export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId
 
 export async function adminUpdatePermissions(userId: string, payload: any) {
   try {
-    await verifyAdminPermission('perm_roles');
+    const { userId: executorId } = await verifyAdminPermission('perm_roles');
 
     // Root Protection
     const { data: targetProfile } = await getAdminClient().from('profiles').select('auth_email').eq('id', userId).single();
@@ -210,6 +210,21 @@ export async function adminUpdatePermissions(userId: string, payload: any) {
 
     const { error } = await getAdminClient().from('profiles').update(payload).eq('id', userId);
     if (error) throw error;
+
+    // Skicka notis om admin-status ändras
+    if (payload.hasOwnProperty('is_admin')) {
+      const isAdmin = payload.is_admin;
+      await getAdminClient().from('notifications').insert({
+        receiver_id: userId,
+        actor_id: executorId,
+        type: isAdmin ? 'admin_promote' : 'admin_demote',
+        content: isAdmin 
+          ? 'Grattis! Du har nu blivit utsedd till administratör på Facechat. Tack för att du hjälper till att hålla sidan trygg och rolig! 🛡️✨' 
+          : 'Din administratörs-status har tagits bort. Tack för den tid du lagt ner som moderator på Facechat! 🙏',
+        link: isAdmin ? '/admin' : '/'
+      });
+    }
+
     return { success: true };
   } catch (err: any) {
     return { error: err.message };

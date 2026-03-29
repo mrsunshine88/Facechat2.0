@@ -439,7 +439,7 @@ function ChattrumContent() {
            <button onClick={() => setMobileDropdownOpen(!mobileDropdownOpen)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: 'var(--theme-chat)', fontWeight: '600' }}>
               #{activeRoom ? activeRoom.name : 'Byt Rum'} <ChevronDown size={14} style={{ transform: mobileDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
            </button>
-           {activeRoom && activeRoom.is_secret && (
+           {activeRoom && activeRoom.is_secret && !isSpectator && (
               <div style={{ display: 'flex', gap: '0.5rem' }}>
                  {canManageMembers && !isAdminRoom && (
                     <button onClick={openInviteModal} style={{ background: 'var(--theme-chat)', color: 'white', border: 'none', padding: '6px', borderRadius: '6px' }} title="Bjud in"><UserPlus size={16} /></button>
@@ -458,7 +458,7 @@ function ChattrumContent() {
              {activeRoom?.created_by === currentUser?.id && !isAdminRoom && ( <button onClick={handleRenameRoom} style={{ background: 'none', border: 'none', color: 'var(--theme-chat)', cursor: 'pointer', padding: '4px' }} title="Byt namn"><Edit size={16} /></button> )}
              {isSpectator && <span style={{ fontSize: '0.8rem', backgroundColor: '#ef4444', color: 'white', padding: '4px 12px', borderRadius: '999px', marginLeft: '12px' }}>Moderator-läge</span>}
            </h2>
-           {activeRoom && activeRoom.is_secret && (
+           {activeRoom && activeRoom.is_secret && !isSpectator && (
               <div style={{ display: 'flex', gap: '0.75rem' }}>
                  {canManageMembers && !isAdminRoom && (
                     <button onClick={openInviteModal} style={{ backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '8px', fontSize: '0.85rem', fontWeight: '600', display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}><UserPlus size={16} /> Bjud in</button>
@@ -512,7 +512,7 @@ function ChattrumContent() {
                    <span style={{ fontSize: '0.75rem', fontWeight: 'bold', color: msg.author_id === currentUser?.id ? 'var(--theme-chat)' : 'var(--text-main)', cursor: 'pointer' }} onClick={() => window.location.href=`/krypin?u=${msg.profiles?.username}`}>{msg.profiles?.username || 'Okänd'} <span style={{ fontWeight: 'normal', color: 'var(--text-muted)' }}>{new Date(msg.created_at).toLocaleTimeString('sv-SE', { hour: '2-digit', minute: '2-digit' })}</span></span>
                    <div style={{ display: 'flex', gap: '0.5rem' }}>
                       {msg.author_id !== currentUser?.id && <button onClick={() => { setReportTarget({ id: msg.id, reportedUserId: msg.author_id, content: msg.content }); setShowReportModal(true); }} style={{ background: 'none', border: 'none', color: '#f59e0b', cursor: 'pointer' }}><AlertTriangle size={14}/></button>}
-                      {(msg.author_id === currentUser?.id || isModerator) && <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>}
+                      {msg.author_id === currentUser?.id && <button onClick={() => handleDeleteMessage(msg.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer' }}><Trash2 size={14}/></button>}
                    </div>
                 </div>
                 <p style={{ margin: 0, fontSize: '0.95rem', wordBreak: 'break-word' }}>{mask(msg.content)}</p>
@@ -534,7 +534,7 @@ function ChattrumContent() {
          {onlineUsers.map(user => (
             <div key={user.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
                <span style={{ fontSize: '0.85rem' }}>{user.username}</span>
-               {activeRoom?.is_secret && canManageMembers && user.id !== currentUser?.id && (
+               {activeRoom?.is_secret && canManageMembers && !isSpectator && user.id !== currentUser?.id && (
                   <button onClick={() => handleKickUser(user.id, user.username)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }} title="Kicka användare"><XCircle size={14}/></button>
                )}
             </div>

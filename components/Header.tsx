@@ -47,14 +47,19 @@ export default function Header() {
           return;
         }
 
+        // Snabb-fallback för att fylla ut setUserProfile direkt
+        const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
+        const fallbackName = user.user_metadata?.username || user.email?.split('@')[0] || 'Medlem';
+
         if (!profile) {
-          // Self-heal profile (utan dom nya kolumnerna så den inte kraschar före SQL:en är körd)
-          const initialAdmin = user.email?.toLowerCase() === 'apersson508@gmail.com';
-          const newProfile = { id: user.id, username: user.email?.split('@')[0] || 'Admin', is_admin: initialAdmin, perm_users: initialAdmin, perm_content: initialAdmin, perm_rooms: initialAdmin, perm_roles: initialAdmin };
+          // Self-heal profile
+          const newProfile = { id: user.id, username: fallbackName, is_admin: isRoot, perm_users: isRoot, perm_content: isRoot, perm_rooms: isRoot, perm_roles: isRoot };
           await supabase.from('profiles').insert(newProfile);
-          setUserProfile({ ...newProfile, perm_support: initialAdmin, perm_logs: initialAdmin, auth_email: user.email });
+          setUserProfile({ ...newProfile, perm_support: isRoot, perm_logs: isRoot, auth_email: user.email });
         } else {
-          setUserProfile({ ...profile, auth_email: user.email })
+          // Vid oavgjort, prioritera att ha ett namn
+          const finalProfile = { ...profile, username: profile.username || fallbackName, auth_email: user.email };
+          setUserProfile(finalProfile)
         }
         
         // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE
@@ -63,8 +68,8 @@ export default function Header() {
         
         // Fetch unread support tickets (OPTIMERAD: Max en gång i minuten vid sidbyte för att undvika seghet)
         const currentProfile = profile || { is_admin: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_support: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_roles: user.email?.toLowerCase() === 'apersson508@gmail.com' };
-        const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com' || currentProfile.perm_roles;
-        const canManageSupport = isRoot || currentProfile.perm_support;
+        const isSuperAdmin = user.email?.toLowerCase() === 'apersson508@gmail.com' || currentProfile.perm_roles;
+        const canManageSupport = isSuperAdmin || currentProfile.perm_support;
         
         const now = Date.now();
         if (canManageSupport && (now - lastAdminFetch.current > 60000)) {
