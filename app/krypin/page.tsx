@@ -9,6 +9,7 @@ import SnakeGame from '@/components/SnakeGame';
 import { isUserConfirmed, saveKrypinDesign } from '../actions/userActions';
 import { sanitizeCSS } from '@/utils/securityUtils';
 import { useWordFilter } from '@/hooks/useWordFilter';
+import { useUser } from '@/components/UserContext';
 
 const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
 
@@ -179,10 +180,14 @@ export default function MittKrypin() {
 const supabase = createClient();
 
 function MittKrypinContent() {
-   const router = useRouter();
-   const searchParams = useSearchParams();
-   const targetUsername = searchParams?.get('u');
-   const { mask } = useWordFilter();
+    const router = useRouter();
+    const searchParams = useSearchParams();
+    const targetUsername = searchParams?.get('u');
+    const { mask } = useWordFilter();
+    const { profile: globalViewer, loading: userLoading } = useUser();
+
+    // REVERSIBLE WORD FILTER (MASKING TEXT WITHOUT DELETING FROM DB)
+    const maskWords = (text: string) => mask(text);
 
    const [activeTab, setActiveTab] = useState((searchParams?.get('spela') || searchParams?.get('arcade')) ? 'Spel 🕹️' : (searchParams?.get('tab') || 'Profil'));
    const [currentUser, setCurrentUser] = useState<any>(null); // Den vems profil man KIKAR PÅ
@@ -321,118 +326,95 @@ function MittKrypinContent() {
    const [reportReason, setReportReason] = useState('');
 
 
-   // REVERSIBELT ORD-FILTER (MASKERAR TEXT UTAN ATT RADERA DEN UR DB)
-   // REVERSIBELT ORD-FILTER (MASKERAR TEXT UTAN ATT RADERA DEN UR DB)
-   const maskWords = (text: string) => {
-      return mask(text);
-   };
+    useEffect(() => {
+       let globalChannel: any;
+       async function initData() {
+          try {
+             // Android-detect directly (Flash fast!)
+             const isAndroidValue = /android/i.test(navigator.userAgent);
+             setIsAndroid(isAndroidValue);
 
-   useEffect(() => {
-      let globalChannel: any;
+             // 1. Quick start: Use globalViewer if available
+             if (globalViewer) {
+                setViewerUser(globalViewer);
+             } else {
+                const { data: { session: s } } = await supabase.auth.getSession();
+                if (!s) { window.location.href = '/login'; return; }
+                const { data: p } = await supabase.from('profiles').select('*').eq('id', s.user.id).single();
+                setViewerUser(p || s.user);
+             }
 
-      async function initData() {
-         let profileToView: any = null;
-         let iBlocked = false;
-         let blockedMe = false;
+             const activeUser = globalViewer || viewerUser;
+             if (!activeUser) return;
 
-         try {
-            // Android-detektering för grafisk lättnad (Stora Trimmarn: Android Edition)
-            const isAndroidValue = /android/i.test(navigator.userAgent);
-            setIsAndroid(isAndroidValue);
+             // 2. Parallelize everything
+             const [targetRes, blocksRes, wordsRes] = await Promise.all([
+                targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: [activeUser] }),
+                supabase.from('user_blocks').select('*').or(`blocker_id.eq.${activeUser.id},blocked_id.eq.${activeUser.id}`),
+                supabase.from('forbidden_words').select('word')
+             ]);
 
-            // 1. Hämta session och ord-filter parallellt (SNABBARE!)
-            const [sessionRes, wordsRes] = await Promise.all([
-               supabase.auth.getSession(),
-               supabase.from('forbidden_words').select('word')
-            ]);
+             // Background IP check (Zero-Tugging!)
+             fetch('https://api64.ipify.org?format=json').then(r => r.json()).then(async ipRes => {
+                if (ipRes?.ip) {
+                   setUserIp(ipRes.ip);
+                   const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
+                   if (bData?.length) setIsIpBlocked(true);
+                }
+             }).catch(() => {});
 
-            const user = sessionRes.data.session?.user;
-            if (!user) { window.location.href = '/login'; return; }
-            if (wordsRes.data) setForbiddenWords(wordsRes.data.map(w => w.word));
+             if (wordsRes.data) setForbiddenWords(wordsRes.data.map(w => w.word));
 
-            // 2. Parallellisera Profil-hämtning och Blockeringar (INTE IP-check!)
-            // I Android-versionen kör vi IP-checken helt i bakgrunden för att slippa "tuggande" nätverksväntan.
-            const [myProfRes, targetRes, blocksRes] = await Promise.all([
-               supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-               targetUsername ? supabase.from('profiles').select('*').ilike('username', targetUsername).limit(1) : Promise.resolve({ data: [] }),
-               supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-            ]);
+             const profileToView = targetRes.data?.[0] || null;
+             if (!profileToView) {
+                setCustomAlert('Hittade inte användaren ' + targetUsername);
+                window.location.href = '/krypin';
+                return;
+             }
+             setCurrentUser(profileToView);
 
-            // Bakgrunds-IP-check (Denna väntar inte sidan på!)
-            fetch('https://api64.ipify.org?format=json')
-               .then(r => r.json())
-               .then(async ipRes => {
-                  if (ipRes && ipRes.ip) {
-                     setUserIp(ipRes.ip);
-                     const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
-                     if (bData && bData.length > 0) setIsIpBlocked(true);
-                  }
-               }).catch(() => console.log('IP check background failed'));
+             const bSet = new Set<string>();
+             if (blocksRes.data) {
+                blocksRes.data.forEach((b: any) => {
+                   if (b.blocker_id === activeUser.id) bSet.add(b.blocked_id);
+                   if (b.blocked_id === activeUser.id) bSet.add(b.blocker_id);
+                });
+             }
+             setGlobalBlockedIds(bSet);
 
-            const myProfile = myProfRes.data && myProfRes.data.length > 0 ? myProfRes.data[0] : null;
-            const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
-            const fallbackName = user.email?.split('@')[0] || 'Medlem';
-            const viewer = myProfile || { id: user.id, username: isRoot ? 'apersson508' : fallbackName, is_admin: isRoot, perm_content: isRoot };
-            setViewerUser(viewer);
+             if (profileToView.id !== activeUser.id) {
+                const iBlocked = bSet.has(profileToView.id) && blocksRes.data?.some((b: any) => b.blocker_id === activeUser.id && b.blocked_id === profileToView.id);
+                const blockedMe = bSet.has(profileToView.id) && blocksRes.data?.some((b: any) => b.blocker_id === profileToView.id && b.blocked_id === activeUser.id);
+                setIsBlocked(!!iBlocked);
+                setHasBlockedMe(!!blockedMe);
+                if (iBlocked || blockedMe) { window.location.href = '/krypin'; return; }
+             }
 
-            profileToView = targetRes.data && targetRes.data.length > 0 ? targetRes.data[0] : (targetUsername ? null : viewer);
-            
-            if (!profileToView) {
-               setCustomAlert('Hittade inte användaren ' + targetUsername);
-               window.location.href = '/krypin';
-               return;
-            }
-            setCurrentUser(profileToView);
+             // 3. Final datafetch in parallel
+             await Promise.all([
+                fetchGuestbook(profileToView.id),
+                fetchFriends(profileToView.id, activeUser.id),
+                !targetUsername || targetUsername === activeUser.username ? fetchMessages(activeUser.id) : Promise.resolve()
+             ]);
 
-            const bSet = new Set<string>();
-            if (blocksRes.data) {
-               blocksRes.data.forEach((b: any) => {
-                  if (b.blocker_id === viewer.id) bSet.add(b.blocked_id);
-                  if (b.blocked_id === viewer.id) bSet.add(b.blocker_id);
-               });
-            }
-            setGlobalBlockedIds(bSet);
+             // Realtime
+             if (globalChannel) supabase.removeChannel(globalChannel);
+             globalChannel = supabase.channel('realtime_krypin_' + profileToView.id)
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'guestbook' }, () => fetchGuestbook(profileToView.id))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchMessages(activeUser.id))
+                .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
+                   if (payload.new.id === activeUser.id && payload.new.is_banned) window.location.href = '/bannad';
+                   if (payload.new.id === profileToView.id) setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
+                })
+                .subscribe();
+          } catch (err) { console.error("Init data error:", err); }
+       }
+       if (!userLoading) initData();
 
-            if (profileToView.id !== viewer.id && blocksRes.data) {
-               iBlocked = blocksRes.data.some((b: any) => b.blocker_id === viewer.id && b.blocked_id === profileToView.id);
-               blockedMe = blocksRes.data.some((b: any) => b.blocker_id === profileToView.id && b.blocked_id === viewer.id);
-               setIsBlocked(iBlocked);
-               setHasBlockedMe(blockedMe);
-
-               if (iBlocked || blockedMe) {
-                  setCustomAlert('Hittade inte användaren ' + (targetUsername || ''));
-                  window.location.href = '/krypin';
-                  return;
-               }
-            }
-
-            // 3. Parallell hämta gästbok, vänner och mejl (Sista steget)
-            await Promise.all([
-               fetchGuestbook(profileToView.id),
-               fetchFriends(profileToView.id, viewer.id),
-               !targetUsername ? fetchMessages(viewer.id) : Promise.resolve()
-            ]);
-
-            // Sätt upp realtime listener (CLEANUP-SÄKRAD)
-            if (globalChannel) supabase.removeChannel(globalChannel);
-            globalChannel = supabase.channel('realtime_krypin_' + profileToView.id)
-               .on('postgres_changes', { event: '*', schema: 'public', table: 'guestbook' }, () => fetchGuestbook(profileToView.id))
-               .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchMessages(user.id))
-               .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
-                  if (payload.new.id === user.id && payload.new.is_banned) window.location.href = '/bannad';
-                  if (payload.new.id === profileToView.id) setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
-               })
-               .subscribe();
-         } catch (err) {
-            console.error("Init data error:", err);
-         }
-      }
-      initData();
-
-      return () => {
-         if (globalChannel) supabase.removeChannel(globalChannel);
-      };
-   }, [targetUsername, supabase, viewerUser?.id]);
+       return () => {
+          if (globalChannel) supabase.removeChannel(globalChannel);
+       };
+    }, [targetUsername, globalViewer, userLoading, supabase]);
 
    const chatWith = searchParams?.get('chatWith');
 
@@ -591,13 +573,33 @@ function MittKrypinContent() {
          setCustomAlert('Du kan inte skicka meddelanden till en person som är blockerad.');
          return;
       }
-      const { error } = await supabase.from('private_messages').insert({
+
+      // Optimistic UI for PMs (Flash fast!)
+      const tempId = 'temp-' + Date.now();
+      const optimisticMsg = {
+         id: tempId,
+         sender_id: viewerUser.id,
+         receiver_id: receiverId,
+         content: content.trim(),
+         created_at: new Date().toISOString(),
+         is_read: false,
+         sender: { id: viewerUser.id, username: viewerUser.username, avatar_url: viewerUser.avatar_url }
+      };
+      setPrivateMessages(prev => [optimisticMsg, ...prev]);
+      setPmModalOpen(false);
+      setPmContent('');
+      setReplyingTo(null);
+      setReplyContent('');
+      setCustomAlert('Meddelande skickat!');
+
+      const { data, error } = await supabase.from('private_messages').insert({
          sender_id: viewerUser.id,
          receiver_id: receiverId,
          content: content.trim()
-      });
+      }).select().single();
 
       if (error) {
+         setPrivateMessages(prev => prev.filter(m => m.id !== tempId));
          if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
             setShowDuplicateModal(true);
             return;
@@ -606,15 +608,19 @@ function MittKrypinContent() {
          return;
       }
 
-      await supabase.from('notifications').insert({
+      if (data) {
+         setPrivateMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id } : m));
+      }
+
+      // Background logic (Non-blocking)
+      supabase.from('notifications').insert({
          receiver_id: receiverId,
          actor_id: viewerUser.id,
          type: 'pm',
          content: 'skickade dig ett mejl.',
          link: `/krypin?tab=Mejl&chatWith=${viewerUser.id}`
-      });
+      }).then();
 
-      // TRING! Send Web Push Notification to Receiver
       fetch('/api/send-push', {
          method: 'POST', body: JSON.stringify({
             userId: receiverId,
@@ -622,14 +628,7 @@ function MittKrypinContent() {
             message: `${viewerUser.username} skickade ett mejl till dig.`,
             url: `/krypin?tab=Mejl&chatWith=${viewerUser.id}`
          }), headers: { 'Content-Type': 'application/json' }
-      });
-
-      setPmModalOpen(false);
-      setPmContent('');
-      setReplyingTo(null);
-      setReplyContent('');
-      fetchMessages(viewerUser.id);
-      setCustomAlert('Meddelande skickat!');
+      }).catch(() => {});
    }
 
 
@@ -645,33 +644,58 @@ function MittKrypinContent() {
 
    const handleSendComposedPM = async () => {
       if (!composeSelectedUser || !composeContent.trim() || !viewerUser) return;
-      // Spam-kontroll (5 identiska ord)
       if (isSending) return;
       setIsSending(true);
 
-      const { error } = await supabase.from('private_messages').insert({
+      // Optimistic Update
+      const tempId = 'temp-comp-' + Date.now();
+      const optMsg = {
+         id: tempId,
+         sender_id: viewerUser.id,
+         receiver_id: composeSelectedUser.id,
+         content: composeContent.trim(),
+         created_at: new Date().toISOString(),
+         is_read: false,
+         sender: { id: viewerUser.id, username: viewerUser.username, avatar_url: viewerUser.avatar_url }
+      };
+      setPrivateMessages(prev => [optMsg, ...prev]);
+      setComposeModalOpen(false);
+      setCustomAlert('Ditt mejl har flugit iväg!');
+
+      const { data, error } = await supabase.from('private_messages').insert({
          sender_id: viewerUser.id,
          receiver_id: composeSelectedUser.id,
          content: composeContent.trim()
-      });
+      }).select().single();
 
+      setIsSending(false);
       if (error) {
-         setIsSending(false);
+         setPrivateMessages(prev => prev.filter(m => m.id !== tempId));
          if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
             setShowDuplicateModal(true);
             return;
          }
          setCustomAlert('Kunde inte skicka mejl: ' + error.message);
+         setComposeModalOpen(true); // Reopen on error
          return;
       }
 
-      await supabase.from('notifications').insert({
+      if (data) {
+         setPrivateMessages(prev => prev.map(m => m.id === tempId ? { ...m, id: data.id } : m));
+      }
+
+      setComposeContent('');
+      setComposeSelectedUser(null);
+      setComposeSearchQuery('');
+
+      // Background
+      supabase.from('notifications').insert({
          receiver_id: composeSelectedUser.id,
          actor_id: viewerUser.id,
          type: 'pm',
          content: 'skickade dig ett mejl.',
          link: `/krypin?tab=Mejl&chatWith=${viewerUser.id}`
-      });
+      }).then();
 
       fetch('/api/send-push', {
          method: 'POST', body: JSON.stringify({
@@ -680,15 +704,7 @@ function MittKrypinContent() {
             message: `${viewerUser.username} skickade ett mejl till dig.`,
             url: `/krypin?tab=Mejl&chatWith=${viewerUser.id}`
          }), headers: { 'Content-Type': 'application/json' }
-      });
-
-      setIsSending(false);
-      setComposeContent('');
-      setComposeSelectedUser(null);
-      setComposeSearchQuery('');
-      setComposeModalOpen(false);
-      fetchMessages(viewerUser.id);
-      setCustomAlert('Ditt mejl har flugit iväg!');
+      }).catch(() => {});
    };
 
    const handleSignGuestbook = async () => {
@@ -696,14 +712,31 @@ function MittKrypinContent() {
       if (isSending) return;
       setIsSending(true);
 
-      const { error } = await supabase.from('guestbook').insert({
+      // Optimistic update for Guestbook (Flash fast!)
+      const tempId = 'temp-gb-' + Date.now();
+      const optimisticPost = {
+         id: tempId,
          receiver_id: currentUser.id,
          sender_id: viewerUser.id,
-         content: newGuestbookPost
-      });
+         content: newGuestbookPost,
+         created_at: new Date().toISOString(),
+         sender: { username: viewerUser.username, avatar_url: viewerUser.avatar_url }
+      };
+      setGuestbookPosts(prev => [optimisticPost, ...prev]);
+      const savedPostContent = newGuestbookPost;
+      setNewGuestbookPost('');
+
+      const { data, error } = await supabase.from('guestbook').insert({
+         receiver_id: currentUser.id,
+         sender_id: viewerUser.id,
+         content: savedPostContent
+      }).select().single();
+
+      setIsSending(false);
 
       if (error) {
-         setIsSending(false);
+         setGuestbookPosts(prev => prev.filter(p => p.id !== tempId));
+         setNewGuestbookPost(savedPostContent);
          if (error.message?.includes('DUPLICATE_LIMIT_REACHED')) {
             setShowDuplicateModal(true);
             return;
@@ -712,14 +745,19 @@ function MittKrypinContent() {
          return;
       }
 
+      if (data) {
+         setGuestbookPosts(prev => prev.map(p => p.id === tempId ? { ...p, id: data.id } : p));
+      }
+
       if (viewerUser.id !== currentUser.id) {
-         await supabase.from('notifications').insert({
+         // Background notifications
+         supabase.from('notifications').insert({
             receiver_id: currentUser.id,
             actor_id: viewerUser.id,
             type: 'guestbook',
             content: 'skrev ett inlägg i din gästbok.',
             link: `/krypin?u=${currentUser.username}&tab=Gästbok`
-         });
+         }).then();
 
          fetch('/api/send-push', {
             method: 'POST', body: JSON.stringify({
@@ -728,11 +766,8 @@ function MittKrypinContent() {
                message: `${viewerUser.username} skrev i din gästbok.`,
                url: `/krypin?u=${currentUser.username}&tab=Gästbok`
             }), headers: { 'Content-Type': 'application/json' }
-         });
+         }).catch(() => {});
       }
-      setNewGuestbookPost('');
-      setIsSending(false);
-      await fetchGuestbook(currentUser.id);
    };
 
    const handleAddFriend = async () => {

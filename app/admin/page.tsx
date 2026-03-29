@@ -8,6 +8,7 @@ import { deleteUserAccount } from '../actions/userActions';
 import { toggleBlockUser, adminDeleteContent, adminResolveReport, adminRoomAction, adminUpdatePermissions, adminDeleteSnakeScore, adminDeleteSupportTicket, adminRunDeepScan, adminFixDeepScanIssue, adminAddSecretUserToRoom, adminRemoveSecretUserFromRoom, adminResetAvatar, adminResetPresentation, adminResetTheme, adminMassDeleteSpam } from '../actions/adminActions';
 import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbiddenWord } from '@/app/actions/securityActions';
 import { useWordFilter } from '@/hooks/useWordFilter';
+import { useUser } from '@/components/UserContext';
 
 const ADMIN_TABS = [
   { id: 'dashboard', label: 'Översikt', icon: Activity },
@@ -51,6 +52,7 @@ const supabase = createClient();
 export default function AdminPanel() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const cleanUrl = (url?: string) => url ? url.split('?')[0] : null;
+  const { user, profile, loading: userLoading, refreshProfile } = useUser();
   const [userProfile, setUserProfile] = useState<any>(null);
   const [unreadSupportCount, setUnreadSupportCount] = useState(0);
   const [unreadReportsCount, setUnreadReportsCount] = useState(0);
@@ -58,38 +60,34 @@ export default function AdminPanel() {
 
 
   useEffect(() => {
-    async function checkAuth() {
-      const { data: { session } } = await supabase.auth.getSession();
-      const user = session?.user;
-      if (!user) {
-        router.push('/');
-        return;
-      }
-      const { data: profList } = await supabase.from('profiles').select('*').eq('id', user.id).limit(1);
-      const profile = profList && profList.length > 0 ? profList[0] : null;
-      if (!profile?.is_admin && user.email !== 'apersson508@gmail.com') { // Hard fallback
-        router.push('/');
-        return;
-      }
-      setUserProfile({ ...profile, auth_email: user.email });
-
-      // Support for direct links to tabs via ?tab=...
-      const params = new URLSearchParams(window.location.search);
-      const tab = params.get('tab');
-      if (tab) {
-        setActiveTab(tab);
-      }
-
-      // Realtime profile/permission listener (for the logged in admin)
-      const profileSub = supabase.channel('admin-self-update')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, (payload) => {
-          setUserProfile((prev: any) => ({ ...prev, ...payload.new, auth_email: prev?.auth_email }));
-        }).subscribe();
-      
-      return () => { supabase.removeChannel(profileSub); };
+    if (userLoading) return;
+    if (!user || !profile) {
+      router.push('/');
+      return;
     }
-    checkAuth();
-  }, [router]);
+    
+    if (!profile.is_admin && user.email !== 'apersson508@gmail.com') { 
+      router.push('/');
+      return;
+    }
+
+    setUserProfile({ ...profile, auth_email: user.email });
+
+    // Support for direct links to tabs via ?tab=...
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab) {
+      setActiveTab(tab);
+    }
+
+    // Realtime profile/permission listener (Sync med global context vid ändring)
+    const profileSub = supabase.channel('admin-self-update')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, (payload) => {
+        refreshProfile(); // Trigga omhämtning i global context
+      }).subscribe();
+    
+    return () => { supabase.removeChannel(profileSub); };
+  }, [router, user, profile, userLoading, refreshProfile]);
 
   useEffect(() => {
     if (!userProfile) return;
@@ -721,8 +719,8 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
                 {(() => {
                   const isRootUser = u.username?.toLowerCase() === 'apersson508' || u.auth_email?.toLowerCase() === 'apersson508@gmail.com';
                   const isCurrentAdmin = u.id === currentUser.id;
-                  // Skydda om det är Root, om det är DU, om de är ADMIN, eller om personen delar DIN eller ROOTS nuvarande IP
-                  const isProtected = isRootUser || isCurrentAdmin || u.is_admin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
+                  // Skydda om det är Root, om det är DU, eller om personen delar DIN eller ROOTS nuvarande IP
+                  const isProtected = isRootUser || isCurrentAdmin || (u.last_ip && (u.last_ip === protectedIp || u.last_ip === currentUser?.last_ip));
 
                   if (isProtected) {
                     return (

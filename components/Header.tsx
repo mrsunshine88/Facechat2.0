@@ -7,6 +7,7 @@ import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
 import { updateUserIP } from '@/app/actions/securityActions'
 import { getSoundUrl } from '@/utils/sounds'
+import { useUser } from './UserContext'
 
 export default function Header() {
   const pathname = usePathname()
@@ -17,6 +18,7 @@ export default function Header() {
 
   const [showDropdown, setShowDropdown] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { user, profile, loading: userLoading } = useUser()
   const [userProfile, setUserProfile] = useState<any>(null)
   const [isAndroid, setIsAndroid] = useState(false)
   
@@ -26,75 +28,41 @@ export default function Header() {
   const supabase = createClient()
 
   useEffect(() => {
-    if (isBlockedRoute) return;
-    async function loadUser() {
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
-      if (user) {
-        // VATTENTÄTT: Om mejlen INTE är bekräftad och kontot är nytt (från och med idag), sparka ut dem direkt!
-        // Detta är en extra spärr ifall de lyckas lura någon klientsida.
-        const CUTOFF_DATE = new Date('2026-03-26');
-        if (!user.email_confirmed_at && new Date(user.created_at) >= CUTOFF_DATE) {
-          await supabase.auth.signOut();
-          window.location.href = '/login?error=' + encodeURIComponent('Du måste bekräfta din e-postadress via länken vi skickade innan du kan bli medlem.');
-          return;
-        }
-
-        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-        
-        if (profile?.is_banned) {
-          await supabase.auth.signOut();
-          window.location.href = '/login?error=' + encodeURIComponent('Ditt konto har blivit blockerat av en administratör.');
-          return;
-        }
-
-        // Snabb-fallback för att fylla ut setUserProfile direkt (Stora Trimmarn: Android Edition 🎷💎🚀)
-        setIsAndroid(/android/i.test(navigator.userAgent));
-        const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';
-        const fallbackName = user.user_metadata?.username || user.email?.split('@')[0] || 'Medlem';
-
-        if (!profile) {
-          // Self-heal profile
-          const newProfile = { id: user.id, username: fallbackName, is_admin: isRoot, perm_users: isRoot, perm_content: isRoot, perm_rooms: isRoot, perm_roles: isRoot };
-          await supabase.from('profiles').insert(newProfile);
-          setUserProfile({ ...newProfile, perm_support: isRoot, perm_logs: isRoot, auth_email: user.email });
-        } else {
-          // Vid oavgjort, prioritera att ha ett namn
-          const finalProfile = { ...profile, username: profile.username || fallbackName, auth_email: user.email };
-          setUserProfile(finalProfile)
-        }
-        
-        // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE (I bakgrunden!)
-        setTimeout(() => {
-          supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-          updateUserIP(user.id);
-        }, 0);
-        
-        // Fetch unread support tickets (PARALLELLISERAD & OPTIMERAD!)
-        const currentProfile = profile || { is_admin: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_support: user.email?.toLowerCase() === 'apersson508@gmail.com', perm_roles: user.email?.toLowerCase() === 'apersson508@gmail.com' };
-        const isSuperAdmin = user.email?.toLowerCase() === 'apersson508@gmail.com' || currentProfile.perm_roles;
-        const canManageSupport = isSuperAdmin || currentProfile.perm_support;
-        
-        const now = Date.now();
-        if (now - lastAdminFetch.current > 60000) {
-           if (canManageSupport) {
-             supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
-                setUnreadSupportCount(count || 0);
-             });
-           } else {
-             supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
-                setUnreadSupportCount(count || 0);
-             });
-           }
-           lastAdminFetch.current = now;
-        }
-
-      } else {
-        setUserProfile(null)
-      }
+    if (isBlockedRoute || !profile) {
+       if (!profile) setUserProfile(null);
+       return;
     }
-    loadUser()
-  }, [pathname])
+    
+    async function syncHeader() {
+       setIsAndroid(/android/i.test(navigator.userAgent));
+       setUserProfile({ ...profile, auth_email: user?.email });
+       
+       // BUMP SYSTEM WIDE LAST SEEN HEARTBEAT EVERY ROUTE CHANGE (I bakgrunden!)
+       setTimeout(() => {
+         supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
+         updateUserIP(user.id);
+       }, 0);
+       
+       // Fetch unread support tickets (PARALLELLISERAD & OPTIMERAD!)
+       const isSuperAdmin = user?.email?.toLowerCase() === 'apersson508@gmail.com' || profile.perm_roles;
+       const canManageSupport = isSuperAdmin || profile.perm_support;
+       
+       const now = Date.now();
+       if (now - lastAdminFetch.current > 60000) {
+          if (canManageSupport) {
+            supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('has_unread_admin', true).eq('admin_deleted', false).then(({count}) => {
+               setUnreadSupportCount(count || 0);
+            });
+          } else {
+            supabase.from('support_tickets').select('*', { count: 'exact', head: true }).eq('user_id', user.id).eq('has_unread_user', true).then(({count}) => {
+               setUnreadSupportCount(count || 0);
+            });
+          }
+          lastAdminFetch.current = now;
+       }
+    }
+    syncHeader();
+  }, [pathname, profile, user])
 
   // Notiser (Kopplat till Supabase)
   const [notifications, setNotifications] = useState<any[]>([])

@@ -123,17 +123,6 @@ export async function adminBlockIP(ip: string, reason: string) {
     // --- ADMIN / ROOT IP IMMUNITY CHECK ---
     const currentRequesterIP = await getClientIP();
     
-    // Check if moving to block an IP that belongs to any administrator
-    const { data: targetIsAdmin } = await getAdminClient()
-      .from('profiles')
-      .select('username, is_admin')
-      .eq('last_ip', ip)
-      .eq('is_admin', true)
-      .limit(1);
-
-    if (targetIsAdmin && targetIsAdmin.length > 0) {
-      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör en administratör (@${targetIsAdmin[0].username}).`);
-    }
 
     const { data: rootProfile } = await getAdminClient()
       .from('profiles')
