@@ -1967,13 +1967,22 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   }
 
   const handleMakeAdmin = async (userId: string, username: string) => {
-    const res = await adminUpdatePermissions(userId, { is_admin: true });
+    // VIKTIGT: Nollställ ALLA behörigheter vid befordran så man börjar på ett "blankt blad" (inga spökliga DEFAULT-värden!)
+    const res = await adminUpdatePermissions(userId, { 
+      is_admin: true,
+      perm_users: false, perm_content: false, perm_rooms: false,
+      perm_roles: false, perm_support: false, perm_logs: false, 
+      perm_chat: false, perm_diagnostics: false, perm_stats: false,
+      perm_images: false 
+    });
+    
     if (res?.error) return alert('Fel: ' + res.error);
     await logAdminAction(supabase, currentUser.id, `Befordrade ${username} till Admin`);
     setSearch('');
     setSearchResults([]);
     fetchAdmins();
   };
+
 
   const handleRemoveAdmin = async (user: any) => {
     if (user.id === currentUser.id || user.username?.toLowerCase() === 'apersson508') return alert('Du kan inte ta bort din egen admin-status.');
@@ -2002,23 +2011,30 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   const handleTogglePermission = async (user: any, column: string, val: boolean) => {
     // Spara original för att kunna rulla tillbaka vid fel
     const prevState = { ...activeEditAdmin };
+    const prevAdmins = [...admins];
 
-    // Uppdatera UI omedelbart för snabb känsla
+    // 1. Uppdatera Modal-UI omedelbart
     const updatedUser = { ...user, [column]: val };
     setActiveEditAdmin(updatedUser);
 
-    // Skicka till servern
+    // 2. Uppdatera den stora listan (admins) i bakgrunden samtidigt
+    // Detta förhindrar att listan "hoppar tillbaka" om en fetch sker mitt i
+    setAdmins(prev => prev.map(a => a.id === user.id ? updatedUser : a));
+
+    // 3. Skicka till servern
     const res = await adminUpdatePermissions(user.id, { [column]: val });
 
     if (res?.error) {
       alert('Kunde inte uppdatera behörighet: ' + res.error);
-      setActiveEditAdmin(prevState); // Rulla tillbaka UI
+      setActiveEditAdmin(prevState);
+      setAdmins(prevAdmins);
       return;
     }
 
     await logAdminAction(supabase, currentUser.id, `Ändrade ${column} för ${user.username} till ${val}`);
-    fetchAdmins();
+    // Vi behöver inte anropa fetchAdmins() här då vi redan uppdaterat state lokalt och Realtime tar hand om resten!
   };
+
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>

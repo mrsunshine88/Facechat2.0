@@ -28,10 +28,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        // Om låset är upptaget, vänta och försök igen en gång
-        if (sessionError.message?.includes('lock') && retryCount < 1) {
-          console.warn('Auth lock contested, retrying fetchUserAndProfile...');
-          await new Promise(res => setTimeout(res, 500));
+        // Om låset är upptaget, vänta och försök igen upp till 3 gånger
+        if (sessionError.message?.includes('lock') && retryCount < 3) {
+          const delay = (retryCount + 1) * 500;
+          console.warn(`Auth lock contested (Attempt ${retryCount + 1}/3), retrying in ${delay}ms...`);
+          await new Promise(res => setTimeout(res, delay));
           return fetchUserAndProfile(retryCount + 1);
         }
         throw sessionError;

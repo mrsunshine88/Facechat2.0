@@ -12,7 +12,7 @@ export default function Dashboard() {
   
   if (loading) return null
 
-  const nickname = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Medlem';
+  const nickname = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
   const shortcuts = [
     {
