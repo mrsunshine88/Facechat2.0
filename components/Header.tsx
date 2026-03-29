@@ -101,6 +101,8 @@ export default function Header() {
 
   // AKUT FIX: Återställd blixtsnabb IP-dörrvakt (Hundradels-reaktion!)
   useEffect(() => {
+    if (isLoginRoute || isBlockedRoute) return;
+    
     let channel: any;
     let isMounted = true;
 
