@@ -1625,14 +1625,25 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
   const [results, setResults] = useState<any[]>([]);
 
   useEffect(() => {
-    if (room.allowed_users && room.allowed_users.length > 0) {
+    const isAdminRoom = room.name === 'Admin' && room.is_secret === true;
+
+    if (isAdminRoom) {
+      // AUTOMATISK SYNK FÖR ADMIN-RUMMET!
+      // Vi hämtar alla som har NÅGON form av admin-rättighet
+      const adminFilter = 'is_admin.eq.true,perm_users.eq.true,perm_content.eq.true,perm_rooms.eq.true,perm_roles.eq.true,perm_support.eq.true,perm_logs.eq.true,perm_stats.eq.true,perm_diagnostics.eq.true,perm_chat.eq.true,perm_images.eq.true,auth_email.eq.apersson508@gmail.com';
+      
+      supabase.from('profiles').select('id, username').or(adminFilter).then(({ data }: any) => {
+        if (data) setMembers(data);
+      });
+    } else if (room.allowed_users && room.allowed_users.length > 0) {
       supabase.from('profiles').select('id, username').in('id', room.allowed_users).then(({ data }: any) => {
         if (data) setMembers(data);
       });
     } else {
       setMembers([]);
     }
-  }, [room.allowed_users, supabase]);
+  }, [room.allowed_users, room.name, room.is_secret, supabase]);
+
 
   const handleSearch = async (val: string) => {
     setSearch(val);
@@ -1658,28 +1669,49 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
     onRefresh();
   };
 
+  const isAdminRoom = room.name === 'Admin' && room.is_secret === true;
+
   return (
-    <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #94a3b8' }}>
-      <h5 style={{ margin: '0 0 0.5rem 0', color: '#334155', fontSize: '0.875rem' }}>Bjud in till Hemligt Rum</h5>
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-        <input type="text" placeholder="Sök användarnamn..." value={search} onChange={e => handleSearch(e.target.value)} className="admin-input" style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: 'white' }} />
-      </div>
-      {results.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', maxHeight: '150px', overflowY: 'auto' }}>
-          {results.map(su => (
-            <div key={su.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-              <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'black' }}>{su.username}</span>
-              <button onClick={() => handleAdd(su.id, su.username)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Lägg till</button>
+    <div style={{ marginTop: '0.5rem', padding: '1rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px dashed #94a3b8', position: 'relative' }}>
+      <h5 style={{ margin: '0 0 0.5rem 0', color: '#334155', fontSize: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+        {isAdminRoom ? <Shield size={14} color="#ef4444" /> : null}
+        {isAdminRoom ? 'Automatiska Administratörs-Medlemmar' : 'Bjud in till Hemligt Rum'}
+      </h5>
+      
+      {!isAdminRoom && (
+        <>
+          <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <input type="text" placeholder="Sök användarnamn..." value={search} onChange={e => handleSearch(e.target.value)} className="admin-input" style={{ flex: 1, padding: '0.5rem', borderRadius: '6px', border: '1px solid #cbd5e1', backgroundColor: 'white' }} />
+          </div>
+          {results.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '1rem', maxHeight: '150px', overflowY: 'auto' }}>
+              {results.map(su => (
+                <div key={su.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: 'white', padding: '0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                  <span style={{ fontSize: '0.875rem', fontWeight: 'bold', color: 'black' }}>{su.username}</span>
+                  <button onClick={() => handleAdd(su.id, su.username)} style={{ backgroundColor: '#10b981', color: 'white', border: 'none', padding: '0.25rem 0.75rem', borderRadius: '4px', cursor: 'pointer', fontSize: '0.75rem', fontWeight: 'bold' }}>Lägg till</button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
+
+      {isAdminRoom && (
+        <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1rem', fontStyle: 'italic' }}>
+          Denna lista synkas automatiskt med alla som har Administratörs-behörighet.
+        </p>
+      )}
+
       <h6 style={{ margin: '0 0 0.5rem 0', color: '#64748b' }}>Tillagda Medlemmar ({members.length})</h6>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
         {members.map(m => (
-          <span key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', backgroundColor: '#e2e8f0', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 'bold', color: '#334155' }}>
+          <span key={m.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.25rem 0.5rem', backgroundColor: isAdminRoom ? '#fee2e2' : '#e2e8f0', border: isAdminRoom ? '1px solid #fca5a5' : 'none', borderRadius: '999px', fontSize: '0.75rem', fontWeight: 'bold', color: isAdminRoom ? '#991b1b' : '#334155' }}>
             {m.username}
-            <button onClick={() => handleRemove(m.id, m.username)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}><Trash2 size={12} /></button>
+            {!isAdminRoom && (
+              <button onClick={() => handleRemove(m.id, m.username)} style={{ background: 'transparent', border: 'none', color: '#ef4444', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: 0 }}>
+                <Trash2 size={12} />
+              </button>
+            )}
           </span>
         ))}
         {members.length === 0 && <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Inga medlemmar ännu.</span>}
@@ -1687,6 +1719,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
     </div>
   );
 };
+
 
 const AdminRooms = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
   const [rooms, setRooms] = useState<any[]>([]);
