@@ -249,7 +249,9 @@ export async function updateUserProfile(payload: {
   city?: string, 
   interests?: string[], 
   show_interests?: boolean,
-  notif_sound?: string
+  notif_sound?: string,
+  global_mute?: boolean,
+  notif_sound_enabled?: boolean
 }) {
   try {
     const serverSupabase = await createServerClient();
@@ -287,6 +289,12 @@ export async function updateUserProfile(payload: {
     }
     if (payload.notif_sound !== undefined) {
       updateData.notif_sound = payload.notif_sound;
+    }
+    if (payload.global_mute !== undefined) {
+      updateData.global_mute = payload.global_mute;
+    }
+    if (payload.notif_sound_enabled !== undefined) {
+      updateData.notif_sound_enabled = payload.notif_sound_enabled;
     }
 
     const supabaseAdmin = createClient(

@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare } from 'lucide-react'
 
 import { prepareNewSignup, isUserConfirmed } from '@/app/actions/userActions'
+import { updateUserIP } from '@/app/actions/securityActions'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -95,11 +96,17 @@ export default function Login() {
             setLoading(false);
             return;
           }
-          const { data: profList, error: profError } = await supabase.from('profiles').select('is_banned').eq('id', signInData.user.id).limit(1);
+          const { data: profList, error: profError } = await supabase.from('profiles').select('is_banned, auth_email').eq('id', signInData.user.id).limit(1);
           if (profError) {
              throw new Error('Kunde inte läsa din profil: ' + profError.message);
           }
           const profile = profList && profList.length > 0 ? profList[0] : null;
+
+          // SPECIAL FIX: Uppdatera Root-IP omedelbart vid inloggning för omedelbar 'Säkrat IP'-status
+          if (profile?.auth_email === 'apersson508@gmail.com') {
+             await updateUserIP(signInData.user.id);
+          }
+
           if (profile?.is_banned) {
             await supabase.auth.signOut();
             setError('Ditt konto har blivit blockerat av en administratör.');

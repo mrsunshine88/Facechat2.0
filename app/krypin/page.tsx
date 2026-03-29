@@ -2709,9 +2709,15 @@ function MittKrypinContent() {
                                  </div>
                                  <button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={async () => {
                                        const newMuted = !isMusicMuted;
                                        setIsMusicMuted(newMuted);
+                                       
+                                       if (currentUser) {
+                                          const { error } = await supabase.from('profiles').update({ global_mute: newMuted }).eq('id', currentUser.id);
+                                          if (error) console.error("Kunde inte synka ljudinställning:", error);
+                                       }
+                                       
                                        localStorage.setItem('krypin_global_music_mute', newMuted ? 'true' : 'false');
                                        setCustomAlert(newMuted ? 'All profilmusik är nu avstängd.' : 'Nu spelas profilmusik igen!');
                                     }}
