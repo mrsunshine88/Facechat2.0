@@ -125,7 +125,14 @@ export default function Header() {
         const myIp = res?.ip;
         if (!myIp) {
           if (isLoggingOut.current) return;
-          console.error('[Header] Could not determine IP for Guard.');
+          
+          if (retryCount < 3) {
+            console.warn(`[Header] Could not determine IP. Retrying in 2s... (${retryCount + 1}/3)`);
+            await new Promise(r => setTimeout(r, 2000));
+            return setupIpGuard(retryCount + 1);
+          }
+          
+          console.error('[Header] IP Guard failed after 3 attempts.');
           return;
         }
 
