@@ -138,6 +138,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
       .select(`id, score, created_at, user_id, game_id, profiles ( username, avatar_url )`)
       .eq('game_id', gameId)
       .order('score', { ascending: false })
+      .order('created_at', { ascending: true })
       .limit(5);
 
     if (!error && scores) {
@@ -286,13 +287,13 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
        // Uppdatera listan i UI:t
        await fetchHighScores(targetGame);
 
-       if (oldTopScores) {
-          // 3. Kolla vilken rank vi tog
+        if (oldTopScores) {
+          // 3. Kolla vilken rank vi faktiskt tog (Tack vare created_at ASC behåller den äldre poängen sin plats)
           let rankStolen = -1;
           for (let i = 0; i < oldTopScores.length; i++) {
-             if (finalScore >= oldTopScores[i].score) { rankStolen = i; break; }
+             if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
           }
-          // Om listan inte var full och vi hamnade på en ny plats
+          // Om poängen är lika och vi hamnar efter dem, men ändå i topp-5
           if (rankStolen === -1 && oldTopScores.length < 5) {
              rankStolen = oldTopScores.length;
           }

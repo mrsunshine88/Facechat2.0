@@ -1,7 +1,7 @@
 "use client"
 
 import React, { useState, useEffect, useRef } from 'react'
-import { ShieldAlert, Mail, ArrowLeft, Lock, Send, MessageSquare, User, LifeBuoy, CheckCircle } from 'lucide-react'
+import { ShieldAlert, Mail, ArrowLeft, Lock, Send, MessageSquare, User, LifeBuoy, CheckCircle, LogOut } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { updateUserIP } from '@/app/actions/securityActions'
@@ -206,6 +206,16 @@ export default function BlockedPage() {
                 style={{ backgroundColor: 'transparent', color: '#94a3b8', padding: '1rem', borderRadius: '14px', fontWeight: '600', border: '1px solid rgba(148, 163, 184, 0.2)', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}
               >
                 <ArrowLeft size={18} /> Försök igen
+              </button>
+
+              <button 
+                onClick={async () => {
+                  await supabase.auth.signOut();
+                  window.location.href = '/login';
+                }}
+                style={{ backgroundColor: 'transparent', color: '#64748b', padding: '0.75rem', borderRadius: '12px', fontWeight: '500', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: '1rem', fontSize: '0.85rem' }}
+              >
+                <LogOut size={16} /> Logga ut från kontot
               </button>
             </div>
           </>
