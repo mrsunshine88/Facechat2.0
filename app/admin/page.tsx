@@ -342,6 +342,32 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
       try {
         const fifteenMinsAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
         
+        // 1. FÖRSÖK KÖRA SUPER-QUERY (RPC) FÖR MAXIMAL FART
+        const { data: rpcData, error: rpcError } = await supabase.rpc('get_admin_dashboard_stats');
+
+        if (!rpcError && rpcData) {
+          // Framgång! Vi laddade allt i ETT anrop.
+          setStats({
+            users: rpcData.usersCount || 0,
+            posts: rpcData.userBlocksCount || 0, // Notera: posts mappar mot userBlocksCount i din befintliga state-mapping
+            tickets: rpcData.ticketsCount || 0,
+            online: rpcData.onlineCount || 0,
+            banned: rpcData.bannedCount || 0,
+            reports: rpcData.reportsCount || 0,
+            ipBlocks: rpcData.ipBlocksCount || 0
+          });
+
+          // Hämta inloggningar separat (eftersom det är en lista, ej count)
+          const { data: logins } = await supabase.from('profiles')
+            .select('username, last_seen, created_at, is_banned')
+            .order('last_seen', { ascending: false, nullsFirst: false })
+            .limit(10);
+            
+          if (logins) setLatestLogins(logins);
+          return;
+        }
+
+        // 2. FALLBACK: Om RPC inte finns än, kör gamla metoden (11 anrop)
         const [
           { count: usersCount },
           { count: wbCount },
@@ -384,6 +410,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
       }
     }
     loadDash();
+
 
     const channel = supabase.channel('admin_dash_realtime_global')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, loadDash)

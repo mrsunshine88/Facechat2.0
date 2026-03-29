@@ -2,7 +2,9 @@ import type { Metadata } from 'next'
 import { Inter } from 'next/font/google'
 import './globals.css'
 import Header from '@/components/Header'
+import ProgressBar from '@/components/ProgressBar'
 import PushManager from '@/components/PushManager'
+
 import InstallPrompt from '@/components/InstallPrompt'
 
 import { UserProvider } from '@/components/UserContext'
@@ -39,8 +41,10 @@ export default function RootLayout({
       <body className={inter.className}>
         <UserProvider>
           <div className="app-container">
+            <ProgressBar />
             <Header />
             <main className="main-content">
+
               {children}
             </main>
             <PushManager />

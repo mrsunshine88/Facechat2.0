@@ -373,11 +373,12 @@ export default function Header() {
           <Link href="/whiteboard" className={`nav-link ${pathname?.startsWith('/whiteboard') ? 'active' : ''}`}>
              <LayoutGrid size={18} /> <span className="hide-on-mobile">Whiteboard</span>
           </Link>
-          <a href="/krypin" 
+          <Link href="/krypin" 
              onClick={() => setMobileMenuOpen(false)}
              className={`nav-link ${pathname === '/krypin' ? 'active' : ''}`}>
              <User size={18} /> <span className="hide-on-mobile">Mitt Krypin</span>
-          </a>
+          </Link>
+
           <Link href="/forum" className={`nav-link ${pathname?.startsWith('/forum') ? 'active' : ''}`}>
              <MessagesSquare size={18} /> <span className="hide-on-mobile">Forumet</span>
           </Link>
