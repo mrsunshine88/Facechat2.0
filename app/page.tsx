@@ -3,40 +3,16 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
+import { useUser } from '@/components/UserContext'
 import { LayoutGrid, User, MessagesSquare, MessageSquare } from 'lucide-react'
 
 export default function Dashboard() {
   const router = useRouter()
-  const [nickname, setNickname] = useState('')
-  const [loading, setLoading] = useState(true)
+  const { user, profile, loading } = useUser()
   
-  const supabase = createClient()
+  if (loading) return null
 
-  useEffect(() => {
-    async function getUser() {
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
-      if (user) {
-        // Snabb-fallback från sessionen direkt (innan DB-frågan är klar)
-        const fastName = user.user_metadata?.username || user.email?.split('@')[0] || 'Medlem';
-        setNickname(fastName);
-
-        if (!user.email_confirmed_at) {
-          await supabase.auth.signOut();
-          router.push('/login?error=Du måste bekräfta din e-postadress innan du kan logga in.');
-          return;
-        }
-
-        // Hämta den officiella profilen
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-        if (profile?.username) {
-          setNickname(profile.username)
-        }
-      }
-      setLoading(false)
-    }
-    getUser()
-  }, [])
+  const nickname = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || 'Medlem';
 
   const shortcuts = [
     {
