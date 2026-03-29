@@ -23,6 +23,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
   const [score, setScore] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
+  const [achievedRank, setAchievedRank] = useState<number | null>(null);
   
   const [topScores, setTopScores] = useState<any[]>([]);
   const [leaderboardGame, setLeaderboardGame] = useState<string>('snake');
@@ -218,6 +219,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
       gameState.current.lastRender = window.performance ? window.performance.now() : 0;
       setScore(0);
       setIsGameOver(false);
+      setAchievedRank(null);
       setIsPlaying(true);
       setActiveScreen(gameType);
       
@@ -299,6 +301,7 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
           }
 
           if (rankStolen !== -1 && rankStolen < 5) {
+             setAchievedRank(rankStolen);
              // A. Notera den person vars rang vi direkt tog (Plats 1, 2, 3, 4 eller 5)
              if (rankStolen < oldTopScores.length) {
                 const stolenFrom = oldTopScores[rankStolen];
@@ -702,7 +705,9 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                         />
                         {isGameOver && (
                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(135, 158, 134, 0.9)'}}>
-                              <h3 style={{ margin: 0, color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center' }}>GAME OVER</h3>
+                              <h3 style={{ margin: 0, color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center' }}>
+                                 {achievedRank === 0 ? "NY 1:A PLATS! 🏆" : (achievedRank !== null && achievedRank < 5 ? `NY ${achievedRank + 1}:A PLATS! 🎮` : "GAME OVER")}
+                              </h3>
                               <p style={{ margin: '0.5rem 0 1rem 0', color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.2rem', fontWeight: 'bold' }}>Points: {score}</p>
                               <button onClick={() => { setActiveScreen('menu'); gameState.current.activeGame = 'menu'; setIsGameOver(false); setIsPlaying(false); }} style={{ backgroundColor: FG_COLOR, color: BG_COLOR, fontSize: '0.9rem', fontFamily: '"Courier New", monospace', fontWeight: 'bold', padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>MAIN MENU</button>
                            </div>
