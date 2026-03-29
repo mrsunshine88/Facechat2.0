@@ -1630,13 +1630,13 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
     if (isAdminRoom) {
       // AUTOMATISK SYNK FÖR ADMIN-RUMMET!
       // Vi hämtar alla som har NÅGON form av admin-rättighet
-      // VIKTIGT: Strängvärden med specialtecken (@ eller .) MÅSTE omgärdas av dubbla citattecken "" i en .or() query
-      const adminFilter = 'is_admin.eq.true,perm_users.eq.true,perm_content.eq.true,perm_rooms.eq.true,perm_roles.eq.true,perm_support.eq.true,perm_logs.eq.true,perm_stats.eq.true,perm_diagnostics.eq.true,perm_chat.eq.true,perm_images.eq.true,auth_email.eq."apersson508@gmail.com",username.eq."mrsunshine88"';
+      // Vi har tagit bort 'auth_email' då den kolumnen inte finns fysiskt i profiles-tabellen (vilket orsakade 400-fel)
+      const adminFilter = 'is_admin.eq.true,perm_users.eq.true,perm_content.eq.true,perm_rooms.eq.true,perm_roles.eq.true,perm_support.eq.true,perm_logs.eq.true,perm_stats.eq.true,perm_diagnostics.eq.true,perm_chat.eq.true,perm_images.eq.true,username.eq."mrsunshine88",username.eq."apersson508"';
       
       supabase.from('profiles').select('id, username').or(adminFilter).then(({ data, error }: any) => {
         if (error) {
            console.error("[ADMIN_ROOM_SYNC] Fel vid hämtning av admins:", error.message);
-           // Fallback om den stora filter-strängen pajar
+           // Fallback om något fortfarande strular
            supabase.from('profiles').select('id, username').eq('is_admin', true).then(({ data: d }: any) => {
              if (d) setMembers(d);
            });
@@ -1645,6 +1645,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
         }
       });
     } else if (room.allowed_users && room.allowed_users.length > 0) {
+
 
       supabase.from('profiles').select('id, username').in('id', room.allowed_users).then(({ data }: any) => {
         if (data) setMembers(data);
