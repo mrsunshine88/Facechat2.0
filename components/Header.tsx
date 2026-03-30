@@ -125,7 +125,6 @@ export default function Header() {
         
         if (res?.error && res.error.includes('lock') && retryCount < 4) {
           if (isLoggingOut.current) return;
-          console.warn(`[Header] Auth lock conflict during IP check. Retrying... (${retryCount+1})`);
           await new Promise(res => setTimeout(res, 1000));
           return setupIpGuard(retryCount + 1);
         }
@@ -135,12 +134,9 @@ export default function Header() {
           if (isLoggingOut.current) return;
           
           if (retryCount < 5) {
-            console.warn(`[Header] Could not determine IP. Retrying in 3s... (${retryCount + 1}/5)`);
-            await new Promise(r => setTimeout(r, 3000));
+            await new Promise(r => setTimeout(r, 2000));
             return setupIpGuard(retryCount + 1);
           }
-          
-          console.error('[Header] IP Guard failed after multiple attempts.');
           return;
         }
 

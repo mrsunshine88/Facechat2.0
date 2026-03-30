@@ -116,6 +116,9 @@ export default function Login() {
           }
 
           localStorage.setItem('facechat_session_key', newSessionKey);
+          
+          // SÄKRA IP-NUMMER: Uppdatera kontot med rätt IP-adress direkt vid inloggning
+          await updateUserIP(signInData.user.id);
         }
         
         if (rememberMe) {

@@ -51,12 +51,21 @@ export async function updateUserIP(userId: string) {
     const ip = await getClientIP();
     if (!ip || ip === '::1' || ip === '127.0.0.1') return { success: true };
 
-    const { error } = await getAdminClient()
-      .from('profiles')
-      .update({ last_ip: ip })
-      .eq('id', userId);
+    // SÄKERHETSSKRUV: Uppdatera bara databasen om vi har ett RIKTIGT UUID (Inte 'guest' eller tomt)
+    const isGuest = !userId || userId === 'guest' || userId.length < 20;
 
-    if (error) throw error;
+    if (!isGuest) {
+        const { error } = await getAdminClient()
+          .from('profiles')
+          .update({ last_ip: ip })
+          .eq('id', userId);
+
+        if (error) {
+            // Logga men tillåt att gå vidare med IP-kollen för blockerade adresser
+            console.error(`[updateUserIP] Failed to update profile for ${userId}:`, error.message);
+        }
+    }
+
     return { success: true, ip };
   } catch (err: any) {
     return { error: err.message };
