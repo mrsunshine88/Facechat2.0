@@ -29,8 +29,7 @@ export async function adminLogAction(action: string, targetId?: string) {
       // Fallback till vanlig klient om env variabler saknas
       await supabase.from('admin_logs').insert({
         admin_id: user.id,
-        action: action,
-        target_id: targetId
+        action: action
       });
       return;
     }
@@ -38,8 +37,7 @@ export async function adminLogAction(action: string, targetId?: string) {
     // Tvinga in loggen med Service Role så att ingen Row Level Security (RLS) kan blockera när man kraschar säkerhetsspärrar
     await adminDb.from('admin_logs').insert({
       admin_id: user.id,
-      action: action,
-      target_id: targetId
+      action: action
     });
   } catch (e) {
     console.error("Failed to log admin action:", e);
