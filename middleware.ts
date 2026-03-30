@@ -31,6 +31,9 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, {
               ...options,
+              httpOnly: true,
+              secure: true,
+              sameSite: 'lax',
               maxAge: 60 * 60 * 24 * 30, // Force 30 days
               path: '/',
             })
@@ -39,6 +42,7 @@ export async function middleware(request: NextRequest) {
       },
     }
   )
+
 
   // 2. Kontrollera IP-blockering
   const reqIp = (request as any).ip;
@@ -65,10 +69,14 @@ export async function middleware(request: NextRequest) {
     try {
       const isLogin = request.nextUrl.pathname === '/login';
       
+      // BANG-INLOGGNING: Om inga cookies finns, hoppa över auth-check helt på /login (0ms bypass)
+      const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
+      const shouldCheckAuth = hasAuthCookies || !isLogin;
+
       const [rootResult, blockResult, authResult] = await Promise.all([
-        !isLogin ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
+        shouldCheckAuth ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
         supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
-        !isLogin ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
+        shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
       ]);
 
       rootIp = rootResult.data;
@@ -117,6 +125,7 @@ export async function middleware(request: NextRequest) {
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
       return redirectRes
     }
+
   }
 
   return response
