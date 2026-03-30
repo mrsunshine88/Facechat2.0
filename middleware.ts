@@ -31,13 +31,14 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, {
               ...options,
-              httpOnly: true,
+              httpOnly: false, // VIKTIGT: Måste vara false för att webbläsarens JS ska se inloggningen!
               secure: true,
               sameSite: 'lax',
               maxAge: 60 * 60 * 24 * 30, // Force 30 days
               path: '/',
             })
           })
+
         },
       },
     }
