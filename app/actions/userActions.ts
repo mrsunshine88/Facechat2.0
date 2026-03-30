@@ -29,7 +29,7 @@ export async function hasPermission(userId: string, permissionType: string): Pro
   if (permissionType === 'admin') return !!profile.is_admin;
   
   // Annars kolla perm_ kolumnerna
-  const permKey = `perm_${permissionType}`;
+  const permKey = permissionType.startsWith('perm_') ? permissionType : `perm_${permissionType}`;
   return !!profile[permKey];
 }
 
