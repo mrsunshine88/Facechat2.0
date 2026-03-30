@@ -101,16 +101,11 @@ export async function middleware(request: NextRequest) {
                             request.nextUrl.pathname.startsWith('/update-password');
 
       if (!user && !isPublicRoute) {
-        // RESILIENS VID KALLSTART: Om vi har auth-kakor men getUser() misslyckas (t.ex. seg mobil-start)
-        // så skickar vi inte till login direkt. Vi låter klienten försöka hydrera sessionen först.
-        // Detta förhindrar att man loggas ut bara för att Middlewaaren var "för snabb".
-        if (hasAuthCookies) {
-          return response;
-        }
-
-        const redirectRes = NextResponse.redirect(new URL('/login', request.url))
-        response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
-        return redirectRes
+        // RESILIENS VID KALLSTART (MOBIL 📱): Om vi inte ser en session direkt på servern, 
+        // så låter vi sidan laddas istället för att tvärstoppa med en omdirigering till /login.
+        // Detta ger mobilens webbläsare chansen att "hitta" sina sparade kakor i bakgrunden.
+        // Skulle användaren genuint vara utloggad kommer klientsidan (UserContext) att skicka dem till login.
+        return response;
       }
 
       if (user && !isPublicRoute) {
