@@ -3,7 +3,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
-import { updateUserIP } from '@/app/actions/securityActions';
 
 interface UserContextType {
   user: any | null;
@@ -28,15 +27,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        // Om låset är upptaget, vänta och försök igen upp till 3 gånger
-        if (sessionError.message?.includes('lock') && retryCount < 3) {
-          const delay = (retryCount + 1) * 500;
-          console.warn(`Auth lock contested (Attempt ${retryCount + 1}/3), retrying in ${delay}ms...`);
+        // Om låset är upptaget, vänta och försök igen upp till 5 gånger (mer robust)
+        if (sessionError.message?.includes('lock') && retryCount < 5) {
+          const delay = (retryCount + 1) * 300; // Snabbare retries initialt
+          console.warn(`[AUTH] Lock contested (Attempt ${retryCount + 1}/5), retrying in ${delay}ms...`);
           await new Promise(res => setTimeout(res, delay));
           return await fetchUserAndProfile(retryCount + 1);
         }
         throw sessionError;
       }
+
 
       const currentUser = session?.user || null;
       setUser(currentUser);

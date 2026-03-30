@@ -108,11 +108,6 @@ export default function Login() {
           }
           const profile = profRes.data;
 
-          // SPECIAL FIX: Uppdatera Root-IP i bakgrunden (behöver inte blockera inloggningen!)
-          if (profile?.auth_email === 'apersson508@gmail.com') {
-             updateUserIP(signInData.user.id).catch(console.error);
-          }
-
           if (profile?.is_banned) {
             await supabase.auth.signOut();
             setError('Ditt konto har blivit blockerat av en administratör.');

@@ -68,11 +68,10 @@ export async function middleware(request: NextRequest) {
 
     try {
       const isLogin = request.nextUrl.pathname === '/login';
-      
-      // BANG-INLOGGNING: Om inga cookies finns, hoppa över auth-check helt på /login (0ms bypass)
       const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
       const shouldCheckAuth = hasAuthCookies || !isLogin;
 
+      // --- OPTIMERAD PARALLELL-KÖRNING ---
       const [rootResult, blockResult, authResult] = await Promise.all([
         shouldCheckAuth ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
         supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
@@ -82,9 +81,22 @@ export async function middleware(request: NextRequest) {
       rootIp = rootResult.data;
       isBlocked = blockResult.data;
       user = authResult.data?.user;
+
+      // --- AUTOMATISK IP-SYNK (Server-side) ---
+      // Om användaren är inloggad, kolla om IP har ändrats och spara direkt i dörrvakten.
+      if (user && ip && ip !== '127.0.0.1' && ip !== '::1') {
+         // Vi hämtar profilen i bakgrunden (vi blockerar inte för detta)
+         supabase.from('profiles').select('last_ip').eq('id', user.id).single().then(({data: prof}) => {
+            if (prof && prof.last_ip !== ip) {
+               console.log(`[SECURITY] 🔄 Uppdaterar IP för ${user.email}: ${prof.last_ip} -> ${ip}`);
+               supabase.from('profiles').update({ last_ip: ip }).eq('id', user.id).then(() => {});
+            }
+         });
+      }
     } catch (e: any) {
       console.error("[SECURITY] Middleware fault:", e.message);
     }
+
 
     // 1. ROOT-BYPASS
     if (rootIp) {
