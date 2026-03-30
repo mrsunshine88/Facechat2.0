@@ -1,11 +1,11 @@
-import { createServerClient, type CookieOptions } from '@supabase/ssr'
+import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * MASTER SECURITY MIDDLEWARE (proxy.ts)
- * Note: Framework requires the filename to be proxy.ts and the function to be named 'proxy'.
+ * MASTER SECURITY MIDDLEWARE (middleware.ts)
+ * This is the framework entry point for all security and session logic.
  */
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
     request,
   })
@@ -40,40 +40,29 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-
-
-  // 2. Kontrollera IP-blockering (Förbättrad detektering)
-  // Vi kollar request.ip först (Next.js standard), sen vanliga headers
+  // 2. Kontrollera IP-blockering
   const reqIp = (request as any).ip;
   const xfwd = request.headers.get('x-forwarded-for');
   const xreal = request.headers.get('x-real-ip');
   
-  // Rensa IP från ::ffff: prefix (IPv4-mapped IPv6)
   const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
   const ip = rawIp.replace(/^.*:ffff:/, '');
 
-  // Logga ALLA relevanta headers om vi misstänker att det inte funkar
   if (!request.nextUrl.pathname.startsWith('/_next')) {
-     console.log(`[PROXY] Path: ${request.nextUrl.pathname} | Detected: ${ip} | Raw: ${rawIp}`);
+     console.log(`[SECURITY] Path: ${request.nextUrl.pathname} | IP: ${ip}`);
   }
 
-  // Undanta statiska filer och spärrsidan
   const isStatic = request.nextUrl.pathname.startsWith('/_next') || 
                    request.nextUrl.pathname.startsWith('/api') ||
                    request.nextUrl.pathname.includes('.') ||
                    request.nextUrl.pathname === '/favicon.ico';
 
   if (!isStatic && !request.nextUrl.pathname.startsWith('/blocked')) {
-    // --- PARALLELLISERA KONTROLLER FÖR ATT MINSKA LATENCY (FÖRBÄTTRING) ---
-    // Try-catch skyddar mot att hela sidan kraschar (500) om databasen laggar!
     let rootIp: string | null = null;
     let isBlocked: any = null;
     let user: any = null;
 
     try {
-      // --- OPTIMERING FÖR SNABBARE LOGIN ---
-      // Om vi är på login-sidan behöver vi bara veta om IP är spärrad. 
-      // Vi sparar 2-4 sekunder genom att skippa de tyngsta anropen här!
       const isLogin = request.nextUrl.pathname === '/login';
       
       const [rootResult, blockResult, authResult] = await Promise.all([
@@ -82,22 +71,14 @@ export async function proxy(request: NextRequest) {
         !isLogin ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
       ]);
 
-
       rootIp = rootResult.data;
       isBlocked = blockResult.data;
       user = authResult.data?.user;
-
-      if (rootResult.error) console.error(`[PROXY] Root-IP Fel: ${rootResult.error.message}`);
-      if (blockResult.error && blockResult.error.code !== 'PGRST116') {
-         console.error(`[PROXY] IP-spärr Fel: ${blockResult.error.message}`);
-      }
     } catch (e: any) {
-      console.error("[PROXY] Akut fel i säkerhetskontroll:", e.message);
-      // Vid extremt fel (databasen helt nere), tillåt passage för att inte låsa ut alla, 
-      // men logga felet så det kan åtgärdas.
+      console.error("[SECURITY] Middleware fault:", e.message);
     }
 
-    // 1. ROOT-BYPASS (Logik för apersson508@gmail.com)
+    // 1. ROOT-BYPASS
     if (rootIp) {
       const cleanRootIp = rootIp.replace(/^.*:ffff:/, '');
       if (ip === cleanRootIp) {
@@ -106,48 +87,36 @@ export async function proxy(request: NextRequest) {
             response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
             return redirectRes;
          }
-
          return response;
       }
     }
 
-    // 2. KOLLA SPÄRRILISTAN (HUVUDSKYDD)
+    // 2. IP-SPÄRR
     if (isBlocked) {
-      console.log(`[PROXY] 🛑 BLOCKERAT IP FÖRSÖKER ANSLUTA: ${ip} (Anledning: ${isBlocked.reason})`);
+      console.log(`[SECURITY] 🛑 BLOCKED IP: ${ip}`);
       const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
       return redirectRes;
     }
 
-
-    // 3. SMART REDIRECTS
+    // 3. Omdirigeringar
     const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
                           request.nextUrl.pathname.startsWith('/auth/callback') ||
                           request.nextUrl.pathname.startsWith('/update-password') ||
                           request.nextUrl.pathname.endsWith('.json') || 
                           request.nextUrl.pathname.endsWith('.png');
 
-    // 3.1 Skydda privata routes (Omdirigera till login om utloggad)
     if (!user && !isPublicRoute) {
-      const url = request.nextUrl.clone()
-      url.pathname = '/login'
-      const redirectRes = NextResponse.redirect(url)
+      const redirectRes = NextResponse.redirect(new URL('/login', request.url))
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
       return redirectRes
     }
 
-
-    // 3.2 Förhindra inloggade att se login-sidan (skicka till start)
     if (user && request.nextUrl.pathname.startsWith('/login')) {
       const redirectRes = NextResponse.redirect(new URL('/', request.url))
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
       return redirectRes
     }
-
-  }
- else {
-    // Om det är en statisk fil, kolla bara login-redirect (vid behov)
-    // Men oftast behövs inte auth-check vid statiska filer pga prestanda
   }
 
   return response
@@ -158,4 +127,3 @@ export const config = {
     '/((?!_next/static|_next/image|blocked|favicon.ico).*)',
   ],
 }
-
