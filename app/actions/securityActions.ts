@@ -79,32 +79,48 @@ export async function updateUserIP(userId: string) {
  */
 export async function completeLoginProcess(userId: string, sessionKey: string) {
   try {
-    const ip = await getClientIP();
+    let ip = '127.0.0.1';
+    try {
+      ip = await getClientIP();
+    } catch (ipErr) {
+      console.warn('[completeLoginProcess] Could not determine IP:', ipErr);
+    }
+    
     const admin = getAdminClient();
     
     // 1. Sätt sessions-cookie för Middleware (SERVER-SIDE)
-    const cookieStore = await cookies();
-    cookieStore.set('facechat_session_key', sessionKey, {
-      path: '/',
-      maxAge: 60 * 60 * 24 * 30, // 30 dagar
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'lax'
-    });
+    try {
+      const cookieStore = await cookies();
+      cookieStore.set('facechat_session_key', sessionKey, {
+        path: '/',
+        maxAge: 60 * 60 * 24 * 30, // 30 dagar
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax'
+      });
+    } catch (cookieErr) {
+      console.warn('[completeLoginProcess] Could not set cookie:', cookieErr);
+    }
     
     const { data: profile, error } = await admin
       .from('profiles')
       .update({ 
         session_key: sessionKey,
-        last_ip: (ip && ip !== '::1' && ip !== '127.0.0.1') ? ip : undefined 
+        last_ip: (ip && ip !== '::1' && ip !== '127.0.0.1') ? ip : null 
       })
       .eq('id', userId)
       .select('is_banned, auth_email')
-      .single();
+      .maybeSingle();
 
     if (error) return { error: error.message };
-    return { success: true, profile, ip };
+    
+    return { 
+      success: true, 
+      profile: profile ? { is_banned: profile.is_banned, auth_email: profile.auth_email } : null, 
+      ip 
+    };
   } catch (err: any) {
+    console.error('[completeLoginProcess] Fatal error:', err);
     return { error: err.message || String(err) };
   }
 }

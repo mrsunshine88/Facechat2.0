@@ -11,110 +11,116 @@ export async function middleware(request: NextRequest) {
     },
   })
 
-  // 1. Skapa Supabase-klient (Standard Original Logic)
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return request.cookies.getAll()
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
-          })
-          
-          response = NextResponse.next({
-            request,
-          })
-          
-          cookiesToSet.forEach(({ name, value, options }) => {
-            response.cookies.set(name, value, {
-              ...options,
-              maxAge: 60 * 60 * 24 * 30, // 30 dagar för mobilen
-              path: '/',
-            })
-          })
-        },
-      },
-    }
-  )
-
+  // 1. Snabb-bypass för statiska filer och Server Actions
   const isStatic = request.nextUrl.pathname.startsWith('/_next') || 
                    request.nextUrl.pathname.startsWith('/api') ||
                    request.nextUrl.pathname.includes('.') ||
                    request.nextUrl.pathname === '/favicon.ico';
+                   
+  const isAction = request.headers.get('next-action');
 
-  if (!isStatic && !request.nextUrl.pathname.startsWith('/blocked')) {
-    const isLogin = request.nextUrl.pathname === '/login';
-    const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
-    const shouldCheckAuth = hasAuthCookies || !isLogin;
+  if (isStatic || isAction) return response;
 
-    // 2. IP-vakt (Server-side)
-    const reqIp = (request as any).ip;
-    const xfwd = request.headers.get('x-forwarded-for');
-    const xreal = request.headers.get('x-real-ip');
-    const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
-    const ip = rawIp.replace(/^.*:ffff:/, '');
+  try {
+    // 2. Skapa Supabase-klient
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          getAll() {
+            return request.cookies.getAll()
+          },
+          setAll(cookiesToSet) {
+            cookiesToSet.forEach(({ name, value, options }) => {
+              request.cookies.set(name, value)
+            })
+            
+            response = NextResponse.next({
+              request,
+            })
+            
+            cookiesToSet.forEach(({ name, value, options }) => {
+              response.cookies.set(name, value, {
+                ...options,
+                maxAge: 60 * 60 * 24 * 30, // 30 dagar för mobilen
+                path: '/',
+              })
+            })
+          },
+        },
+      }
+    )
 
-    const [rootResult, blockResult, authResult] = await Promise.all([
-      shouldCheckAuth ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
-      supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
-      shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
-    ]);
+    if (!request.nextUrl.pathname.startsWith('/blocked')) {
+      const isLogin = request.nextUrl.pathname === '/login';
+      const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
+      const shouldCheckAuth = hasAuthCookies || !isLogin;
 
-    const rootIp = rootResult.data;
-    const isBlocked = blockResult.data;
-    const user = authResult.data?.user;
+      // 3. IP-vakt (Server-side)
+      const reqIp = (request as any).ip;
+      const xfwd = request.headers.get('x-forwarded-for');
+      const xreal = request.headers.get('x-real-ip');
+      const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
+      const ip = rawIp.replace(/^.*:ffff:/, '');
 
-    // ROOT-BYPASS (Säkrat IP)
-    if (rootIp && ip === rootIp.replace(/^.*:ffff:/, '')) {
-       return response;
-    }
+      const [rootResult, blockResult, authResult] = await Promise.all([
+        shouldCheckAuth ? supabase.rpc('get_root_admin_ip').limit(1) : Promise.resolve({ data: null, error: null }),
+        supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).maybeSingle(),
+        shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
+      ]);
 
-    // IP-SPÄRR (Server-side)
-    if (isBlocked) {
-      const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
-      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
-      return redirectRes;
-    }
+      const rootIp = rootResult.data;
+      const isBlocked = blockResult.data;
+      const user = authResult.data?.user;
 
-    // 3. SESSIONS-VAKT & AUTH
-    const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
-                          request.nextUrl.pathname.startsWith('/auth/callback') ||
-                          request.nextUrl.pathname.startsWith('/update-password');
+      // ROOT-BYPASS (Säkrat IP)
+      if (rootIp && ip === rootIp.replace(/^.*:ffff:/, '')) {
+         return response;
+      }
 
-    if (!user && !isPublicRoute) {
-      const redirectRes = NextResponse.redirect(new URL('/login', request.url))
-      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
-      return redirectRes
-    }
-
-    if (user && !isPublicRoute) {
-      // Kolla om användaren är bannad eller har en ogiltig session i REALTID
-      const { data: prof } = await supabase.from('profiles').select('session_key, is_banned').eq('id', user.id).single();
-      
-      if (prof?.is_banned) {
-        await supabase.auth.signOut();
-        const redirectRes = NextResponse.redirect(new URL('/login?error=Konto blockerat', request.url));
+      // IP-SPÄRR (Server-side)
+      if (isBlocked) {
+        const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
+        response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
         return redirectRes;
       }
 
-      // SESSION LOCK: Om cookien 'facechat_session_key' inte matchar databasen -> Logga ut
-      const cookieSess = request.cookies.get('facechat_session_key')?.value;
-      if (prof?.session_key && cookieSess && prof.session_key !== cookieSess) {
-        await supabase.auth.signOut();
-        const redirectRes = NextResponse.redirect(new URL('/login?error=Session ogiltig', request.url));
-        return redirectRes;
+      // 4. SESSIONS-VAKT & AUTH
+      const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
+                            request.nextUrl.pathname.startsWith('/auth/callback') ||
+                            request.nextUrl.pathname.startsWith('/update-password');
+
+      if (!user && !isPublicRoute) {
+        const redirectRes = NextResponse.redirect(new URL('/login', request.url))
+        response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
+        return redirectRes
+      }
+
+      if (user && !isPublicRoute) {
+        // Kolla om användaren är bannad eller har en ogiltig session i REALTID
+        const { data: prof } = await supabase.from('profiles').select('session_key, is_banned').eq('id', user.id).maybeSingle();
+        
+        if (prof?.is_banned) {
+          await supabase.auth.signOut();
+          return NextResponse.redirect(new URL('/login?error=Konto blockerat', request.url));
+        }
+
+        // SESSION LOCK: Om cookien 'facechat_session_key' inte matchar databasen -> Logga ut
+        const cookieSess = request.cookies.get('facechat_session_key')?.value;
+        if (prof?.session_key && cookieSess && prof.session_key !== cookieSess) {
+          await supabase.auth.signOut();
+          return NextResponse.redirect(new URL('/login?error=Session ogiltig', request.url));
+        }
+      }
+
+      if (user && request.nextUrl.pathname.startsWith('/login')) {
+        return NextResponse.redirect(new URL('/', request.url))
       }
     }
-
-    if (user && request.nextUrl.pathname.startsWith('/login')) {
-      const redirectRes = NextResponse.redirect(new URL('/', request.url))
-      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
-      return redirectRes
-    }
+  } catch (err) {
+    console.error('[Middleware] Recovery mode:', err);
+    return response;
   }
 
   return response
