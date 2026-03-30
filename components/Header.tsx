@@ -128,6 +128,18 @@ export default function Header() {
     }
     fetchPersonligaNotiser();
 
+    // Väckarklocka: Uppdatera notiser när användaren kommer tillbaka till appen (viktigt för mobilen!)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchPersonligaNotiser();
+        // Uppdatera även support-räknaren
+        getUnreadSupportCountAction().then(res => {
+          if (res && typeof res.count === 'number') setUnreadSupportCount(res.count);
+        });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     // 2. Lyssna på Notifications (Master Channel)
     const notifChannel = supabase.channel('header-notifs-' + userProfile.id)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `receiver_id=eq.${userProfile.id}` }, (payload: any) => {
@@ -225,6 +237,7 @@ export default function Header() {
       }).subscribe();
       
     return () => { 
+       document.removeEventListener('visibilitychange', handleVisibilityChange);
        supabase.removeChannel(notifChannel);
        supabase.removeChannel(supportChannel); 
        supabase.removeChannel(presenceChannel);
