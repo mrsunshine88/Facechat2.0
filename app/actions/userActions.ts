@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { sanitizeCSS } from '@/utils/securityUtils';
-import { adminLogAction } from './adminActions';
+import { adminLogAction } from './auditActions';
 
 const ROOT_EMAILS = ['apersson508@gmail.com'];
 
