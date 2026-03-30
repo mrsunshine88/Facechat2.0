@@ -7,7 +7,7 @@ import { adminLogAction } from '@/app/actions/auditActions';
 import { useWordFilter } from '@/hooks/useWordFilter';
 
 const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, currentUser: any, perms: { content: boolean, chat: boolean } }) => {
-  const { mask } = useWordFilter();
+  const { mask, triggerMassDelete } = useWordFilter();
   const [posts, setPosts] = useState<any[]>([]);
   const [guestbook, setGuestbook] = useState<any[]>([]);
   const [forumPosts, setForumPosts] = useState<any[]>([]);
@@ -109,6 +109,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
       if (error) return alert('Fel vid radering av tråd: ' + error.message);
       await adminLogAction(`Raderade hela forumtråden "${threadTitle}"`);
       fetchForumPosts();
+      triggerMassDelete();
     }
   };
 
@@ -128,6 +129,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
       else if (table === 'guestbook') fetchGuestbook();
       else if (table === 'chat_messages') fetchChatMessages();
       else fetchForumPosts();
+      triggerMassDelete();
     }
   };
 

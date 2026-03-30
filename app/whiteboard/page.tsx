@@ -31,7 +31,9 @@ const WhiteboardSkeleton = () => (
 
 export default function Whiteboard() {
   const router = useRouter()
-  const { mask } = useWordFilter()
+  const { mask } = useWordFilter(() => {
+    fetchData(0, true)
+  })
   const { profile: currentUser, loading: userLoading } = useUser()
   const [posts, setPosts] = useState<any[]>([])
   const [newPostContent, setNewPostContent] = useState('')

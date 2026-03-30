@@ -24,7 +24,9 @@ import { useWordFilter } from '@/hooks/useWordFilter'
 export default function ForumThreadPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params)
   const router = useRouter()
-  const { mask } = useWordFilter()
+  const { mask } = useWordFilter(() => {
+    fetchThread()
+  })
   const [windowWidth, setWindowWidth] = useState(typeof window !== 'undefined' ? window.innerWidth : 1200);
   const [thread, setThread] = useState<any>(null)
   const [posts, setPosts] = useState<any[]>([])

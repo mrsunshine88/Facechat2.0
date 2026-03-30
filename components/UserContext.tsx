@@ -62,6 +62,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
            return;
         }
 
+        // --- SINGLE SESSION ENFORCEMENT ---
+        // Kolla om detta är den senaste enheten som loggat in
+        const localSessKey = localStorage.getItem('facechat_session_key');
+        if (profData?.session_key && localSessKey && profData.session_key !== localSessKey) {
+           console.warn('[UserContext] Session mismatch - Kicking out.');
+           await supabase.auth.signOut();
+           localStorage.removeItem('facechat_persistent_session');
+           localStorage.removeItem('facechat_session_key');
+           window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
+           return;
+        }
+
         setProfile(profData);
       } else {
         setProfile(null);
@@ -123,11 +135,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }, (payload: any) => {
           if (!payload.new) return;
           setProfile(payload.new);
+          
           if (payload.new.is_banned) {
             supabase.auth.signOut().then(() => {
                 window.location.href = '/login?error=Ditt konto har blivit avstängt.';
             });
+            return;
           }
+
+
         })
         .subscribe();
 

@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Mail, Book, Users, Star, Settings, User, FileEdit, Search, Shield, HelpCircle, AlertTriangle, CheckCircle, Eye, Camera, Clock, Trash2, Eraser, ShieldAlert, ShieldOff, MessageSquare, Moon, Heart, Zap, Coffee, Ghost, Sun, Gamepad2, Undo, Music, Volume2, VolumeX, ArrowLeft } from 'lucide-react';
 import { PROFILE_SONGS } from './songs';
@@ -183,7 +183,7 @@ function MittKrypinContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const targetUsername = searchParams?.get('u');
-    const { mask } = useWordFilter();
+
     const { profile: globalViewer, loading: userLoading } = useUser();
 
     // REVERSIBLE WORD FILTER (MASKING TEXT WITHOUT DELETING FROM DB)
@@ -195,6 +195,14 @@ function MittKrypinContent() {
    const [hasSentRequest, setHasSentRequest] = useState(false);
 
    // LIVE DESIGN STUDIO STATES
+   const currentUserRef = useRef<any>(null);
+   useEffect(() => {
+      currentUserRef.current = currentUser;
+   }, [currentUser]);
+
+   const { mask } = useWordFilter(() => {
+      if (currentUserRef.current) fetchGuestbook(currentUserRef.current.id);
+   });
    const [isEditingKrypin, setIsEditingKrypin] = useState(false);
    const [designTab, setDesignTab] = useState<'simple' | 'advanced' | 'presentation'>('simple');
    const [draftCss, setDraftCss] = useState('');
@@ -214,7 +222,6 @@ function MittKrypinContent() {
    const [pmContent, setPmContent] = useState('');
    const [replyingTo, setReplyingTo] = useState<any>(null);
    const [replyContent, setReplyContent] = useState('');
-   const [isIpBlocked, setIsIpBlocked] = useState(false);
    const [userIp, setUserIp] = useState<string>('');
    const [isSending, setIsSending] = useState(false); // Förhindra 22-inläggs-felet
    const [forbiddenWords, setForbiddenWords] = useState<string[]>([]);
@@ -250,11 +257,10 @@ function MittKrypinContent() {
    useEffect(() => {
       if (typeof window !== 'undefined') {
          const saved = localStorage.getItem('krypin_global_music_mute');
-         if (saved === 'true') {
-            setIsMusicMuted(true);
-         }
+         // Synka tystnad mot BÅDE databasen och mobilens/datorns lokala minne
+         setIsMusicMuted(saved === 'true' || viewerUser?.global_mute === true);
       }
-   }, []);
+   }, [viewerUser?.global_mute]);
 
    useEffect(() => {
       if (currentUser && draftSong === '') {
@@ -354,12 +360,12 @@ function MittKrypinContent() {
                 supabase.from('forbidden_words').select('word')
              ]);
 
-             // Background IP check (Zero-Tugging!)
+             // Background IP check (Zero-Tugging!) - Redirect is MASTER! 🚀
              fetch('https://api64.ipify.org?format=json').then(r => r.json()).then(async ipRes => {
                 if (ipRes?.ip) {
                    setUserIp(ipRes.ip);
                    const { data: bData } = await supabase.from('blocked_ips').select('*').eq('ip', ipRes.ip).limit(1);
-                   if (bData?.length) setIsIpBlocked(true);
+                   if (bData?.length) window.location.href = '/blocked';
                 }
              }).catch(() => {});
 
@@ -2849,40 +2855,7 @@ function MittKrypinContent() {
         }
       `}</style>
 
-               {/* SÄKERHETSKONTROLL: LOCKOUT OVERLAY (IP-SPÄRR) */}
-               {isIpBlocked && (
-                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.9)', backdropFilter: 'blur(20px)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }} className="lockout-overlay">
-                     <div className="card" style={{ maxWidth: '550px', width: '100%', padding: '3rem 2rem', border: '2px solid #ef4444', borderRadius: '30px', backgroundColor: '#000', color: 'white', textAlign: 'center', boxShadow: '0 0 50px rgba(239, 68, 68, 0.4)' }}>
-                        <div style={{ width: '90px', height: '90px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', border: '2px solid #ef4444' }}>
-                           <ShieldOff size={48} />
-                        </div>
-                        <h1 style={{ fontSize: '2rem', fontWeight: '900', color: '#ef4444', marginBottom: '0.5rem', letterSpacing: '-1px' }}>ÅTKOMST BEGRÄNSAD</h1>
-                        <p style={{ fontSize: '1.2rem', color: '#94a3b8', marginBottom: '2rem' }}>Ditt konto eller din IP-adress har blivit föremål för en administrativ avstängning.</p>
 
-                        <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: '1.5rem', borderRadius: '15px', marginBottom: '2rem', textAlign: 'left', border: '1px solid rgba(255,255,255,0.1)' }}>
-                           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
-                              <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Ditt användar-ID:</span>
-                              <code style={{ color: '#94a3b8' }}>{viewerUser?.id?.slice(0, 8)}...</code>
-                           </div>
-                           <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              <span style={{ color: '#64748b', fontSize: '0.9rem' }}>Din IP-adress:</span>
-                              <code style={{ color: '#f8fafc', fontWeight: 'bold' }}>{userIp || 'Hämtar...'}</code>
-                           </div>
-                        </div>
-
-                        <div style={{ marginBottom: '2rem', textAlign: 'left' }}>
-                           <h3 style={{ fontSize: '1rem', color: '#f1f5f9', marginBottom: '0.75rem' }}>Överklaga beslut</h3>
-                           <textarea
-                              placeholder="Skriv din förklaring här för att kontakta supporten..."
-                              style={{ width: '100%', backgroundColor: '#111', border: '1px solid #333', borderRadius: '12px', padding: '1rem', color: 'white', fontSize: '0.9rem', minHeight: '100px', outline: 'none', marginBottom: '1rem' }}
-                           ></textarea>
-                           <button style={{ width: '100%', padding: '1rem', borderRadius: '12px', border: 'none', backgroundColor: '#ef4444', color: 'white', fontWeight: 'bold', cursor: 'pointer', transition: 'transform 0.2s' }} className="hover-lift">Skicka överklagan</button>
-                        </div>
-
-                        <p style={{ color: '#475569', fontSize: '0.8rem' }}>Facechat Security System v2.0 • Zero-Trust Policy</p>
-                     </div>
-                  </div>
-               )}
             </div>
          </div>
       </>

@@ -17,7 +17,7 @@ export default function Chattrum() {
 function ChattrumContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { mask } = useWordFilter();
+
   const urlRoomName = searchParams?.get('room');
   const [activeRoom, setActiveRoom] = useState<any>(null);
   const [rooms, setRooms] = useState<any[]>([]);
@@ -41,6 +41,11 @@ function ChattrumContent() {
   const blockedIdsRef = useRef<string[]>([]);
   const channelRef = useRef<any>(null);
   const currentUserRef = useRef<any>(null);
+  const activeRoomRef = useRef<any>(null);
+
+  const { mask } = useWordFilter(() => {
+    if (activeRoomRef.current) fetchMessages(activeRoomRef.current.id);
+  });
 
   const supabase = createClient();
 
@@ -142,7 +147,6 @@ function ChattrumContent() {
   }, [supabase, urlRoomName]);
 
   // Ref för att rums-lyssnaren ska veta vilket rum som är aktivt utan att ladda om hela listan
-  const activeRoomRef = useRef<any>(null);
   useEffect(() => {
     activeRoomRef.current = activeRoom;
   }, [activeRoom]);

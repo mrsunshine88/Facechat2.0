@@ -12,8 +12,10 @@ import {
 } from '../../actions/adminActions';
 import { adminRemoveForbiddenWord, adminAddForbiddenWord } from '../../actions/securityActions';
 import { adminLogAction } from '@/app/actions/auditActions';
+import { useWordFilter } from '@/hooks/useWordFilter';
 
 const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
+  const { triggerUpdate, triggerMassDelete } = useWordFilter();
   const [running, setRunning] = useState(false);
   const [diagSearch, setDiagSearch] = useState('');
   const [diagSearchResults, setDiagSearchResults] = useState<any[]>([]);
@@ -93,6 +95,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     else {
       setNewForbiddenWord('');
       fetchForbiddenWords();
+      triggerUpdate();
       alert(`✅ Ordet "${wordToAdd}" har lagts till.\n\nPåverkar ${totalLines} inlägg.`);
       await adminLogAction(`Lade till ord "${wordToAdd}" i det globala filtret (Påverkar ${totalLines} rader).`);
     }
@@ -104,6 +107,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       if (res?.error) return alert('Fel: ' + res.error);
       await adminLogAction(`Tog bort förbjudet ord: "${word}"`);
       fetchForbiddenWords();
+      triggerUpdate();
     }
   };
 
@@ -270,6 +274,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       if (!res?.error) {
         await adminLogAction(`Mass-radera spam: "${massDeleteQuery}" (${res.count} rader)`);
         setMassDeleteQuery('');
+        triggerMassDelete();
         alert(`Klart! Raderade ${res.count} inlägg.`);
       } else alert(res.error);
       setMassDeleting(false);

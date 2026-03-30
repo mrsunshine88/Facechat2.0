@@ -29,7 +29,9 @@ const ForumSkeleton = () => (
 
 export default function Forumet() {
   const router = useRouter();
-  const { mask } = useWordFilter();
+  const { mask } = useWordFilter(() => {
+    fetchThreads();
+  });
   const [useAlias, setUseAlias] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [threads, setThreads] = useState<any[]>([]); 

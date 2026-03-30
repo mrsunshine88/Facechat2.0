@@ -61,8 +61,8 @@ export async function toggleBlockUser(userId: string, newStatus: boolean) {
 
     // Root Protection (Baserat på is_root flaggan)
     const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
-    
     if (targetProfile?.is_root) {
+      await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte BLOCKERA Root-användaren (${targetProfile.username})`, userId);
       throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
     }
 
@@ -99,7 +99,7 @@ export async function adminDeleteContent(table: string, id: string) {
     const { error } = await getAdminClient().from(table).delete().eq('id', id);
     if (error) throw error;
     
-    await adminLogAction(`RADERADE innehåll från ${table} (ID: ${id})`);
+    // UI-klienten loggar snyggt namn
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -209,6 +209,7 @@ export async function adminUpdatePermissions(userId: string, payload: any) {
     // Root Protection (Baserat på is_root flaggan)
     const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
     if (targetProfile?.is_root) {
+      await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte ÄNDRA BEHÖRIGHET på Root-användaren (${targetProfile.username})`, userId);
       throw new Error('Säkerhetsspärr: Root-administratörens roller kan aldrig ändras.');
     }
 
@@ -277,6 +278,7 @@ export async function adminResetAvatar(targetUserId: string) {
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
     if (target?.is_root) {
+       await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte RADERA PROFILBILDEN på Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens bild kan inte nollställas här.');
     }
 
@@ -297,6 +299,7 @@ export async function adminResetPresentation(targetUserId: string) {
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
     if (target?.is_root) {
+       await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte RENSA BIO/KRYPIN för Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens bio kan inte nollställas här.');
     }
 
@@ -317,6 +320,7 @@ export async function adminResetTheme(targetUserId: string) {
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
     if (target?.is_root) {
+       await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte NOLLSTÄLLA CSS för Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens tema kan inte nollställas här.');
     }
 
