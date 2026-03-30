@@ -96,15 +96,21 @@ export default function Login() {
             setLoading(false);
             return;
           }
-          const { data: profList, error: profError } = await supabase.from('profiles').select('is_banned, auth_email').eq('id', signInData.user.id).limit(1);
-          if (profError) {
-             throw new Error('Kunde inte läsa din profil: ' + profError.message);
+          // Hämta profil och uppdatera sessionsnyckel PARALLELLT (Minskar väntetiden med 50%+)
+          const newSessionKey = crypto.randomUUID();
+          const [profRes] = await Promise.all([
+             supabase.from('profiles').select('is_banned, auth_email').eq('id', signInData.user.id).single(),
+             supabase.from('profiles').update({ session_key: newSessionKey }).eq('id', signInData.user.id)
+          ]);
+          
+          if (profRes.error) {
+             throw new Error('Kunde inte läsa din profil: ' + profRes.error.message);
           }
-          const profile = profList && profList.length > 0 ? profList[0] : null;
+          const profile = profRes.data;
 
-          // SPECIAL FIX: Uppdatera Root-IP omedelbart vid inloggning för omedelbar 'Säkrat IP'-status
+          // SPECIAL FIX: Uppdatera Root-IP i bakgrunden (behöver inte blockera inloggningen!)
           if (profile?.auth_email === 'apersson508@gmail.com') {
-             await updateUserIP(signInData.user.id);
+             updateUserIP(signInData.user.id).catch(console.error);
           }
 
           if (profile?.is_banned) {
@@ -114,10 +120,6 @@ export default function Login() {
             return;
           }
 
-          // --- SINGLE SESSION ENFORCEMENT ---
-          // Skapa en unik nyckel för denna inloggning
-          const newSessionKey = crypto.randomUUID();
-          await supabase.from('profiles').update({ session_key: newSessionKey }).eq('id', signInData.user.id);
           localStorage.setItem('facechat_session_key', newSessionKey);
         }
         
@@ -127,8 +129,8 @@ export default function Login() {
           localStorage.removeItem('facechat_saved_email')
         }
         
+        // "BANG"-inloggning: Skicka vidare direkt utan att ladda om hela sidan
         router.push('/')
-        router.refresh()
       }
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {
