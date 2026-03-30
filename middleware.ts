@@ -133,6 +133,23 @@ export async function middleware(request: NextRequest) {
       if (user && request.nextUrl.pathname.startsWith('/login')) {
         return NextResponse.redirect(new URL('/', request.url))
       }
+
+      // 5. PROAKTIV KAK-HÄRDNING (FÖR MOBILEN 📱)
+      // Vi tvingar alla inloggnings-kakor att vara permanenta (30 dagar) 
+      // även om Supabase-klienten på mobilen råkade sätta dem som tillfälliga.
+      if (user) {
+        request.cookies.getAll().forEach(cookie => {
+          if (cookie.name.startsWith('sb-') || cookie.name === 'facechat_session_key') {
+            response.cookies.set(cookie.name, cookie.value, {
+              path: '/',
+              maxAge: 60 * 60 * 24 * 30,
+              httpOnly: cookie.name === 'facechat_session_key',
+              secure: process.env.NODE_ENV === 'production',
+              sameSite: 'lax'
+            });
+          }
+        });
+      }
     }
   } catch (err) {
     console.error('[Middleware] Recovery mode:', err);
