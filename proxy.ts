@@ -115,7 +115,21 @@ export async function proxy(request: NextRequest) {
       return NextResponse.redirect(new URL('/blocked', request.url));
     }
 
-    // 3. SMART REDIRECT FÖR INLOGGADE
+    // 3. SMART REDIRECTS
+    const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
+                          request.nextUrl.pathname.startsWith('/auth/callback') ||
+                          request.nextUrl.pathname.startsWith('/update-password') ||
+                          request.nextUrl.pathname.endsWith('.json') || 
+                          request.nextUrl.pathname.endsWith('.png');
+
+    // 3.1 Skydda privata routes (Omdirigera till login om utloggad)
+    if (!user && !isPublicRoute) {
+      const url = request.nextUrl.clone()
+      url.pathname = '/login'
+      return NextResponse.redirect(url)
+    }
+
+    // 3.2 Förhindra inloggade att se login-sidan (skicka till start)
     if (user && request.nextUrl.pathname.startsWith('/login')) {
       return NextResponse.redirect(new URL('/', request.url))
     }
