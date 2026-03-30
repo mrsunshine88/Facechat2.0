@@ -218,6 +218,38 @@ export default function Header() {
     };
   }, [userProfile?.id, supabase]) // OPTIMERING: Beror nu bara på ID, inte hela profilen (stoppar loopar!)
 
+  // REAL-TIME IP GUARD (Blixtsnabb reaktion vid spärr!)
+  useEffect(() => {
+    if (isBlockedRoute || isLoginRoute || isAdminRoute) return;
+    
+    let channel: any;
+    
+    async function setupRealtimeGuard() {
+      try {
+        // Vi hämtar IP:n en gång vid start för att veta vad vi ska lyssna efter
+        const res = await supabase.from('profiles').select('last_ip').eq('id', user?.id || 'guest').maybeSingle();
+        const myIp = res?.data?.last_ip;
+        if (!myIp) return;
+
+        channel = supabase.channel('instant-ip-block')
+          .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
+            if (payload.new.ip === myIp) {
+              window.location.href = '/blocked';
+            }
+          })
+          .subscribe();
+      } catch (e) {}
+    }
+
+    if (!userLoading) {
+      setupRealtimeGuard();
+    }
+
+    return () => {
+      if (channel) supabase.removeChannel(channel);
+    };
+  }, [pathname, userLoading, user?.id]);
+
   const simulateNotification = () => {
     // Legacy demo function (kept for failsafes)
   }
@@ -228,7 +260,7 @@ export default function Header() {
     setMobileMenuOpen(false)
   }, [pathname])
 
-  if (isAdminRoute || isLoginRoute) return null
+  if (isAdminRoute || isLoginRoute || isBlockedRoute) return null
 
   const handleLogout = async () => {
     isLoggingOut.current = true;

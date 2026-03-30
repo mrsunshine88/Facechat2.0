@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
-import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare } from 'lucide-react'
+import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare, ShieldAlert } from 'lucide-react'
 
 import { prepareNewSignup, isUserConfirmed } from '@/app/actions/userActions'
 import { updateUserIP, completeLoginProcess } from '@/app/actions/securityActions'
@@ -114,7 +114,7 @@ export default function Login() {
 
           if (profile?.is_banned) {
             await supabase.auth.signOut();
-            setError('Ditt konto har blivit blockerat av en administratör.');
+            setError('Blockerat');
             setLoading(false);
             return;
           }
@@ -202,10 +202,38 @@ export default function Login() {
         </h2>
 
         {error && (
-          <div style={{ padding: '1.25rem', backgroundColor: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#ecfdf5' : '#fee2e2', color: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#065f46' : '#b91c1c', borderRadius: '12px', marginBottom: '1.5rem', fontSize: '1rem', textAlign: 'center', border: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '2px solid #10b981' : '1px solid #fca5a5', boxShadow: '0 4px 6px rgba(0,0,0,0.05)' }}>
-            {(error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) && <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📧</div>}
-            <strong style={{ display: 'block', marginBottom: '0.25rem' }}>{error.includes('lyckades') ? 'Registrering Lyckades!' : ''}</strong>
-            {error}
+          <div style={{ 
+            padding: '1.25rem', 
+            backgroundColor: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#ecfdf5' : '#fee2e2', 
+            color: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#065f46' : '#b91c1c', 
+            borderRadius: '12px', 
+            marginBottom: '1.5rem', 
+            fontSize: '1rem', 
+            textAlign: 'center', 
+            border: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '2px solid #10b981' : '1px solid #fca5a5', 
+            boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+            transition: 'all 0.3s ease'
+          }}>
+            {error === 'session_conflict' ? (
+               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                  <ShieldAlert size={32} color="#b91c1c" strokeWidth={2.5} />
+                  <strong style={{ fontSize: '1.1rem', color: '#991b1b' }}>Säkerhetskontroll</strong>
+                  <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4' }}>
+                    Någon annan loggade precis in på ditt konto. För din säkerhet har du loggats ut från denna enhet.
+                  </p>
+               </div>
+            ) : error === 'blocked' || error === 'Blockerat' ? (
+               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                  <span style={{ fontSize: '2rem' }}>🚫</span>
+                  <strong style={{ fontSize: '1.4rem', letterSpacing: '0.05em', fontWeight: '900' }}>BLOCKERAT</strong>
+               </div>
+            ) : (
+               <>
+                 {(error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) && <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📧</div>}
+                 <strong style={{ display: 'block', marginBottom: '0.25rem' }}>{error.includes('lyckades') ? 'Registrering Lyckades!' : ''}</strong>
+                 {error}
+               </>
+            )}
           </div>
         )}
 

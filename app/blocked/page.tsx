@@ -39,8 +39,19 @@ export default function BlockedPage() {
       })
       .subscribe()
 
+    // Realtime listener for IP unblocking (Smidighet!)
+    const ipChannel = supabase.channel('unblock_listen')
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'blocked_ips' }, () => {
+         // Vi kollar inte IP specifikt här för enkelhetens skull, 
+         // om någon blir unblockad provar vi helt enkelt att skicka hem dom.
+         // Middleware stoppar dom ändå om dom fortfarande är spärrade.
+         window.location.href = '/';
+      })
+      .subscribe()
+
     return () => {
       supabase.removeChannel(channel)
+      supabase.removeChannel(ipChannel)
     }
   }, [currentUser?.id])
 
@@ -269,29 +280,77 @@ export default function BlockedPage() {
                     </div>
                   ))}
                   {activeTicket.status === 'closed' && (
-                    <div style={{ textAlign: 'center', padding: '1rem', backgroundColor: 'rgba(16, 185, 129, 0.1)', borderRadius: '8px', border: '1px solid rgba(16, 185, 129, 0.2)', color: '#10b981', fontSize: '0.85rem' }}>
-                      Detta ärende har markerats som löst/avslutat. ✅
+                    <div style={{ 
+                      textAlign: 'center', 
+                      padding: '1.5rem', 
+                      backgroundColor: 'rgba(16, 185, 129, 0.15)', 
+                      borderRadius: '20px', 
+                      border: '2px solid #10b981', 
+                      color: '#10b981', 
+                      fontSize: '1rem',
+                      fontWeight: '800',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      gap: '0.5rem',
+                      boxShadow: '0 0 20px rgba(16, 185, 129, 0.1)'
+                    }}>
+                      <div style={{ padding: '0.75rem', backgroundColor: '#10b98122', borderRadius: '50%' }}>
+                         <CheckCircle size={32} color="#10b981" />
+                      </div>
+                      DITT ÄRENDE ÄR LÖST! ✅
+                      <p style={{ fontSize: '0.85rem', fontWeight: '500', color: '#94a3b8', margin: 0 }}>
+                        Administratören har hanterat ditt ärende. Du kan nu återvända till Facechat!
+                      </p>
+                      <button 
+                        onClick={() => window.location.href = '/'}
+                        style={{ marginTop: '0.5rem', padding: '0.75rem 1.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '12px', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.9rem' }}
+                      >
+                        Till Startskärmen &rarr;
+                      </button>
                     </div>
                   )}
                 </div>
 
                 {/* REPLY INPUT */}
                 {activeTicket.status === 'open' && (
-                  <div style={{ display: 'flex', gap: '0.75rem' }}>
+                  <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
                     <input 
                       type="text"
                       value={message}
                       onChange={(e) => setMessage(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleReply()}
                       placeholder="Skriv ett svar..."
-                      style={{ flex: 1, padding: '0.875rem 1.25rem', borderRadius: '12px', backgroundColor: 'rgba(2, 6, 23, 0.4)', border: '1px solid rgba(255,255,255,0.1)', color: 'white', outline: 'none' }}
+                      style={{ 
+                        flex: 1, 
+                        minWidth: 0, // Kritisk för flex-shrink på mobilen
+                        padding: '0.875rem 1.25rem', 
+                        borderRadius: '12px', 
+                        backgroundColor: 'rgba(2, 6, 23, 0.4)', 
+                        border: '1px solid rgba(255,255,255,0.1)', 
+                        color: 'white', 
+                        outline: 'none' 
+                      }}
                     />
                     <button 
                       disabled={sending || !message.trim()}
                       onClick={handleReply}
-                      style={{ padding: '0.875rem 1.25rem', backgroundColor: '#2563eb', color: 'white', borderRadius: '12px', border: 'none', cursor: 'pointer', opacity: (sending || !message.trim()) ? 0.5 : 1 }}
+                      style={{ 
+                        flexShrink: 0, 
+                        width: '50px', 
+                        height: '50px', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        backgroundColor: '#2563eb', 
+                        color: 'white', 
+                        borderRadius: '12px', 
+                        border: 'none', 
+                        cursor: 'pointer', 
+                        opacity: (sending || !message.trim()) ? 0.5 : 1 
+                      }}
                     >
-                      <Send size={20} />
+                      <Send size={18} />
                     </button>
                   </div>
                 )}

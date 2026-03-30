@@ -103,14 +103,14 @@ export async function middleware(request: NextRequest) {
         
         if (prof?.is_banned) {
           await supabase.auth.signOut();
-          return NextResponse.redirect(new URL('/login?error=Konto blockerat', request.url));
+          return NextResponse.redirect(new URL('/login?error=blocked', request.url));
         }
 
         // SESSION LOCK: Om cookien 'facechat_session_key' inte matchar databasen -> Logga ut
         const cookieSess = request.cookies.get('facechat_session_key')?.value;
         if (prof?.session_key && cookieSess && prof.session_key !== cookieSess) {
           await supabase.auth.signOut();
-          return NextResponse.redirect(new URL('/login?error=Session ogiltig', request.url));
+          return NextResponse.redirect(new URL('/login?error=session_conflict', request.url));
         }
       }
 
