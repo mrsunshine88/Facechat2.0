@@ -6,7 +6,7 @@ import { createClient } from '@/utils/supabase/client'
 import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare } from 'lucide-react'
 
 import { prepareNewSignup, isUserConfirmed } from '@/app/actions/userActions'
-import { updateUserIP } from '@/app/actions/securityActions'
+import { updateUserIP, completeLoginProcess } from '@/app/actions/securityActions'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -96,17 +96,14 @@ export default function Login() {
             setLoading(false);
             return;
           }
-          // Hämta profil och uppdatera sessionsnyckel PARALLELLT (Minskar väntetiden med 50%+)
+          // "BANG"-inloggning: Uppdatera profil, sessionsnyckel och IP i EN ENDA snabb operation!
           const newSessionKey = crypto.randomUUID();
-          const [profRes, updateRes] = await Promise.all([
-             supabase.from('profiles').select('is_banned, auth_email').eq('id', signInData.user.id).single(),
-             supabase.from('profiles').update({ session_key: newSessionKey }).eq('id', signInData.user.id)
-          ]);
+          const res = await completeLoginProcess(signInData.user.id, newSessionKey);
           
-          if (profRes.error || updateRes.error) {
-             throw new Error('Kunde inte läsa din profil eller uppdatera säkerhetssessionen: ' + (profRes.error?.message || updateRes.error?.message));
+          if (res.error) {
+             throw new Error('Inloggningssäkerhet misslyckades: ' + res.error);
           }
-          const profile = profRes.data;
+          const profile = res.profile;
 
           if (profile?.is_banned) {
             await supabase.auth.signOut();
@@ -116,9 +113,6 @@ export default function Login() {
           }
 
           localStorage.setItem('facechat_session_key', newSessionKey);
-          
-          // SÄKRA IP-NUMMER: Uppdatera kontot med rätt IP-adress direkt vid inloggning
-          await updateUserIP(signInData.user.id);
         }
         
         if (rememberMe) {

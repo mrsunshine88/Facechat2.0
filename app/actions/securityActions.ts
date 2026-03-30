@@ -72,6 +72,33 @@ export async function updateUserIP(userId: string) {
   }
 }
 
+/**
+ * BANG-INLOGGNING: Konsoliderad säkerhetskontroll
+ * Utför både session_key-uppdatering och IP-registrering i EN ENDA databastransaktion.
+ * Detta minimerar väntetid och förhindrar krockar mellan olika enheter.
+ */
+export async function completeLoginProcess(userId: string, sessionKey: string) {
+  try {
+    const ip = await getClientIP();
+    const admin = getAdminClient();
+    
+    const { data: profile, error } = await admin
+      .from('profiles')
+      .update({ 
+        session_key: sessionKey,
+        last_ip: (ip && ip !== '::1' && ip !== '127.0.0.1') ? ip : undefined 
+      })
+      .eq('id', userId)
+      .select('is_banned, auth_email')
+      .single();
+
+    if (error) throw error;
+    return { success: true, profile, ip };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
 // --- ORD-FILTER ACTIONS ---
 
 export async function adminAddForbiddenWord(word: string) {
