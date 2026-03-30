@@ -32,15 +32,22 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
+            // 1. Uppdatera request-objektet så att efterföljande kod ser de nya kakorna
+            cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+            
+            // 2. Skapa en ny respons som bär med sig de uppdaterade request-headrarna
             response = NextResponse.next({
               request,
             })
+            
+            // 3. Sätt kakorna på responsen med tvingat 30-dagars fönster för mobilstabilitet
             cookiesToSet.forEach(({ name, value, options }) =>
               response.cookies.set(name, value, {
                 ...options,
-                maxAge: 60 * 60 * 24 * 30, // 30 dagar för mobilen
+                maxAge: 60 * 60 * 24 * 30, // Alltid 30 dagar
                 path: '/',
+                sameSite: 'lax',
+                secure: process.env.NODE_ENV === 'production',
               })
             )
           },
@@ -48,6 +55,8 @@ export async function middleware(request: NextRequest) {
         cookieOptions: {
           maxAge: 60 * 60 * 24 * 30,
           path: '/',
+          sameSite: 'lax',
+          secure: process.env.NODE_ENV === 'production',
         }
       }
     )

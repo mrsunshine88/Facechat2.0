@@ -120,6 +120,8 @@ export default function Login() {
           }
 
           localStorage.setItem('facechat_session_key', newSessionKey);
+          // Spara hint för mobila enheter (Minskar risken för utloggning vid kallstart)
+          localStorage.setItem('facechat_persistent_session', 'true');
         }
         
         if (rememberMe) {

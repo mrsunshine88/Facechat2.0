@@ -26,13 +26,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const fetchUserAndProfile = async () => {
     try {
+      // 1. Snabbkoll: Förväntar vi oss en session? (Hint från localStorage)
+      const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
+      
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
-      if (sessionError) {
-        throw sessionError;
+      if (sessionError) throw sessionError;
+
+      // 2. MOBIL-OPTIMERING (Grace Period): Om vi förväntar oss en session men getSession returnerar null 
+      // direkt vid kallstart, väntar vi några hundra millisekunder och försöker igen. 
+      // Mobila webbläsare kan ibland vara sega med att ladda kakor från disk.
+      let finalSession = session;
+      if (!session && hasPersistentHint) {
+         console.log('[UserContext] Väntar på att mobilen ska ladda kakor...');
+         await new Promise(resolve => setTimeout(resolve, 800));
+         const secondTry = await supabase.auth.getSession();
+         finalSession = secondTry.data.session;
       }
 
-      const currentUser = session?.user || null;
+      const currentUser = finalSession?.user || null;
       setUser(currentUser);
 
       if (currentUser) {
@@ -44,6 +56,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         
         if (profData?.is_banned) {
            await supabase.auth.signOut();
+           localStorage.removeItem('facechat_persistent_session');
            window.location.href = '/login?error=Ditt konto är avstängt.';
            return;
         }
@@ -51,6 +64,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setProfile(profData);
       } else {
         setProfile(null);
+        // Om vi definitivt inte har en session, rensa hint-flaggan
+        if (!hasPersistentHint) {
+           // Vi rör inte flaggan om den fanns men sessionen saknas, 
+           // för att inte förstöra för nästa försök om det var tillfälligt nätfel.
+        }
       }
     } catch (error: any) {
       console.error('Error fetching user/profile:', error);
