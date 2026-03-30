@@ -147,6 +147,27 @@ export async function adminResolveReport(reportId: string, status: string) {
   }
 }
 
+export async function adminDeleteReport(reportId: string) {
+  try {
+    const { userId: executorId, isRoot } = await verifyAdminPermission('perm_content');
+    
+    // Hämta info för Jävs-kontroll
+    const { data: report } = await getAdminClient().from('reports').select('reported_user_id').eq('id', reportId).single();
+    if (report && report.reported_user_id === executorId && !isRoot) {
+      throw new Error('Jäv: Du kan inte hantera anmälningar som rör dig själv.');
+    }
+
+    const { error } = await getAdminClient().from('reports').delete().eq('id', reportId);
+    if (error) throw error;
+
+    await adminLogAction(`RADERADE en anmälan (ID: ${reportId}) permanent`, report?.reported_user_id);
+    
+    return { success: true };
+  } catch (err: any) {
+    return { error: err.message };
+  }
+}
+
 export async function adminRoomAction(action: string, roomId: string | null, payload: any) {
   try {
     await verifyAdminPermission('perm_rooms');

@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { AlertTriangle, Trash2, CheckCircle, Ban, ArrowRight, EyeOff } from 'lucide-react';
-import { adminResolveReport, adminDeleteContent, toggleBlockUser } from '../../actions/adminActions';
+import { adminResolveReport, adminDeleteContent, toggleBlockUser, adminDeleteReport } from '../../actions/adminActions';
 import { adminLogAction } from '@/app/actions/auditActions';
 
 const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: any }) => {
@@ -101,7 +101,8 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
         const { error } = await supabase.from('chat_messages').delete().eq('id', report.item_id);
         if (error) return alert('Kunde inte radera chattmeddelande: ' + error.message);
       }
-      await adminResolveReport(report.id, 'resolved');
+      const res = await adminResolveReport(report.id, 'resolved');
+      if (res?.error) return alert("Systemfel: " + res.error);
       await adminLogAction(`Hanterade en anmälan mot ${report.reported?.username || 'Okänd'} och raderade ${table || report.item_type}-inlägg.`, report.reported_user_id);
       fetchReports();
     }
@@ -116,7 +117,8 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
         const res = await adminDeleteContent('forum_threads', post.thread_id);
         if (res?.error) return alert('Kunde inte radera tråd: ' + res.error);
 
-        await adminResolveReport(reportId, 'resolved');
+        const res2 = await adminResolveReport(reportId, 'resolved');
+        if (res2?.error) return alert('Systemfel: ' + res2.error);
         await adminLogAction(`Hanterade en anmälan och raderade en hel forumtråd (Tråd-ID: ${post.thread_id}).`);
         fetchReports();
       } catch (err: any) { alert('Ett oväntat fel uppstod: ' + err.message); }
@@ -127,7 +129,8 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
     if (confirm(`Ska användare ${report.reported?.username || 'Okänd'} bannas globalt från sajten?`)) {
       const res = await toggleBlockUser(report.reported_user_id, true);
       if (res?.error) return alert('Behörighet saknas: ' + res.error);
-      await adminResolveReport(report.id, 'resolved');
+      const res2 = await adminResolveReport(report.id, 'resolved');
+      if (res2?.error) return alert('Systemfel: ' + res2.error);
       await adminLogAction(`Bannade användare ${report.reported?.username} pga en anmälan.`, report.reported_user_id);
       fetchReports();
     }
@@ -135,16 +138,16 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
 
   const handleDismiss = async (id: string) => {
     const report = reports.find(r => r.id === id);
-    await adminResolveReport(id, 'dismissed');
+    const res = await adminResolveReport(id, 'dismissed');
+    if (res?.error) return alert("Systemfel: " + res.error);
     await adminLogAction(`Avvisade anmälan (${id}) mot ${report?.reported?.username || 'Okänd'} utan åtgärd.`);
     fetchReports();
   }
 
   const handleDeleteReportEntry = async (id: string) => {
     if (!confirm('Vill du ta bort detta ärende helt från listan?')) return;
-    const { error } = await supabase.from('reports').delete().eq('id', id);
-    if (error) return alert("Kunde inte radera ärende: " + error.message);
-    await adminLogAction(`Raderade ett avslutat anmälnings-ärende (ID: ${id})`);
+    const res = await adminDeleteReport(id);
+    if (res?.error) return alert("Systemfel vid radering: " + res.error);
     fetchReports();
   };
 

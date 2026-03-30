@@ -84,6 +84,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
   const handleToggleBlock = async (user: any) => {
     if (user.is_root || user.id === currentUser.id) {
+       await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte BLOCKERA Root-användaren (${user.username})`, user.id);
        return alert('Detta konto är skyddat som Master-Admin.');
     }
     const newStatus = !user.is_banned;
@@ -133,6 +134,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
 
   const handleDeleteUser = async (user: any) => {
     if (user.is_root || user.id === currentUser.id) {
+       await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte RADERA KONTOT för Root-användaren (${user.username})`, user.id);
        return alert('Nix, du kan inte radera the creator!');
     }
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');
