@@ -55,22 +55,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
            window.location.href = '/login?error=Ditt konto är avstängt.';
            return;
         }
-        // SINGLE SESSION ENFORCEMENT
-        // Om vi har en nyckel i databasen och en lokalt, men de inte stämmer överens: LOGGA UT
-        const localSess = localStorage.getItem('facechat_session_key');
-        if (profData?.session_key && localSess && profData.session_key !== localSess) {
-           console.warn("[SECURITY] Session key mismatch. Another device is active.");
-           await supabase.auth.signOut();
-           window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
-           return;
-        }
-
         setProfile(profData);
         
         // MJUK IP-SYNK: Uppdatera i bakgrunden efter att profilen laddats
         if (currentUser.id) {
            updateUserIP(currentUser.id).catch(console.error);
         }
+
 
       } else {
         setProfile(null);
