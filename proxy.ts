@@ -16,46 +16,30 @@ export async function proxy(request: NextRequest) {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
-        get(name: string) {
-          return request.cookies.get(name)?.value
+        getAll() {
+          return request.cookies.getAll()
         },
-        set(name: string, value: string, options: CookieOptions) {
-          request.cookies.set({ name, value, ...options })
-          response.cookies.set({ 
-            name, 
-            value, 
-            ...options,
-            maxAge: 60 * 60 * 24 * 30, // 30 days
-            path: '/', 
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value)
           })
-        },
-        remove(name: string, options: CookieOptions) {
-          request.cookies.set({ name, value: '', ...options })
-          response.cookies.set({ 
-            name, 
-            value: '', 
-            ...options,
-            maxAge: 0,
-            path: '/',
+          
+          response = NextResponse.next({
+            request,
+          })
+          
+          cookiesToSet.forEach(({ name, value, options }) => {
+            response.cookies.set(name, value, {
+              ...options,
+              maxAge: 60 * 60 * 24 * 30, // Force 30 days
+              path: '/',
+            })
           })
         },
       },
     }
   )
-  // 1.5 Säkra 30-dagars persistens för existerande sessioner (även utan refresh)
 
-  const authCookies = ['sb-access-token', 'sb-refresh-token'];
-  authCookies.forEach(name => {
-    const cookie = request.cookies.get(name);
-    if (cookie) {
-      response.cookies.set({
-        name: cookie.name,
-        value: cookie.value,
-        maxAge: 60 * 60 * 24 * 30, // 30 days
-        path: '/',
-      });
-    }
-  });
 
 
   // 2. Kontrollera IP-blockering (Förbättrad detektering)
