@@ -2,7 +2,7 @@
 
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
-import { headers } from 'next/headers';
+import { headers, cookies } from 'next/headers';
 
 const ROOT_EMAIL = 'apersson508@gmail.com';
 
@@ -82,6 +82,16 @@ export async function completeLoginProcess(userId: string, sessionKey: string) {
     const ip = await getClientIP();
     const admin = getAdminClient();
     
+    // 1. Sätt sessions-cookie för Middleware (SERVER-SIDE)
+    const cookieStore = await cookies();
+    cookieStore.set('facechat_session_key', sessionKey, {
+      path: '/',
+      maxAge: 60 * 60 * 24 * 30, // 30 dagar
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+    
     const { data: profile, error } = await admin
       .from('profiles')
       .update({ 
@@ -92,11 +102,20 @@ export async function completeLoginProcess(userId: string, sessionKey: string) {
       .select('is_banned, auth_email')
       .single();
 
-    if (error) throw error;
+    if (error) return { error: error.message };
     return { success: true, profile, ip };
   } catch (err: any) {
-    return { error: err.message };
+    return { error: err.message || String(err) };
   }
+}
+
+/**
+ * Loggar ut användaren och rensar cookies på servernivå (Säkert)
+ */
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete('facechat_session_key');
+  return { success: true };
 }
 
 // --- ORD-FILTER ACTIONS ---

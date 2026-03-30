@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
-import { updateUserIP } from '@/app/actions/securityActions'
+import { logoutAction } from '@/app/actions/securityActions'
 import { getUnreadSupportCountAction, getUserBlocksAction } from '@/app/actions/userActions'
 
 
@@ -54,36 +54,8 @@ export default function Header() {
   }, [pathname, profile, user]);
 
   // BACKGROUND SECURITY HEARTBEAT (Runs once on mount + every 60s)
-  useEffect(() => {
-    if (!user?.id || isLoggingOut.current || isLoginRoute) return;
-
-    function runHeartbeat() {
-      const now = Date.now();
-      if (now - lastHeartbeatRef.current > 60000) {
-        lastHeartbeatRef.current = now;
-        
-        // SESSION LOCK CHECK (A/B Nycklar)
-        supabase.from('profiles').select('session_key').eq('id', user.id).single().then(res => {
-          if (isLoggingOut.current) return;
-          const localSess = localStorage.getItem('facechat_session_key');
-          if (res.data?.session_key && localSess && res.data.session_key !== localSess) {
-            isLoggingOut.current = true;
-            supabase.auth.signOut().then(() => {
-              window.location.href = '/login?error=Någon annan loggade nyss in på detta konto.';
-            });
-            return;
-          }
-          // Allt OK - Uppdatera klockslag och IP
-          supabase.from('profiles').update({ last_seen: new Date().toISOString() }).eq('id', user.id).then();
-          updateUserIP(user.id);
-        });
-      }
-    }
-
-    // runHeartbeat(); // BORTTAGET: Vi kör inte direkt vid start för att undvika inloggnings-krockar
-    const interval = setInterval(runHeartbeat, 60000); // Kolla sedan varje minut
-    return () => clearInterval(interval);
-  }, [user?.id]);
+  // MODERN FACECHAT: Säkerheten sköts nu helt av Middleware (Server-side)
+  // Vi har tagit bort Heartbeats härifrån för att maximera hastighet.
 
   // Notiser (Kopplat till Supabase)
   const [notifications, setNotifications] = useState<any[]>([])
@@ -100,100 +72,7 @@ export default function Header() {
   const [onlineUserProfiles, setOnlineUserProfiles] = useState<any[]>([]);
 
   // AKUT FIX: Återställd blixtsnabb IP-dörrvakt (Hundradels-reaktion!)
-  useEffect(() => {
-    if (isLoginRoute || isBlockedRoute) return;
-    
-    let channel: any;
-    let isMounted = true;
-
-    async function setupIpGuard(retryCount = 0) {
-      if (isLoggingOut.current) return; // Stoppa omedelbart vid utloggning!
-
-      try {
-        if (retryCount === 0) {
-          // Ge UserContext ett rejält försprång vid login (1.5s) för att undvika DB-lås-krock
-          await new Promise(res => setTimeout(res, 1500));
-        }
-
-        if (!isMounted || isLoggingOut.current) return;
-
-
-        // Hämta IP (Snabb variant)
-        if (isLoggingOut.current) return;
-        const res = await updateUserIP(user?.id || 'guest');
-        if (isLoggingOut.current) return;
-        
-        if (res?.error && res.error.includes('lock') && retryCount < 4) {
-          if (isLoggingOut.current) return;
-          await new Promise(res => setTimeout(res, 1000));
-          return setupIpGuard(retryCount + 1);
-        }
-
-        const myIp = res?.ip;
-        if (!myIp) {
-          if (isLoggingOut.current) return;
-          
-          if (retryCount < 5) {
-            await new Promise(r => setTimeout(r, 2000));
-            return setupIpGuard(retryCount + 1);
-          }
-          return;
-        }
-
-
-        // 1. Initial koll för att se om vi är spärrade NU
-        const { data: bData, error: bError } = await supabase.from('blocked_ips').select('*').eq('ip', myIp);
-        
-        if (bError && bError.message?.includes('lock') && retryCount < 2) {
-           await new Promise(res => setTimeout(res, 500));
-           return setupIpGuard(retryCount + 1);
-        }
-
-        const currentlyBlocked = bData && bData.length > 0;
-        
-        if (currentlyBlocked && !isBlockedRoute) {
-          window.location.href = '/blocked';
-        } else if (!currentlyBlocked && isBlockedRoute) {
-          window.location.href = '/';
-        }
-
-        // 2. Realtidshantering (Samma sekund!)
-        if (channel) supabase.removeChannel(channel);
-        
-        channel = supabase.channel('ip_guard_blixt')
-          .on('postgres_changes', { event: '*', schema: 'public', table: 'blocked_ips' }, (payload: any) => {
-            if (payload.eventType === 'INSERT' && payload.new.ip === myIp) {
-              window.location.href = '/blocked';
-            } else if (payload.eventType === 'DELETE' && payload.old.ip === myIp) {
-              window.location.href = '/';
-            }
-          })
-          .subscribe((status) => {
-             if (status === 'SUBSCRIBED') {
-                // console.log('[Header] IP Guard Active for: ' + myIp);
-             }
-          });
-      } catch (err: any) {
-        if (isLoggingOut.current) return;
-        console.error('[Header] Critical failure in IP Guard:', err);
-        // Sista utväg: Försök igen om en stund om det var ett låsningsfel
-        if (err.message?.includes('lock') && retryCount < 2) {
-           setTimeout(() => setupIpGuard(retryCount + 1), 1000);
-        }
-      }
-
-    }
-
-    if (!userLoading && !isLoggingOut.current) {
-      setupIpGuard();
-    }
-
-
-    return () => {
-      isMounted = false;
-      if (channel) supabase.removeChannel(channel);
-    };
-  }, [userLoading, isBlockedRoute]);
+  // MODERN FACECHAT: IP-vakt sköts nu helt av Middleware (Server-side)
 
   // Master Realtime Feed
   useEffect(() => {
@@ -352,9 +231,14 @@ export default function Header() {
   if (isAdminRoute || isLoginRoute) return null
 
   const handleLogout = async () => {
-    isLoggingOut.current = true; // Signalera STOPP till IP Guard
+    isLoggingOut.current = true;
     const supabase = createClient()
     await supabase.auth.signOut()
+    
+    // MODERN FACECHAT: Rensa sessions-cookien på servern och lokalt
+    await logoutAction();
+    localStorage.removeItem('facechat_session_key');
+    
     window.location.replace('/login')
   }
 

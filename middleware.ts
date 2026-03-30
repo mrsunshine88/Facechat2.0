@@ -51,7 +51,7 @@ export async function middleware(request: NextRequest) {
     const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
     const shouldCheckAuth = hasAuthCookies || !isLogin;
 
-    // 2. Kolla IP-blockering (Endast för dynamiska sidor)
+    // 2. IP-vakt (Server-side)
     const reqIp = (request as any).ip;
     const xfwd = request.headers.get('x-forwarded-for');
     const xreal = request.headers.get('x-real-ip');
@@ -68,29 +68,46 @@ export async function middleware(request: NextRequest) {
     const isBlocked = blockResult.data;
     const user = authResult.data?.user;
 
-    // ROOT-BYPASS
+    // ROOT-BYPASS (Säkrat IP)
     if (rootIp && ip === rootIp.replace(/^.*:ffff:/, '')) {
        return response;
     }
 
-    // IP-SPÄRR
+    // IP-SPÄRR (Server-side)
     if (isBlocked) {
       const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
       return redirectRes;
     }
 
-    // AUTH-GUARD
+    // 3. SESSIONS-VAKT & AUTH
     const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
                           request.nextUrl.pathname.startsWith('/auth/callback') ||
-                          request.nextUrl.pathname.startsWith('/update-password') ||
-                          request.nextUrl.pathname.endsWith('.json') || 
-                          request.nextUrl.pathname.endsWith('.png');
+                          request.nextUrl.pathname.startsWith('/update-password');
 
     if (!user && !isPublicRoute) {
       const redirectRes = NextResponse.redirect(new URL('/login', request.url))
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
       return redirectRes
+    }
+
+    if (user && !isPublicRoute) {
+      // Kolla om användaren är bannad eller har en ogiltig session i REALTID
+      const { data: prof } = await supabase.from('profiles').select('session_key, is_banned').eq('id', user.id).single();
+      
+      if (prof?.is_banned) {
+        await supabase.auth.signOut();
+        const redirectRes = NextResponse.redirect(new URL('/login?error=Konto blockerat', request.url));
+        return redirectRes;
+      }
+
+      // SESSION LOCK: Om cookien 'facechat_session_key' inte matchar databasen -> Logga ut
+      const cookieSess = request.cookies.get('facechat_session_key')?.value;
+      if (prof?.session_key && cookieSess && prof.session_key !== cookieSess) {
+        await supabase.auth.signOut();
+        const redirectRes = NextResponse.redirect(new URL('/login?error=Session ogiltig', request.url));
+        return redirectRes;
+      }
     }
 
     if (user && request.nextUrl.pathname.startsWith('/login')) {
@@ -105,6 +122,14 @@ export async function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
+    /*
+     * Match all request paths except for the ones starting with:
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
+     * Feel free to modify this pattern to include more paths.
+     */
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 }
 

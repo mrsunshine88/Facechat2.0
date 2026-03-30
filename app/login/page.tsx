@@ -97,11 +97,18 @@ export default function Login() {
             return;
           }
           // "BANG"-inloggning: Uppdatera profil, sessionsnyckel och IP i EN ENDA snabb operation!
-          const newSessionKey = crypto.randomUUID();
+          // Vi använder en fallback för randomUUID om det saknas (t.ex. gamla mobiler eller icke-HTTPS)
+          const newSessionKey = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : Math.random().toString(36).substring(2) + Date.now().toString(36);
+            
           const res = await completeLoginProcess(signInData.user.id, newSessionKey);
           
           if (res.error) {
-             throw new Error('Inloggningssäkerhet misslyckades: ' + res.error);
+             console.error('Inloggningsfel:', res.error);
+             setError('Inloggningsäkerhet misslyckades: ' + res.error);
+             setLoading(false);
+             return;
           }
           const profile = res.profile;
 
