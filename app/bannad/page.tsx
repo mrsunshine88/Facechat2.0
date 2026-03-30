@@ -9,7 +9,10 @@ export default function BannedPage() {
 
   useEffect(() => {
     // Tvinga utloggning så fort de landar här
-    supabase.auth.signOut();
+    supabase.auth.signOut().then(() => {
+       localStorage.removeItem('facechat_persistent_session');
+       localStorage.removeItem('facechat_session_key');
+    });
   }, [supabase]);
 
   return (

@@ -285,6 +285,7 @@ export default function Header() {
     // MODERN FACECHAT: Rensa sessions-cookien på servern och lokalt
     await logoutAction();
     localStorage.removeItem('facechat_session_key');
+    localStorage.removeItem('facechat_persistent_session');
     
     window.location.replace('/login')
   }

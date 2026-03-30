@@ -34,14 +34,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (sessionError) throw sessionError;
 
       // 2. MOBIL-OPTIMERING (Grace Period): Om vi förväntar oss en session men getSession returnerar null 
-      // direkt vid kallstart, väntar vi några hundra millisekunder och försöker igen. 
-      // Mobila webbläsare kan ibland vara sega med att ladda kakor från disk.
+      // direkt vid kallstart, väntar vi några sekunder och försöker igen. 
+      // PWA-appar på mobil kan vara extra långsamma med att ladda kakor från disk.
       let finalSession = session;
       if (!session && hasPersistentHint) {
-         console.log('[UserContext] Väntar på att mobilen ska ladda kakor...');
-         await new Promise(resolve => setTimeout(resolve, 800));
+         console.log('[UserContext] PWA-läge detekterat. Väntar på att mobilen ska ladda kakor (2s)...');
+         await new Promise(resolve => setTimeout(resolve, 2000));
          const secondTry = await supabase.auth.getSession();
          finalSession = secondTry.data.session;
+         if (finalSession) console.log('[UserContext] Session återställd efter väntetid! 🎉');
       }
 
       const currentUser = finalSession?.user || null;
@@ -64,10 +65,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setProfile(profData);
       } else {
         setProfile(null);
-        // Om vi definitivt inte har en session, rensa hint-flaggan
-        if (!hasPersistentHint) {
-           // Vi rör inte flaggan om den fanns men sessionen saknas, 
-           // för att inte förstöra för nästa försök om det var tillfälligt nätfel.
+        // Om vi definitivt inte har en session efter väntetiden, rensa hint-flaggan
+        if (hasPersistentHint) {
+           localStorage.removeItem('facechat_persistent_session');
         }
       }
     } catch (error: any) {
