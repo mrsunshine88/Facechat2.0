@@ -112,7 +112,7 @@ export default function MinaSidor() {
   useEffect(() => {
     async function init() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) { /* Vänta på UserContext grace period */ return; }
 
       const loadData = async () => {
         // 1. Hämta ENDAST nödvändig profil-data parallellt (Blixtsnabb start!)

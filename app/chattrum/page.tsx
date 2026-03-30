@@ -83,7 +83,7 @@ function ChattrumContent() {
         ]);
 
         const user = sessionRes.data.session?.user;
-        if (!user) return;
+        if (!user) { /* Vänta på UserContext grace period */ return; }
 
         // 2. Hämta profil
         const { data: pData } = await supabase.from('profiles').select('*').eq('id', user.id).single();

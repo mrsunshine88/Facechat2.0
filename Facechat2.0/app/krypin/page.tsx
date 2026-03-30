@@ -233,7 +233,7 @@ function MittKrypinContent() {
 
     async function initData() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { window.location.href = '/login'; return; }
+      if (!user) { /* Vänta på UserContext grace period */ return; }
       
       const { data: myProfile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
       const isRoot = user.email?.toLowerCase() === 'apersson508@gmail.com';

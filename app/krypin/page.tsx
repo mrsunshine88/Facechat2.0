@@ -339,7 +339,7 @@ function MittKrypinContent() {
                 setViewerUser(globalViewer);
              } else {
                 const { data: { session: s } } = await supabase.auth.getSession();
-                if (!s) { window.location.href = '/login'; return; }
+                if (!s) { /* Vänta på UserContext grace period */ return; }
                 const { data: p } = await supabase.from('profiles').select('*').eq('id', s.user.id).single();
                 setViewerUser(p || s.user);
              }
