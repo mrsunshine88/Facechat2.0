@@ -42,6 +42,21 @@ export async function proxy(request: NextRequest) {
       },
     }
   )
+  // 1.5 Säkra 30-dagars persistens för existerande sessioner (även utan refresh)
+
+  const authCookies = ['sb-access-token', 'sb-refresh-token'];
+  authCookies.forEach(name => {
+    const cookie = request.cookies.get(name);
+    if (cookie) {
+      response.cookies.set({
+        name: cookie.name,
+        value: cookie.value,
+        maxAge: 60 * 60 * 24 * 30, // 30 days
+        path: '/',
+      });
+    }
+  });
+
 
   // 2. Kontrollera IP-blockering (Förbättrad detektering)
   // Vi kollar request.ip först (Next.js standard), sen vanliga headers
@@ -103,8 +118,11 @@ export async function proxy(request: NextRequest) {
       const cleanRootIp = rootIp.replace(/^.*:ffff:/, '');
       if (ip === cleanRootIp) {
          if (user && request.nextUrl.pathname.startsWith('/login')) {
-            return NextResponse.redirect(new URL('/', request.url));
+            const redirectRes = NextResponse.redirect(new URL('/', request.url));
+            response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
+            return redirectRes;
          }
+
          return response;
       }
     }
@@ -112,8 +130,11 @@ export async function proxy(request: NextRequest) {
     // 2. KOLLA SPÄRRILISTAN (HUVUDSKYDD)
     if (isBlocked) {
       console.log(`[PROXY] 🛑 BLOCKERAT IP FÖRSÖKER ANSLUTA: ${ip} (Anledning: ${isBlocked.reason})`);
-      return NextResponse.redirect(new URL('/blocked', request.url));
+      const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
+      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
+      return redirectRes;
     }
+
 
     // 3. SMART REDIRECTS
     const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
@@ -126,13 +147,19 @@ export async function proxy(request: NextRequest) {
     if (!user && !isPublicRoute) {
       const url = request.nextUrl.clone()
       url.pathname = '/login'
-      return NextResponse.redirect(url)
+      const redirectRes = NextResponse.redirect(url)
+      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
+      return redirectRes
     }
+
 
     // 3.2 Förhindra inloggade att se login-sidan (skicka till start)
     if (user && request.nextUrl.pathname.startsWith('/login')) {
-      return NextResponse.redirect(new URL('/', request.url))
+      const redirectRes = NextResponse.redirect(new URL('/', request.url))
+      response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
+      return redirectRes
     }
+
   }
  else {
     // Om det är en statisk fil, kolla bara login-redirect (vid behov)
