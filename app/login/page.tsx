@@ -98,13 +98,13 @@ export default function Login() {
           }
           // Hämta profil och uppdatera sessionsnyckel PARALLELLT (Minskar väntetiden med 50%+)
           const newSessionKey = crypto.randomUUID();
-          const [profRes] = await Promise.all([
+          const [profRes, updateRes] = await Promise.all([
              supabase.from('profiles').select('is_banned, auth_email').eq('id', signInData.user.id).single(),
              supabase.from('profiles').update({ session_key: newSessionKey }).eq('id', signInData.user.id)
           ]);
           
-          if (profRes.error) {
-             throw new Error('Kunde inte läsa din profil: ' + profRes.error.message);
+          if (profRes.error || updateRes.error) {
+             throw new Error('Kunde inte läsa din profil eller uppdatera säkerhetssessionen: ' + (profRes.error?.message || updateRes.error?.message));
           }
           const profile = profRes.data;
 

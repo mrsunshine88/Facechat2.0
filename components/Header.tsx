@@ -80,7 +80,7 @@ export default function Header() {
       }
     }
 
-    runHeartbeat(); // Kör direkt vid mount
+    // runHeartbeat(); // BORTTAGET: Vi kör inte direkt vid start för att undvika inloggnings-krockar
     const interval = setInterval(runHeartbeat, 60000); // Kolla sedan varje minut
     return () => clearInterval(interval);
   }, [user?.id]);
