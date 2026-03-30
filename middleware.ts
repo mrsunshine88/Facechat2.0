@@ -2,15 +2,16 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 /**
- * MASTER SECURITY MIDDLEWARE (middleware.ts)
- * This is the framework entry point for all security and session logic.
+ * MASTER SECURITY MIDDLEWARE (middleware.ts) - TOTAL ÅTERSTÄLLNING
  */
 export async function middleware(request: NextRequest) {
   let response = NextResponse.next({
-    request,
+    request: {
+      headers: request.headers,
+    },
   })
 
-  // 1. Skapa Supabase-klient för Middleware
+  // 1. Skapa Supabase-klient (Standard Original Logic)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -31,10 +32,8 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, {
               ...options,
-              maxAge: 60 * 60 * 24 * 30, // 30 dagars hållbarhet
+              maxAge: 60 * 60 * 24 * 30, // 30 dagar för mobilen
               path: '/',
-              secure: true,
-              sameSite: 'lax',
             })
           })
         },
@@ -42,72 +41,46 @@ export async function middleware(request: NextRequest) {
     }
   )
 
-
-
-  // 2. Kontrollera IP-blockering
-  const reqIp = (request as any).ip;
-  const xfwd = request.headers.get('x-forwarded-for');
-  const xreal = request.headers.get('x-real-ip');
-  
-  const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
-  const ip = rawIp.replace(/^.*:ffff:/, '');
-
-  if (!request.nextUrl.pathname.startsWith('/_next')) {
-     console.log(`[SECURITY] Path: ${request.nextUrl.pathname} | IP: ${ip}`);
-  }
-
   const isStatic = request.nextUrl.pathname.startsWith('/_next') || 
                    request.nextUrl.pathname.startsWith('/api') ||
                    request.nextUrl.pathname.includes('.') ||
                    request.nextUrl.pathname === '/favicon.ico';
 
   if (!isStatic && !request.nextUrl.pathname.startsWith('/blocked')) {
-    let rootIp: string | null = null;
-    let isBlocked: any = null;
-    let user: any = null;
+    const isLogin = request.nextUrl.pathname === '/login';
+    const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
+    const shouldCheckAuth = hasAuthCookies || !isLogin;
 
-    try {
-      const isLogin = request.nextUrl.pathname === '/login';
-      const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
-      const shouldCheckAuth = hasAuthCookies || !isLogin;
+    // 2. Kolla IP-blockering (Endast för dynamiska sidor)
+    const reqIp = (request as any).ip;
+    const xfwd = request.headers.get('x-forwarded-for');
+    const xreal = request.headers.get('x-real-ip');
+    const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
+    const ip = rawIp.replace(/^.*:ffff:/, '');
 
-      // --- OPTIMERAD PARALLELL-KÖRNING ---
-      const [rootResult, blockResult, authResult] = await Promise.all([
-        shouldCheckAuth ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
-        supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
-        shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
-      ]);
+    const [rootResult, blockResult, authResult] = await Promise.all([
+      shouldCheckAuth ? supabase.rpc('get_root_admin_ip') : Promise.resolve({ data: null, error: null }),
+      supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).single(),
+      shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
+    ]);
 
-      rootIp = rootResult.data;
-      isBlocked = blockResult.data;
-      user = authResult.data?.user;
-    } catch (e: any) {
-      console.error("[SECURITY] Middleware fault:", e.message);
+    const rootIp = rootResult.data;
+    const isBlocked = blockResult.data;
+    const user = authResult.data?.user;
+
+    // ROOT-BYPASS
+    if (rootIp && ip === rootIp.replace(/^.*:ffff:/, '')) {
+       return response;
     }
 
-
-    // 1. ROOT-BYPASS
-    if (rootIp) {
-      const cleanRootIp = rootIp.replace(/^.*:ffff:/, '');
-      if (ip === cleanRootIp) {
-         if (user && request.nextUrl.pathname.startsWith('/login')) {
-            const redirectRes = NextResponse.redirect(new URL('/', request.url));
-            response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
-            return redirectRes;
-         }
-         return response;
-      }
-    }
-
-    // 2. IP-SPÄRR
+    // IP-SPÄRR
     if (isBlocked) {
-      console.log(`[SECURITY] 🛑 BLOCKED IP: ${ip}`);
       const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
       return redirectRes;
     }
 
-    // 3. Omdirigeringar
+    // AUTH-GUARD
     const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
                           request.nextUrl.pathname.startsWith('/auth/callback') ||
                           request.nextUrl.pathname.startsWith('/update-password') ||
@@ -125,7 +98,6 @@ export async function middleware(request: NextRequest) {
       response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
       return redirectRes
     }
-
   }
 
   return response
@@ -134,5 +106,7 @@ export async function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     '/((?!_next/static|_next/image|blocked|favicon.ico).*)',
+  ],
+}
   ],
 }
