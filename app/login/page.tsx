@@ -128,8 +128,9 @@ export default function Login() {
           localStorage.removeItem('facechat_saved_email')
         }
         
-        // "BANG"-inloggning: Skicka vidare direkt utan att ladda om hela sidan
-        router.push('/')
+        // "BANG"-inloggning: Skicka vidare direkt med en HÅRD redirect för att säkerställa 
+        // att mobila webbläsare hinner spara alla kakor innan Middleware anropas.
+        window.location.href = '/';
       }
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {

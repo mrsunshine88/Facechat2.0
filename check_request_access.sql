@@ -57,7 +57,7 @@ BEGIN
         -- Master-brytare: Root kan aldrig vara bannlyst
         IF EXISTS (SELECT 1 FROM public.profiles WHERE id = test_user_id AND auth_email = 'apersson508@gmail.com') THEN
             is_banned_user := false;
-            session_match := true; -- Root tillåts flera sessioner om det skulle krocka
+            -- session_match := true; -- STRUKIT: Även Root ska följa "En enhet åt gången"
         END IF;
     END IF;
 

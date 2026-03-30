@@ -84,8 +84,25 @@ export async function syncUserHeartbeatAction(userId: string) {
   try {
     if (!userId || userId === 'guest') return { success: true };
     
-    const ip = await getClientIP();
+    const cookieStore = await cookies();
+    const clientSessionKey = cookieStore.get('facechat_session_key')?.value;
+    
     const admin = getAdminClient();
+    
+    // 1. Verifiera att sessionen fortfarande är giltig (Nyckel A vs Nyckel B)
+    // Detta förhindrar att en gammal inloggning på en dator skriver över IP:n för mobilen
+    const { data: profile } = await admin
+      .from('profiles')
+      .select('session_key')
+      .eq('id', userId)
+      .maybeSingle();
+
+    if (!profile || profile.session_key !== clientSessionKey) {
+        // Sessionen är inte längre aktiv för denna enhet. Stoppa uppdatering.
+        return { error: 'Inaktiv session' };
+    }
+
+    const ip = await getClientIP();
     
     const { error } = await admin
       .from('profiles')
