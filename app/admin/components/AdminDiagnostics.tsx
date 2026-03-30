@@ -277,8 +277,28 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
   };
 
   return (
-    <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
-      <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '1.25rem 1.5rem', backgroundColor: '#f0fdf4', border: '2px solid #10b981' }}>
+    <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }} className="admin-diagnostics-container">
+      <style>{`
+        @media (max-width: 600px) {
+          .diag-card-header { 
+            flex-direction: column !important; 
+            align-items: flex-start !important; 
+            gap: 1rem !important; 
+          }
+          .diag-card-header button { width: 100% !important; }
+          
+          .diag-input-group { 
+            flex-direction: column !important; 
+            gap: 0.5rem !important; 
+          }
+          .diag-input-group button { 
+             width: 100% !important; 
+             padding: 1rem !important;
+          }
+        }
+      `}</style>
+
+      <div className="admin-card diag-card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '1.25rem 1.5rem', backgroundColor: '#f0fdf4', border: '2px solid #10b981' }}>
         <div>
           <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Wrench size={24} /> Diagnosverktyget</h2>
           <p style={{ color: '#047857', margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>Fullständig system-skanning och lagning.</p>
@@ -305,7 +325,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
       <div style={{ marginTop: '2rem' }} className="admin-card">
         <h3 style={{ color: '#ef4444', marginBottom: '1rem' }}><Trash2 size={20} /> Akut Mass-radering</h3>
-        <div style={{ display: 'flex', gap: '1rem' }}>
+        <div className="diag-input-group" style={{ display: 'flex', gap: '1rem' }}>
           <input type="text" value={massDeleteQuery} onChange={e => setMassDeleteQuery(e.target.value)} placeholder="Sökord/Länk..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
           <button onClick={handleMassDelete} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px', fontWeight: 'bold' }}>RADERA</button>
         </div>
@@ -326,7 +346,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
         {selectedUser && (
           <div style={{ marginTop: '1rem', padding: '1rem', border: '1px solid #be185d', borderRadius: '8px' }}>
             <p>Vald: <strong>{selectedUser.username}</strong></p>
-            <div style={{ display: 'flex', gap: '1rem' }}>
+            <div className="diag-input-group" style={{ display: 'flex', gap: '1rem' }}>
               <button onClick={handleWipeCss} style={{ backgroundColor: '#ef4444', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px' }}>Nollställ CSS</button>
               <button onClick={handleWipeBio} style={{ backgroundColor: '#be185d', color: 'white', border: 'none', padding: '0.5rem 1rem', borderRadius: '6px' }}>Rensa Bio</button>
             </div>
@@ -336,7 +356,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
 
       <div style={{ marginTop: '2rem' }} className="admin-card">
         <h3 style={{ color: '#4f46e5', marginBottom: '1rem' }}><Globe size={20} /> Globalt Ord-filter</h3>
-        <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+        <div className="diag-input-group" style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
           <input type="text" value={newForbiddenWord} onChange={e => setNewForbiddenWord(e.target.value)} placeholder="Fult ord..." style={{ flex: 1, padding: '0.75rem', borderRadius: '8px', border: '1px solid #cbd5e1' }} />
           <button onClick={handleAddWord} style={{ backgroundColor: '#4f46e5', color: 'white', border: 'none', padding: '0.75rem 1.5rem', borderRadius: '8px' }}>LÄGG TILL</button>
         </div>
