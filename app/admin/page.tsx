@@ -11,16 +11,20 @@ import { adminBlockIP, adminUnblockIP, adminAddForbiddenWord, adminRemoveForbidd
 import { useWordFilter } from '@/hooks/useWordFilter';
 import { useUser } from '@/components/UserContext';
 
+const ROOT_EMAILS = ['apersson508@gmail.com'];
+
 const ADMIN_TABS = [
-  { id: 'dashboard', label: 'Översikt', icon: Activity },
-  { id: 'users', label: 'Användare', icon: Users },
-  { id: 'bilder', label: 'Bilder', icon: Shield },
-  { id: 'reports', label: 'Anmälningar', icon: AlertTriangle },
-  { id: 'security', label: 'Säkerhet', icon: ShieldAlert },
-  { id: 'rooms', label: 'Rum', icon: Database },
-  { id: 'support', label: 'Support', icon: LifeBuoy },
-  { id: 'diagnostics', label: 'Hälsokontroll', icon: Wrench },
-  { id: 'audit', label: 'Loggar', icon: History }
+  { id: 'dashboard', label: 'Dashboard', icon: Activity, perm: 'stats' },
+  { id: 'users', label: 'Användare', icon: Users, perm: 'users' },
+  { id: 'blocks', label: 'IP & Spärrar', icon: ShieldAlert, perm: 'users' },
+  { id: 'bilder', label: 'Bilder', icon: Shield, perm: 'images' },
+  { id: 'reports', label: 'Anmälningar', icon: AlertTriangle, perm: 'content' },
+  { id: 'content', label: 'Moderering', icon: Database, perm: 'content' },
+  { id: 'rooms', label: 'Chattrum', icon: Terminal, perm: 'rooms' },
+  { id: 'support', label: 'Support', icon: LifeBuoy, perm: 'support' },
+  { id: 'permissions', label: 'Behörigheter', icon: Edit2, perm: 'roles' },
+  { id: 'diagnostics', label: 'Hälsokontroll', icon: Wrench, perm: 'diagnostics' },
+  { id: 'audit', label: 'Granskningslogg', icon: History, perm: 'logs' }
 ];
 
 export const logAdminAction = async (supabase: any, adminId: string, action: string) => {
@@ -149,7 +153,10 @@ export default function AdminPanel() {
 
   if (!userProfile) return <AdminSkeleton />;
 
-  const isRoot = userProfile.auth_email === 'apersson508@gmail.com' || userProfile.perm_roles === true || userProfile.username?.toLowerCase() === 'mrsunshine88' || userProfile.username?.toLowerCase() === 'apersson508';
+  const isRoot = ROOT_EMAILS.includes(userProfile.auth_email) || 
+                 userProfile.username?.toLowerCase() === 'mrsunshine88' || 
+                 userProfile.username?.toLowerCase() === 'apersson508';
+
   const canManageUsers = isRoot || userProfile.perm_users === true;
   const canManageContent = isRoot || userProfile.perm_content === true;
   const canManageRooms = isRoot || userProfile.perm_rooms === true;
@@ -160,6 +167,22 @@ export default function AdminPanel() {
   const canManageDiagnostics = isRoot || userProfile.perm_diagnostics === true;
   const canManageChat = isRoot || userProfile.perm_chat === true;
   const canManageImages = isRoot || userProfile.perm_images === true;
+
+  // Dynamisk filtrering av flikar baserat på behörighet
+  const filteredTabs = ADMIN_TABS.filter(tab => {
+    if (isRoot) return true;
+    if (tab.id === 'dashboard') return canManageStats;
+    if (tab.id === 'users' || tab.id === 'blocks') return canManageUsers;
+    if (tab.id === 'bilder') return canManageImages;
+    if (tab.id === 'reports') return canManageContent;
+    if (tab.id === 'content') return canManageContent || canManageChat;
+    if (tab.id === 'rooms') return canManageRooms;
+    if (tab.id === 'support') return canManageSupport;
+    if (tab.id === 'permissions') return canManageRoles;
+    if (tab.id === 'diagnostics') return canManageDiagnostics;
+    if (tab.id === 'audit') return canManageLogs;
+    return false;
+  });
 
   const renderContent = () => {
     switch (activeTab) {
@@ -194,79 +217,34 @@ export default function AdminPanel() {
         </div>
 
         <nav style={{ flex: 1, padding: '1.5rem 1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', overflowY: 'auto' }} className="admin-sidebar-menu">
-
+          
+          {/* Desktop Menu */}
           <div className="hide-on-mobile" style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-            {canManageStats && (
-              <button onClick={() => setActiveTab('dashboard')} className={`admin-nav-link ${activeTab === 'dashboard' ? 'active' : ''}`}>
-                <Activity size={18} /> Dashboard & Statistik
-              </button>
-            )}
-            {canManageUsers && (
-              <button onClick={() => setActiveTab('users')} className={`admin-nav-link ${activeTab === 'users' ? 'active' : ''}`}>
-                <Users size={18} /> Användare
-              </button>
-            )}
-            {canManageUsers && (
-              <button onClick={() => setActiveTab('blocks')} className={`admin-nav-link ${activeTab === 'blocks' ? 'active' : ''}`}>
-                <ShieldAlert size={18} /> Blockeringar
-              </button>
-            )}
-            {canManageImages && (
-              <button onClick={() => setActiveTab('bilder')} className={`admin-nav-link ${activeTab === 'bilder' ? 'active' : ''}`}>
-                <Shield size={18} /> Bilder
-              </button>
-            )}
-            {canManageContent && (
-              <button onClick={() => setActiveTab('reports')} className={`admin-nav-link ${activeTab === 'reports' ? 'active' : ''}`} style={{ justifyContent: 'space-between' }}>
+            {filteredTabs.map(tab => (
+              <button 
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)} 
+                className={`admin-nav-link ${activeTab === tab.id ? 'active' : ''}`}
+                style={{ justifyContent: 'space-between' }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <AlertTriangle size={18} /> Anmälningar
+                  <tab.icon size={18} /> {tab.label}
                 </div>
-                {unreadReportsCount > 0 && (
-                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
+                {tab.id === 'support' && unreadSupportCount > 0 && (
+                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center' }}>
+                    {unreadSupportCount}
+                  </span>
+                )}
+                {tab.id === 'reports' && unreadReportsCount > 0 && (
+                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center' }}>
                     {unreadReportsCount}
                   </span>
                 )}
               </button>
-            )}
-            {(canManageContent || canManageChat) && (
-              <button onClick={() => setActiveTab('content')} className={`admin-nav-link ${activeTab === 'content' ? 'active' : ''}`}>
-                <Database size={18} /> Innehåll & Moderering
-              </button>
-            )}
-            {canManageRooms && (
-              <button onClick={() => setActiveTab('rooms')} className={`admin-nav-link ${activeTab === 'rooms' ? 'active' : ''}`}>
-                <Terminal size={18} /> Hantera Chattrum
-              </button>
-            )}
-            {canManageSupport && (
-              <button onClick={() => setActiveTab('support')} className={`admin-nav-link ${activeTab === 'support' ? 'active' : ''}`} style={{ justifyContent: 'space-between' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                  <LifeBuoy size={18} /> Supportärenden
-                </div>
-                {unreadSupportCount > 0 && (
-                  <span style={{ backgroundColor: '#ef4444', color: 'white', fontSize: '0.7rem', fontWeight: 'bold', minWidth: '20px', padding: '0.15rem 0.4rem', borderRadius: '999px', textAlign: 'center', display: 'inline-block' }}>
-                    {unreadSupportCount}
-                  </span>
-                )}
-              </button>
-            )}
-            {canManageRoles && (
-              <button onClick={() => setActiveTab('permissions')} className={`admin-nav-link ${activeTab === 'permissions' ? 'active' : ''}`}>
-                <Shield size={18} /> Behörigheter & Roller
-              </button>
-            )}
-            {canManageLogs && (
-              <button onClick={() => setActiveTab('logs')} className={`admin-nav-link ${activeTab === 'logs' ? 'active' : ''}`}>
-                <History size={18} /> Loggar
-              </button>
-            )}
-            {canManageDiagnostics && (
-              <button onClick={() => setActiveTab('diagnostics')} className={`admin-nav-link ${activeTab === 'diagnostics' ? 'active' : ''}`} style={{ marginTop: '1rem', borderTop: '1px solid var(--border-color)', paddingTop: '1rem' }}>
-                <Wrench size={18} /> Vårdcentralen
-              </button>
-            )}
+            ))}
           </div>
 
+          {/* Mobile Menu Dropdown */}
           <div className="hide-on-desktop" style={{ width: '100%', marginBottom: '1rem' }}>
             <select
               value={activeTab}
@@ -274,20 +252,13 @@ export default function AdminPanel() {
               className="admin-input"
               style={{ width: '100%', padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', color: 'var(--text-main)', fontSize: '1rem', fontWeight: 'bold' }}
             >
-              {canManageStats && <option value="dashboard">Dashboard & Statistik</option>}
-              {canManageUsers && <option value="users">Användare</option>}
-              {canManageUsers && <option value="blocks">Blockeringar</option>}
-              {canManageImages && <option value="bilder">Bilder</option>}
-              {canManageContent && <option value="reports">Anmälningar</option>}
-              {(canManageContent || canManageChat) && <option value="content">Innehåll & Moderering</option>}
-              {canManageRooms && <option value="rooms">Hantera Chattrum</option>}
-              {canManageSupport && <option value="support">Supportärenden {unreadSupportCount > 0 ? `(${unreadSupportCount})` : ''}</option>}
-              {canManageRoles && <option value="permissions">Behörigheter & Roller</option>}
-              {canManageLogs && <option value="logs">Loggar</option>}
-              {canManageDiagnostics && <option value="diagnostics">Vårdcentralen</option>}
+              {filteredTabs.map(tab => (
+                 <option key={tab.id} value={tab.id}>
+                   {tab.label} {tab.id === 'support' && unreadSupportCount > 0 ? `(${unreadSupportCount})` : ''}
+                 </option>
+              ))}
             </select>
           </div>
-
         </nav>
         <div className="admin-exit-wrapper" style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', zIndex: 10, marginTop: 'auto' }}>
           <button onClick={() => router.push('/')} style={{ width: '100%', padding: '0.75rem', backgroundColor: 'var(--bg-color)', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontWeight: '600', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}>

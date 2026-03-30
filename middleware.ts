@@ -64,18 +64,18 @@ export async function middleware(request: NextRequest) {
       const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
       const ip = rawIp.replace(/^.*:ffff:/, '');
 
-      const [rootResult, blockResult, authResult] = await Promise.all([
-        shouldCheckAuth ? supabase.rpc('get_root_admin_ip').limit(1) : Promise.resolve({ data: null, error: null }),
+      const [isRootIpResult, blockResult, authResult] = await Promise.all([
+        supabase.rpc('check_is_root_ip', { test_ip: ip }),
         supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).maybeSingle(),
         shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
       ]);
 
-      const rootIp = rootResult.data;
+      const isRootIp = isRootIpResult.data;
       const isBlocked = blockResult.data;
       const user = authResult.data?.user;
 
       // ROOT-BYPASS (Säkrat IP)
-      if (rootIp && ip === rootIp.replace(/^.*:ffff:/, '')) {
+      if (isRootIp) {
          return response;
       }
 

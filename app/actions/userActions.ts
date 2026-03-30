@@ -3,6 +3,39 @@
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { sanitizeCSS } from '@/utils/securityUtils';
+import { adminLogAction } from './adminActions';
+
+const ROOT_EMAILS = ['apersson508@gmail.com'];
+
+/**
+ * Centraliserad behörighetskontroll. 
+ * Root (Du) har ALLTID tillgång till allt.
+ */
+export async function hasPermission(userId: string, permissionType: string): Promise<boolean> {
+  const supabase = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  );
+
+  const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
+  if (!profile) return false;
+
+  // 1. Root-immunitet (Kollar mejl och username)
+  const isRoot = ROOT_EMAILS.includes(profile.auth_email) || 
+                 profile.username?.toLowerCase() === 'mrsunshine88' || 
+                 profile.username?.toLowerCase() === 'apersson508';
+  
+  if (isRoot) return true;
+
+  // 2. Kolla specifik behörighets-flagga
+  // Typen 'admin' är den mest grundläggande
+  if (permissionType === 'admin') return !!profile.is_admin;
+  
+  // Annars kolla perm_ kolumnerna
+  const permKey = `perm_${permissionType}`;
+  return !!profile[permKey];
+}
 
 export async function deleteUserAccount(userId: string) {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
@@ -16,12 +49,10 @@ export async function deleteUserAccount(userId: string) {
     return { error: 'Du måste vara inloggad för att utföra denna åtgärd.' };
   }
 
-  // Enkel behörighetskontroll: Man får radera sig själv, eller så måste man vara admin
-  // Vi kollar faktiskt isAdmin på servern via profilen
-  const { data: requestingProfile } = await serverSupabase.from('profiles').select('is_admin').eq('id', requestingUser.id).single();
-  const isActualAdmin = requestingProfile?.is_admin || requestingUser.email === 'apersson508@gmail.com';
+  // Hantera behörighet via den nya hjälpfunktionen
+  const isAuthorized = userId === requestingUser.id || await hasPermission(requestingUser.id, 'users');
 
-  if (userId !== requestingUser.id && !isActualAdmin) {
+  if (!isAuthorized) {
     return { error: 'Behörighet saknas för att radera detta konto.' };
   }
 

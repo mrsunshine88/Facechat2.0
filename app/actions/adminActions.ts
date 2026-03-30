@@ -3,7 +3,9 @@
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 
-const ROOT_EMAIL = 'apersson508@gmail.com';
+import { hasPermission } from './userActions';
+
+const ROOT_EMAILS = ['apersson508@gmail.com'];
 
 // Setup Supabase Admin Client
 let supabaseAdmin: any;
@@ -32,6 +34,8 @@ function getAdminClient() {
   return supabaseAdmin;
 }
 
+import { adminLogAction } from './auditActions';
+
 // Helper to verify permissions via server session
 async function verifyAdminPermission(permissionRequired: string) {
   const serverSupabase = await createServerClient();
@@ -39,21 +43,13 @@ async function verifyAdminPermission(permissionRequired: string) {
 
   if (!user) throw new Error('Du måste vara inloggad.');
 
-  const { data: profile } = await getAdminClient().from('profiles').select('*').eq('id', user.id).single();
-  if (!profile) throw new Error('Profil saknas');
-  
-  const isRoot = user.email === ROOT_EMAIL;
-  const isAdmin = (profile?.is_admin || profile?.perm_roles || isRoot) ?? false;
-
-  if (isAdmin) {
-     return { userId: user.id, isRoot }; 
+  const authorized = await hasPermission(user.id, permissionRequired);
+  if (!authorized) {
+    throw new Error(`Behörighet saknas för sektionen: ${permissionRequired}`);
   }
   
-  if (!profile[permissionRequired]) {
-     throw new Error(`Behörighet saknas (${permissionRequired})`);
-  }
-  
-  return { userId: user.id, isRoot: false };
+  const isRoot = ROOT_EMAILS.includes(user.email || '');
+  return { userId: user.id, isRoot };
 }
 
 export async function toggleBlockUser(userId: string, newStatus: boolean) {
@@ -61,15 +57,16 @@ export async function toggleBlockUser(userId: string, newStatus: boolean) {
     const { isRoot } = await verifyAdminPermission('perm_users');
 
     // Root Protection
-    // Root Protection (mrsunshine88 / apersson508@gmail.com)
-    // We fetch the target email from auth.users via admin client
-    const { data: targetUser } = await getAdminClient().auth.admin.getUserById(userId);
-    if (targetUser?.user?.email === ROOT_EMAIL) {
+    const { data: targetProfile } = await getAdminClient().from('profiles').select('auth_email').eq('id', userId).single();
+    
+    if (targetProfile?.auth_email && ROOT_EMAILS.includes(targetProfile.auth_email)) {
       throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ is_banned: newStatus }).eq('id', userId);
     if (error) throw error;
+
+    await adminLogAction(`${newStatus ? 'BLOCKERADE' : 'AVBLOCKERADE'} användare ${userId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -98,6 +95,8 @@ export async function adminDeleteContent(table: string, id: string) {
 
     const { error } = await getAdminClient().from(table).delete().eq('id', id);
     if (error) throw error;
+    
+    await adminLogAction(`RADERADE innehåll från ${table} (ID: ${id})`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -117,6 +116,8 @@ export async function adminResolveReport(reportId: string, status: string) {
     // 2. Uppdatera status
     const { error: updateErr } = await getAdminClient().from('reports').update({ status }).eq('id', reportId);
     if (updateErr) throw updateErr;
+
+    await adminLogAction(`HANTERADE anmälan ${reportId} (Ny status: ${status})`);
 
     // 3. Notifiera anmälaren (Reporter) om att det är hanterat!
     if (report?.reporter_id && status !== 'open') {
@@ -204,12 +205,14 @@ export async function adminUpdatePermissions(userId: string, payload: any) {
 
     // Root Protection
     const { data: targetProfile } = await getAdminClient().from('profiles').select('auth_email').eq('id', userId).single();
-    if (targetProfile?.auth_email === ROOT_EMAIL) {
+    if (targetProfile?.auth_email && ROOT_EMAILS.includes(targetProfile.auth_email)) {
       throw new Error('Säkerhetsspärr: Root-administratörens roller kan aldrig ändras.');
     }
 
     const { error } = await getAdminClient().from('profiles').update(payload).eq('id', userId);
     if (error) throw error;
+
+    await adminLogAction(`ÄNDRADE behörigheter för användare ${userId}`, userId);
 
     // Skicka notis om admin-status ändras
     if (payload.hasOwnProperty('is_admin')) {
@@ -270,12 +273,14 @@ export async function adminResetAvatar(targetUserId: string) {
     
     // Root-skydd
     const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email === ROOT_EMAIL) {
+    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
        throw new Error('Säkerhetsspärr: Root-administratörens bild kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ avatar_url: null }).eq('id', targetUserId);
     if (error) throw error;
+
+    await adminLogAction(`NOLLSTÄLLDE avatar för ${targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -288,12 +293,14 @@ export async function adminResetPresentation(targetUserId: string) {
     
     // Root-skydd
     const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email === ROOT_EMAIL) {
+    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
        throw new Error('Säkerhetsspärr: Root-administratörens bio kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ presentation: '' }).eq('id', targetUserId);
     if (error) throw error;
+
+    await adminLogAction(`NOLLSTÄLLDE bio för ${targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -306,12 +313,14 @@ export async function adminResetTheme(targetUserId: string) {
     
     // Root-skydd
     const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email === ROOT_EMAIL) {
+    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
        throw new Error('Säkerhetsspärr: Root-administratörens tema kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ custom_style: null }).eq('id', targetUserId);
     if (error) throw error;
+
+    await adminLogAction(`NOLLSTÄLLDE tema för ${targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -391,7 +400,8 @@ export async function adminRunDeepScan() {
 
     // 8. Dubbelkoll: Root-Admin IP Spärrad (Säkerhetsnät)
     try {
-      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
+      const { data: rootEmail } = await getAdminClient().rpc('get_root_admin_email_fallback'); // Fallback if query fails
+      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').in('auth_email', ROOT_EMAILS).maybeSingle();
       if (rootData?.last_ip) {
         const { count: isBlocked } = await getAdminClient().from('blocked_ips').select('*', { count: 'exact', head: true }).eq('ip', rootData.last_ip);
         if (isBlocked && isBlocked > 0) {

@@ -4,7 +4,10 @@ import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 import { headers, cookies } from 'next/headers';
 
-const ROOT_EMAIL = 'apersson508@gmail.com';
+import { hasPermission } from './userActions';
+import { adminLogAction } from './auditActions';
+
+const ROOT_EMAILS = ['apersson508@gmail.com'];
 
 // Setup Supabase Admin Client
 let supabaseAdmin: any;
@@ -142,20 +145,16 @@ export async function adminAddForbiddenWord(word: string) {
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) throw new Error('Ej inloggad');
 
-    // Verifiera admin
-    const { data: admin } = await getAdminClient().from('profiles').select('is_admin, perm_diagnostics').eq('id', user.id).single();
-    if (!admin?.is_admin && !admin?.perm_diagnostics && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
-
     const cleanWord = word.trim().toLowerCase();
     if (!cleanWord) throw new Error('Ordet får inte vara tomt');
 
-    // 1. Lägg till i listan
+    const authorized = await hasPermission(user.id, 'perm_diagnostics');
+    if (!authorized) throw new Error('Behörighet saknas för att ändra ord-filter.');
+
     const { error } = await getAdminClient().from('forbidden_words').insert({ word: cleanWord });
     if (error) throw error;
 
-    // 2. Vi kör inte längre destruktiv tvätt i databasen. 
-    // Maskering sker nu dynamiskt i frontend vid behov.
-
+    await adminLogAction(`LA TILL förbjudet ord: ${cleanWord}`);
     return { success: true, message: 'Ord tillagt i globala filtret.' };
   } catch (err: any) {
     return { error: err.message };
@@ -168,12 +167,13 @@ export async function adminRemoveForbiddenWord(wordId: string) {
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) throw new Error('Ej inloggad');
 
-    const { data: admin } = await getAdminClient().from('profiles').select('is_admin, perm_diagnostics').eq('id', user.id).single();
-    if (!admin?.is_admin && !admin?.perm_diagnostics && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
+    const authorized = await hasPermission(user.id, 'perm_diagnostics');
+    if (!authorized) throw new Error('Behörighet saknas.');
 
     const { error } = await getAdminClient().from('forbidden_words').delete().eq('id', wordId);
     if (error) throw error;
 
+    await adminLogAction(`TOG BORT förbjudet ord ID: ${wordId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -188,26 +188,24 @@ export async function adminBlockIP(ip: string, reason: string) {
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) throw new Error('Ej inloggad');
 
-    const { data: admin } = await getAdminClient().from('profiles').select('is_admin, perm_users').eq('id', user.id).single();
-    if (!admin?.is_admin && !admin?.perm_users && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
+    const authorized = await hasPermission(user.id, 'perm_users');
+    if (!authorized) throw new Error('Behörighet saknas.');
 
-    // --- ADMIN / ROOT IP IMMUNITY CHECK ---
-    const currentRequesterIP = await getClientIP();
-    
-
-    const { data: rootProfile } = await getAdminClient()
+    // --- ROOT IP IMMUNITY CHECK ---
+    const { data: rootProfiles } = await getAdminClient()
       .from('profiles')
       .select('last_ip')
-      .eq('auth_email', ROOT_EMAIL)
-      .single();
+      .in('auth_email', ROOT_EMAILS);
 
-    if (rootProfile && rootProfile.last_ip === ip) {
-      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör Root-ägaren.`);
+    const rootIps = rootProfiles?.map((p: any) => p.last_ip) || [];
+    if (rootIps.includes(ip)) {
+      throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör en Root-administratör.`);
     }
 
     const { error } = await getAdminClient().from('blocked_ips').upsert({ ip, reason }, { onConflict: 'ip' });
     if (error) throw error;
 
+    await adminLogAction(`BLOCKERADE IP: ${ip}`, ip);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -220,12 +218,13 @@ export async function adminUnblockIP(ip: string) {
     const { data: { user } } = await serverSupabase.auth.getUser();
     if (!user) throw new Error('Ej inloggad');
 
-    const { data: admin } = await getAdminClient().from('profiles').select('is_admin, perm_users').eq('id', user.id).single();
-    if (!admin?.is_admin && !admin?.perm_users && user.email !== ROOT_EMAIL) throw new Error('Behörighet saknas');
+    const authorized = await hasPermission(user.id, 'perm_users');
+    if (!authorized) throw new Error('Behörighet saknas.');
 
     const { error } = await getAdminClient().from('blocked_ips').delete().eq('ip', ip);
     if (error) throw error;
 
+    await adminLogAction(`AVBLOCKERADE IP: ${ip}`, ip);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };

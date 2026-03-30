@@ -12,6 +12,8 @@ import { getUnreadSupportCountAction, getUserBlocksAction } from '@/app/actions/
 import { getSoundUrl } from '@/utils/sounds'
 import { useUser } from './UserContext'
 
+const ROOT_EMAILS = ['apersson508@gmail.com'];
+
 export default function Header() {
   const pathname = usePathname()
   const router = useRouter()
@@ -136,7 +138,7 @@ export default function Header() {
       }).subscribe();
     
     // 4. Lyssna på Support-ärenden
-    const isRoot = userProfile.auth_email?.toLowerCase() === 'apersson508@gmail.com' || userProfile.perm_roles;
+    const isRoot = ROOT_EMAILS.includes(userProfile.auth_email?.toLowerCase()) || userProfile.perm_roles;
     const canManageSupport = isRoot || userProfile.perm_support;
     
     const supportChannel = supabase.channel('support_updates')
@@ -346,14 +348,19 @@ export default function Header() {
           </Link>
           <Link href="/minasidor" className={`nav-link ${pathname?.startsWith('/minasidor') ? 'active' : ''}`} style={{ position: 'relative' }}>
              <Settings size={18} /> <span className="hide-on-mobile">Mina Sidor</span>
-             {unreadSupportCount > 0 && !(userProfile?.is_admin || userProfile?.perm_support || userProfile?.auth_email?.toLowerCase() === 'apersson508@gmail.com') && (
+             {unreadSupportCount > 0 && !(userProfile?.is_admin || userProfile?.perm_support || ROOT_EMAILS.includes(userProfile?.auth_email?.toLowerCase())) && (
                <span style={{ position: 'absolute', top: '8px', right: '10px', backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '0.1rem 0.3rem', borderRadius: '10px', fontWeight: 'bold' }}>{unreadSupportCount}</span>
              )}
           </Link>
-          {(userProfile?.is_admin || userProfile?.auth_email?.toLowerCase() === 'apersson508@gmail.com') && (
+          {(userProfile?.is_admin || 
+            ROOT_EMAILS.includes(userProfile?.auth_email?.toLowerCase()) || 
+            userProfile?.perm_users || userProfile?.perm_content || userProfile?.perm_rooms || 
+            userProfile?.perm_support || userProfile?.perm_roles || userProfile?.perm_logs || 
+            userProfile?.perm_stats || userProfile?.perm_diagnostics || userProfile?.perm_chat || 
+            userProfile?.perm_images) && (
             <Link href="/admin" className={`nav-link ${pathname?.startsWith('/admin') ? 'active' : ''}`} style={{ color: '#ef4444', position: 'relative' }}>
                <ShieldAlert size={18} /> <span className="hide-on-mobile">Admin</span>
-               {unreadSupportCount > 0 && (userProfile?.is_admin || userProfile?.perm_support || userProfile?.auth_email?.toLowerCase() === 'apersson508@gmail.com') && (
+               {unreadSupportCount > 0 && (userProfile?.is_admin || userProfile?.perm_support || ROOT_EMAILS.includes(userProfile?.auth_email?.toLowerCase())) && (
                  <span style={{ position: 'absolute', top: '8px', right: '10px', backgroundColor: '#ef4444', color: 'white', fontSize: '0.65rem', padding: '0.1rem 0.3rem', borderRadius: '10px', fontWeight: 'bold' }}>{unreadSupportCount}</span>
                )}
             </Link>
