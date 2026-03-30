@@ -81,18 +81,6 @@ export async function middleware(request: NextRequest) {
       rootIp = rootResult.data;
       isBlocked = blockResult.data;
       user = authResult.data?.user;
-
-      // --- AUTOMATISK IP-SYNK (Server-side) ---
-      // Om användaren är inloggad, kolla om IP har ändrats och spara direkt i dörrvakten.
-      if (user && ip && ip !== '127.0.0.1' && ip !== '::1') {
-         // Vi hämtar profilen i bakgrunden (vi blockerar inte för detta)
-         supabase.from('profiles').select('last_ip').eq('id', user.id).single().then(({data: prof}) => {
-            if (prof && prof.last_ip !== ip) {
-               console.log(`[SECURITY] 🔄 Uppdaterar IP för ${user.email}: ${prof.last_ip} -> ${ip}`);
-               supabase.from('profiles').update({ last_ip: ip }).eq('id', user.id).then(() => {});
-            }
-         });
-      }
     } catch (e: any) {
       console.error("[SECURITY] Middleware fault:", e.message);
     }

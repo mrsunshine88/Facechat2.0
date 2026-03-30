@@ -3,6 +3,8 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
+import { updateUserIP } from '@/app/actions/securityActions';
+
 
 interface UserContextType {
   user: any | null;
@@ -64,6 +66,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
 
         setProfile(profData);
+        
+        // MJUK IP-SYNK: Uppdatera i bakgrunden efter att profilen laddats
+        if (currentUser.id) {
+           updateUserIP(currentUser.id).catch(console.error);
+        }
+
       } else {
         setProfile(null);
       }
