@@ -3,7 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
-import { updateUserIP } from '@/app/actions/securityActions';
+
 
 
 interface UserContextType {
@@ -24,21 +24,13 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isSecurityInit = useRef(false);
 
-  const fetchUserAndProfile = async (retryCount = 0) => {
+  const fetchUserAndProfile = async () => {
     try {
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
       if (sessionError) {
-        // Om låset är upptaget, vänta och försök igen upp till 5 gånger (mer robust)
-        if (sessionError.message?.includes('lock') && retryCount < 5) {
-          const delay = (retryCount + 1) * 300; // Snabbare retries initialt
-          console.warn(`[AUTH] Lock contested (Attempt ${retryCount + 1}/5), retrying in ${delay}ms...`);
-          await new Promise(res => setTimeout(res, delay));
-          return await fetchUserAndProfile(retryCount + 1);
-        }
         throw sessionError;
       }
-
 
       const currentUser = session?.user || null;
       setUser(currentUser);
@@ -55,30 +47,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
            window.location.href = '/login?error=Ditt konto är avstängt.';
            return;
         }
+
         setProfile(profData);
-        
-        // MJUK IP-SYNK: Uppdatera i bakgrunden efter att profilen laddats
-        if (currentUser.id) {
-           updateUserIP(currentUser.id).catch(console.error);
-        }
-
-
       } else {
         setProfile(null);
       }
     } catch (error: any) {
       console.error('Error fetching user/profile:', error);
-      // Fallback if lock issue persists
-      if (error.message?.includes('lock')) {
-         setLoading(false); // Släpp laddningen så UI inte hänger
-      }
     } finally {
-      // VIKTIGT: Sätt loading=false bara om det är det sista/översta anropet
-      if (retryCount === 0) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
+
 
   useEffect(() => {
     fetchUserAndProfile();
