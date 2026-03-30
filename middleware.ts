@@ -88,63 +88,22 @@ export async function middleware(request: NextRequest) {
          return response;
       }
 
-      // IP-SPÄRR (Server-side)
-      if (access.is_blocked_ip) {
+      // 4. IP-SPÄRR (Server-side)
+      if (access.is_blocked_ip && !access.is_root_ip) {
         const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
         response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
         return redirectRes;
       }
 
-      // 4. SESSIONS-VAKT & AUTH
-      const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
-                            request.nextUrl.pathname.startsWith('/auth/callback') ||
-                            request.nextUrl.pathname.startsWith('/update-password');
-
-      if (!user && !isPublicRoute) {
-        // RESILIENS VID KALLSTART (MOBIL 📱): Om vi inte ser en session direkt på servern, 
-        // så låter vi sidan laddas istället för att tvärstoppa med en omdirigering till /login.
-        // Detta ger mobilens webbläsare chansen att "hitta" sina sparade kakor i bakgrunden.
-        // Skulle användaren genuint vara utloggad kommer klientsidan (UserContext) att skicka dem till login.
-        return response;
-      }
-
-      if (user && !isPublicRoute) {
-        // Kontrollera om användaren är bannad eller har en ogiltig session
-        if (access.is_banned_user) {
-          await supabase.auth.signOut();
-          const redirectRes = NextResponse.redirect(new URL('/login?error=blocked', request.url))
-          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
-          return redirectRes
-        }
-
-        if (!access.session_match) {
-          await supabase.auth.signOut();
-          const redirectRes = NextResponse.redirect(new URL('/login?error=session_conflict', request.url))
-          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c))
-          return redirectRes
-        }
-      }
-
+      // 5. LOGIN-BYPASS
+      // Om man redan är inloggad och försöker gå till /login, skicka till start.
       if (user && request.nextUrl.pathname.startsWith('/login')) {
         return NextResponse.redirect(new URL('/', request.url))
       }
 
-      // 5. PROAKTIV KAK-HÄRDNING (FÖR MOBILEN 📱)
-      // Vi tvingar alla inloggnings-kakor att vara permanenta (30 dagar) 
-      // även om Supabase-klienten på mobilen råkade sätta dem som tillfälliga.
-      if (user) {
-        request.cookies.getAll().forEach(cookie => {
-          if (cookie.name.startsWith('sb-') || cookie.name === 'facechat_session_key') {
-            response.cookies.set(cookie.name, cookie.value, {
-              path: '/',
-              maxAge: 60 * 60 * 24 * 30,
-              httpOnly: cookie.name === 'facechat_session_key',
-              secure: process.env.NODE_ENV === 'production',
-              sameSite: 'lax'
-            });
-          }
-        });
-      }
+      // ALLA ANDRA RUTTER TILLÅTS
+      // Klientsidan (UserContext) sköter omdirigering till /login om sessionen saknas.
+      return response;
     }
   } catch (err) {
     console.error('[Middleware] Recovery mode:', err);
