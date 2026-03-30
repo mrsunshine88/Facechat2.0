@@ -32,23 +32,23 @@ export async function middleware(request: NextRequest) {
             return request.cookies.getAll()
           },
           setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              request.cookies.set(name, value)
-            })
-            
+            cookiesToSet.forEach(({ name, value, options }) => request.cookies.set(name, value))
             response = NextResponse.next({
               request,
             })
-            
-            cookiesToSet.forEach(({ name, value, options }) => {
+            cookiesToSet.forEach(({ name, value, options }) =>
               response.cookies.set(name, value, {
                 ...options,
                 maxAge: 60 * 60 * 24 * 30, // 30 dagar för mobilen
                 path: '/',
               })
-            })
+            )
           },
         },
+        cookieOptions: {
+          maxAge: 60 * 60 * 24 * 30,
+          path: '/',
+        }
       }
     )
 
@@ -83,7 +83,7 @@ export async function middleware(request: NextRequest) {
         return response; // Fallback: Tillåt åtkomst om databasen är nere (Säkerhetsrisk vs Användarupplevelse)
       }
 
-      // ROOT-BYPASS (Säkrat IP / Master-Admin)
+      // ROOT-BYPASS
       if (access.is_root_ip) {
          return response;
       }
@@ -91,18 +91,37 @@ export async function middleware(request: NextRequest) {
       // 4. IP-SPÄRR (Server-side)
       if (access.is_blocked_ip && !access.is_root_ip) {
         const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
-        response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
+        response.cookies.getAll().forEach(c => redirectRes.cookies.set(c.name, c.value, c));
         return redirectRes;
       }
 
-      // 5. LOGIN-BYPASS
-      // Om man redan är inloggad och försöker gå till /login, skicka till start.
+      // 5. SESSIONS-VAKT & AUTH
+      const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
+                            request.nextUrl.pathname.startsWith('/auth/callback') ||
+                            request.nextUrl.pathname.startsWith('/update-password');
+
+      if (user && !isPublicRoute) {
+        // Kontrollera om användaren är bannad eller har en ogiltig session
+        if (access.is_banned_user) {
+          await supabase.auth.signOut();
+          const redirectRes = NextResponse.redirect(new URL('/login?error=blocked', request.url))
+          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c.name, c.value, c))
+          return redirectRes
+        }
+
+        if (cookieSess && !access.session_match) {
+          await supabase.auth.signOut();
+          const redirectRes = NextResponse.redirect(new URL('/login?error=session_conflict', request.url))
+          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c.name, c.value, c))
+          return redirectRes
+        }
+      }
+
       if (user && request.nextUrl.pathname.startsWith('/login')) {
         return NextResponse.redirect(new URL('/', request.url))
       }
 
-      // ALLA ANDRA RUTTER TILLÅTS
-      // Klientsidan (UserContext) sköter omdirigering till /login om sessionen saknas.
+      // ALLA ANDRA RUTTER TILLÅTS (Inklusive kallstart där user är null)
       return response;
     }
   } catch (err) {
