@@ -95,33 +95,10 @@ export async function middleware(request: NextRequest) {
         return redirectRes;
       }
 
-      // 5. SESSIONS-VAKT & AUTH
-      const isPublicRoute = request.nextUrl.pathname.startsWith('/login') || 
-                            request.nextUrl.pathname.startsWith('/auth/callback') ||
-                            request.nextUrl.pathname.startsWith('/update-password');
-
-      if (user && !isPublicRoute) {
-        // Kontrollera om användaren är bannad eller har en ogiltig session
-        if (access.is_banned_user) {
-          await supabase.auth.signOut();
-          const redirectRes = NextResponse.redirect(new URL('/login?error=blocked', request.url))
-          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c.name, c.value, c))
-          return redirectRes
-        }
-
-        if (cookieSess && !access.session_match) {
-          await supabase.auth.signOut();
-          const redirectRes = NextResponse.redirect(new URL('/login?error=session_conflict', request.url))
-          response.cookies.getAll().forEach(c => redirectRes.cookies.set(c.name, c.value, c))
-          return redirectRes
-        }
-      }
-
-      if (user && request.nextUrl.pathname.startsWith('/login')) {
-        return NextResponse.redirect(new URL('/', request.url))
-      }
-
-      // ALLA ANDRA RUTTER TILLÅTS (Inklusive kallstart där user är null)
+      // 5. ULTRA-RESILIENT PASS-THROUGH
+      // Vi omdirigerar ALDRIG till /login på servernivå längre.
+      // Detta förhindrar att en seg mobil webbläsare blir utloggad vid kallstart.
+      // Klientsidan (UserContext) sköter inloggnings-statusen när sidan väl laddats.
       return response;
     }
   } catch (err) {
