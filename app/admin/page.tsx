@@ -29,7 +29,7 @@ const ROOT_EMAILS = ['apersson508@gmail.com'];
 const ADMIN_TABS = [
   { id: 'dashboard', label: 'Dashboard', icon: Activity, perm: 'stats' },
   { id: 'users', label: 'Användare', icon: Users, perm: 'users' },
-  { id: 'blocks', label: 'IP & Spärrar', icon: ShieldAlert, perm: 'users' },
+  { id: 'blocks', label: 'Blockeringar', icon: ShieldAlert, perm: 'users' },
   { id: 'bilder', label: 'Bilder', icon: Shield, perm: 'images' },
   { id: 'reports', label: 'Anmälningar', icon: AlertTriangle, perm: 'content' },
   { id: 'content', label: 'Moderering', icon: Database, perm: 'content' },

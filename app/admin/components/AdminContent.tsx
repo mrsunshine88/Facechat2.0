@@ -112,15 +112,15 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
     }
   };
 
-  const handleDelete = async (table: string, id: string, threadTitle?: string) => {
-    if (confirm('Ska inlägget raderas globalt?')) {
+  const handleDelete = async (table: string, id: string, contentOwner?: string, threadTitle?: string) => {
+    if (confirm(`Ska ${contentOwner ? `${contentOwner}s ` : ''}inlägg raderas globalt?`)) {
       const res = await adminDeleteContent(table, id);
       if (res?.error) return alert('Behörighet saknas eller fel: ' + res.error);
       const tableName = table === 'whiteboard' ? 'Whiteboard' : (table === 'guestbook' ? 'Gästboken' : (table === 'chat_messages' ? 'Chatten' : 'forum'));
       
-      let actionMsg = `Raderade ett inlägg i ${tableName}`;
+      let actionMsg = `Raderade ett inlägg i ${tableName}${contentOwner ? ` skapat av ${contentOwner}` : ''}`;
       if (table === 'forum_posts' && threadTitle) {
-        actionMsg = `raderade ett inlägg i forum för tråd: ${threadTitle}`;
+        actionMsg = `Raderade ett inlägg i forumet av ${contentOwner || 'okänd'} i tråden: "${threadTitle}"`;
       }
       
       await adminLogAction(actionMsg);
@@ -181,7 +181,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <div className="admin-card-actions">
-              <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id)} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
+              <button onClick={() => handleDelete(post.is_comment ? 'whiteboard_comments' : 'whiteboard', post.id, post.profiles?.username || 'Okänd')} style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.5rem 0.75rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 'bold', fontSize: '0.75rem' }} title={`Radera ${post.is_comment ? 'kommentar' : 'inlägg'}`}>
                 <Trash2 size={16} /> Radera {post.is_comment ? 'Kommentar' : 'Inlägg'}
               </button>
             </div>
@@ -194,7 +194,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, color: 'var(--text-main)', paddingRight: '1rem' }}>{mask(post.content)}</p>
             </div>
             <div className="admin-card-actions">
-              <button onClick={() => handleDelete('guestbook', post.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
+              <button onClick={() => handleDelete('guestbook', post.id, post.sender?.username || 'Okänd')} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera inlägg">
                 <Trash2 size={20} />
               </button>
             </div>
@@ -220,7 +220,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
                    </button>
                 ) : (
                    <button 
-                     onClick={() => handleDelete('forum_posts', post.id, post.forum_threads?.title)} 
+                     onClick={() => handleDelete('forum_posts', post.id, post.profiles?.username || 'Okänd', post.forum_threads?.title)} 
                      style={{ color: '#ef4444', backgroundColor: '#fee2e2', padding: '0.6rem 1rem', borderRadius: '8px', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.5rem', fontWeight: 'bold', fontSize: '0.8rem' }}
                    >
                      <Trash2 size={16} /> Radera kommentar
@@ -243,7 +243,7 @@ const AdminContent = ({ supabase, currentUser, perms }: { supabase: any, current
               <p style={{ margin: 0, paddingRight: '1rem', fontStyle: msg.is_gif ? 'italic' : 'normal', color: msg.is_gif ? '#8b5cf6' : 'var(--text-main)' }}>{msg.is_gif ? '[GIF/BILD Skickad]' : mask(msg.content)}</p>
             </div>
             <div className="admin-card-actions">
-              <button onClick={() => handleDelete('chat_messages', msg.id)} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera chattmeddelande">
+              <button onClick={() => handleDelete('chat_messages', msg.id, msg.profiles?.username || 'Okänd')} style={{ color: '#ef4444', backgroundColor: 'transparent', border: 'none', cursor: 'pointer' }} title="Radera chattmeddelande">
                 <Trash2 size={20} />
               </button>
             </div>

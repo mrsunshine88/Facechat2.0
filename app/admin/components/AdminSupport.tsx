@@ -34,7 +34,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     if (!ticket) return;
 
     await supabase.from('support_tickets').update({ status: 'closed', has_unread_admin: false }).eq('id', id);
-    await adminLogAction(`Stängde supportärende (${id})`, ticket.user_id);
+    await adminLogAction(`Stängde supportärende (${id}) skapat av ${ticket.profiles?.username || 'Okänd'}`, ticket.user_id);
     
     // NOTIFIERA ANVÄNDAREN!
     const msg = `Ditt supportärende #${id.split('-')[0]} har markerats som LÖST av en admin. 🎉`;
@@ -64,7 +64,8 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     if (confirm('Är du säker på att du vill radera detta supportärende permanent?')) {
       const res = await adminDeleteSupportTicket(id);
       if (res?.error) return alert('Kunde inte radera: ' + res.error);
-      await adminLogAction(`Raderade ett supportärende (${id})`);
+      const t = tickets.find(x => x.id === id);
+      await adminLogAction(`Raderade supportärende (${id}) skapat av ${t?.profiles?.username || 'Okänd'}`);
       fetchTickets();
       if (activeTicketId === id) setActiveTicketId(null);
     }
@@ -109,7 +110,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     }).catch(console.error);
 
     setReplyText('');
-    await adminLogAction(`Svarade på supportärende (${activeTicketId})`, ticket.user_id);
+    await adminLogAction(`Svarade på supportärende (${activeTicketId}) till ${ticket.profiles?.username || 'Okänd'}`, ticket.user_id);
     fetchTickets();
   };
 
@@ -117,7 +118,7 @@ const AdminSupport = ({ supabase, currentUser }: { supabase: any, currentUser: a
     const ticket = tickets.find(t => t.id === id);
     if (ticket && ticket.has_unread_admin) {
       await supabase.from('support_tickets').update({ has_unread_admin: false }).eq('id', id);
-      await adminLogAction(`Öppnade/läste supportärende (${id})`);
+      await adminLogAction(`Öppnade/läste supportärende (${id}) från ${ticket.profiles?.username || 'Okänd'}`);
       fetchTickets();
     }
   };

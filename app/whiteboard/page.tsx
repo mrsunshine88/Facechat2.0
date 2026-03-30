@@ -51,22 +51,56 @@ export default function Whiteboard() {
   const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [isSending, setIsSending] = useState(false);
   
+  // -- PHASE 3: INFINITE SCROLL STATES --
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const LIMIT = 15;
+
   const supabase = createClient()
+
 
   useEffect(() => {
     if (userLoading) return;
-    fetchData();
+    fetchData(0, true);
 
-    const channel = supabase.channel('realtime whiteboard complex')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard_comments' }, () => fetchData())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard_likes' }, () => fetchData())
+    const channel = supabase.channel('realtime whiteboard optimized')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whiteboard' }, (payload) => {
+         // Prepend new posts if they are from friends or us (handled by fetchSinglePost check or just re-fetch first page)
+         fetchData(0, true); 
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'whiteboard' }, (payload) => {
+         setPosts(prev => prev.filter(p => p.id !== payload.old.id));
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard_comments' }, (payload: any) => {
+         const postId = payload.new?.post_id || payload.old?.post_id;
+         if (postId) fetchSinglePost(postId);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'whiteboard_likes' }, (payload: any) => {
+         const postId = payload.new?.post_id || payload.old?.post_id;
+         if (postId) fetchSinglePost(postId);
+         else if (payload.new?.comment_id || payload.old?.comment_id) {
+           // If comment like, we need to find which post the comment belongs to. 
+           // For simplicity in this case, we re-fetch the affected post if we can find it.
+           const commentId = payload.new?.comment_id || payload.old?.comment_id;
+           setPosts(prev => {
+             const post = prev.find(p => p.comments?.some((c: any) => c.id === commentId));
+             if (post) fetchSinglePost(post.id);
+             return prev;
+           });
+         }
+      })
       .subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [userLoading, supabase])
 
-  async function fetchData() {
+
+
+  async function fetchData(pageToLoad = 0, isInitial = false) {
+    if (isFetchingMore && !isInitial) return;
+    if (!isInitial) setIsFetchingMore(true);
+    
     const profileToUse = currentUser;
     let blockedUserIds: string[] = [];
 
@@ -74,23 +108,44 @@ export default function Whiteboard() {
       const { data: blocksRes } = await supabase.from('user_blocks').select('*').or(`blocker_id.eq.${profileToUse.id},blocked_id.eq.${profileToUse.id}`);
       
       if (blocksRes) {
-        blocksRes.forEach(b => {
+        blocksRes.forEach((b: any) => {
           blockedUserIds.push(b.blocker_id === profileToUse.id ? b.blocked_id : b.blocker_id);
         });
       }
+
     }
 
     let postsData = [];
     if (profileToUse) {
-      const { data } = await supabase.rpc('get_newsfeed', { viewer_id: profileToUse.id })
+      // PHASE 3: Call RPC with pagination params
+      const { data, error: rpcErr } = await supabase.rpc('get_newsfeed', { 
+        viewer_id: profileToUse.id, 
+        limit_val: LIMIT, 
+        offset_val: pageToLoad * LIMIT 
+      })
+      
+      if (rpcErr) console.error("RPC Error:", rpcErr);
+      
       if(data && data.length > 0) {
          const pIds = data.map((x:any) => x.id);
          const { data: enriched } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').in('id', pIds).order('created_at', { ascending: false });
          if(enriched) postsData = enriched;
+         
+         // Update hasMore
+         if (data.length < LIMIT) setHasMore(false);
+         else setHasMore(true);
+      } else {
+         setHasMore(false);
       }
     } else {
-      const { data } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').order('created_at', { ascending: false }).limit(50);
-      if (data) postsData = data;
+      const { data } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').order('created_at', { ascending: false }).range(pageToLoad * LIMIT, (pageToLoad + 1) * LIMIT - 1);
+      if (data) {
+        postsData = data;
+        if (data.length < LIMIT) setHasMore(false);
+        else setHasMore(true);
+      } else {
+        setHasMore(false);
+      }
     }
 
     const parentPostIds = postsData.map(p => p.parent_id).filter(Boolean);
@@ -101,26 +156,26 @@ export default function Whiteboard() {
     }
 
     if(postsData.length > 0) {
-       let filteredPostsData = postsData.filter(p => !blockedUserIds.includes(p.author_id));
-       const postIds = filteredPostsData.map(p => p.id);
+       let filteredPostsData = postsData.filter((p: any) => !blockedUserIds.includes(p.author_id));
+       const postIds = filteredPostsData.map((p: any) => p.id);
        
        if (postIds.length > 0) {
          const { data: commentsData } = await supabase.from('whiteboard_comments').select('*, profiles(username, avatar_url)').in('post_id', postIds).order('created_at', { ascending: true });
-         const commentIds = commentsData?.map(c => c.id) || [];
+         const commentIds = commentsData?.map((c: any) => c.id) || [];
          
          let query = `post_id.in.(${postIds.join(',')})`;
          if (commentIds.length > 0) query += `,comment_id.in.(${commentIds.join(',')})`;
          
          const { data: likesData } = await supabase.from('whiteboard_likes').select('*, profiles(username)').or(query);
 
-         const enrichedPosts = filteredPostsData.map(post => {
-           const postLikes = likesData?.filter(l => l.post_id === post.id && !blockedUserIds.includes(l.user_id)) || [];
-           const postComments = commentsData?.filter(c => c.post_id === post.id && !blockedUserIds.includes(c.author_id)).map(c => ({
+         const enrichedPosts = filteredPostsData.map((post: any) => {
+           const postLikes = likesData?.filter((l: any) => l.post_id === post.id && !blockedUserIds.includes(l.user_id)) || [];
+           const postComments = commentsData?.filter((c: any) => c.post_id === post.id && !blockedUserIds.includes(c.author_id)).map((c: any) => ({
               ...c,
-              likes: likesData?.filter(l => l.comment_id === c.id && !blockedUserIds.includes(l.user_id)) || []
+              likes: likesData?.filter((l: any) => l.comment_id === c.id && !blockedUserIds.includes(l.user_id)) || []
            })) || [];
            
-           const parent_post = resolvedParentPosts.find(pp => pp.id === post.parent_id);
+           const parent_post = resolvedParentPosts.find((pp: any) => pp.id === post.parent_id);
            
            return {
              ...post,
@@ -128,16 +183,62 @@ export default function Whiteboard() {
              comments: postComments,
              parent_post: parent_post
            }
-        });
+         });
          
-         setPosts(enrichedPosts.sort((a,b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()));
-       } else {
-         setPosts([]);
+         const sorted = enrichedPosts.sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+         
+         if (isInitial) {
+           setPosts(sorted);
+           setPage(0);
+         } else {
+           // Prevent duplicates if RT triggered a fetch during scroll
+           setPosts(prev => {
+             const existingIds = new Set(prev.map((p: any) => p.id));
+             const uniqueNew = sorted.filter((p: any) => !existingIds.has(p.id));
+             return [...prev, ...uniqueNew];
+           });
+
+         }
        }
-    } else {
-       setPosts([]);
     }
+    
+    setIsFetchingMore(false);
   }
+
+  async function fetchSinglePost(postId: string) {
+    // Phase 3: Optimized fetch for a single item update
+    const { data: postsData } = await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').eq('id', postId);
+    if (!postsData || postsData.length === 0) return;
+    
+    const post = postsData[0];
+    const { data: commentsData } = await supabase.from('whiteboard_comments').select('*, profiles(username, avatar_url)').eq('post_id', postId).order('created_at', { ascending: true });
+    const commentIds = commentsData?.map((c: any) => c.id) || [];
+    
+    let query = `post_id.eq.${postId}`;
+    if (commentIds.length > 0) query += `,comment_id.in.(${commentIds.join(',')})`;
+    const { data: likesData } = await supabase.from('whiteboard_likes').select('*, profiles(username)').or(query);
+
+    const enriched = {
+      ...post,
+      likes: likesData?.filter((l: any) => l.post_id === post.id) || [],
+      comments: commentsData?.map((c:any) => ({
+        ...c,
+        likes: likesData?.filter((l: any) => l.comment_id === c.id) || []
+      })) || [],
+      parent_post: post.parent_id ? (await supabase.from('whiteboard').select('*, profiles(username, avatar_url)').eq('id', post.parent_id).single()).data : null
+    };
+
+    setPosts(prev => prev.map(p => p.id === postId ? enriched : p));
+  }
+
+
+  const handleLoadMore = () => {
+    const nextPage = page + 1;
+    setPage(nextPage);
+    fetchData(nextPage, false);
+  };
+
 
   const handlePost = async () => {
     if (!newPostContent.trim() || !currentUser || isSending) return
@@ -158,16 +259,18 @@ export default function Whiteboard() {
     }
     setNewPostContent('')
     setIsSending(false);
-    await fetchData();
+    await fetchData(0, true);
   }
+
 
   const handleSaveEdit = async () => {
     if (!editingItem || !editingItem.content.trim()) return;
     const table = editingItem.type === 'post' ? 'whiteboard' : 'whiteboard_comments';
     await supabase.from(table).update({ content: editingItem.content.trim() }).eq('id', editingItem.id);
     setEditingItem(null);
-    fetchData();
+    fetchData(0, true);
   }
+
 
   const handleDelete = async (postId: string) => {
     if (!confirm('Vill du verkligen radera detta inlägg?')) return
@@ -175,8 +278,9 @@ export default function Whiteboard() {
     const { error } = await supabase.from('whiteboard').delete().eq('id', postId);
     if (!error) {
       setPosts(prev => prev.filter(p => p.id !== postId));
-      await fetchData(); // Refresh to sync counters (handled by DB trigger)
+      await fetchData(0, true); // Refresh to sync counters (handled by DB trigger)
     }
+
   }
   
   const handleDeleteComment = async (commentId: string) => {
@@ -213,8 +317,9 @@ export default function Whiteboard() {
          }).catch(console.error);
       }
     }
-    fetchData(); 
+    fetchData(0, true); 
   }
+
 
   const handleToggleLikeComment = async (commentId: string) => {
     if(!currentUser) return;
@@ -243,8 +348,9 @@ export default function Whiteboard() {
          }).catch(console.error);
       }
     }
-    fetchData();
+    fetchData(0, true);
   }
+
   
   const handlePostComment = async (postId: string) => {
     const txt = commentInputs[postId];
@@ -307,8 +413,9 @@ export default function Whiteboard() {
     }
 
     setCommentInputs({ ...commentInputs, [postId]: '' });
-    await fetchData();
+    await fetchData(0, true);
   }
+
 
   const [isSharing, setIsSharing] = useState(false);
 
@@ -404,7 +511,7 @@ export default function Whiteboard() {
           await supabase.from('notifications').insert(adminNotifs);
 
           // Skicka även push-notiser till admins
-          filteredAdmins.forEach(admin => {
+          filteredAdmins.forEach((admin: any) => {
             fetch('/api/send-push', {
               method: 'POST', body: JSON.stringify({
                 userId: admin.id,
@@ -414,6 +521,7 @@ export default function Whiteboard() {
               }), headers: { 'Content-Type': 'application/json' }
             });
           });
+
         }
       }
     } catch (notifErr) {
@@ -770,7 +878,48 @@ export default function Whiteboard() {
             </div>
           )
         })}
+
+        {/* --- LOAD MORE BUTTON --- */}
+        {hasMore && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 1rem' }}>
+            <button 
+              onClick={handleLoadMore} 
+              disabled={isFetchingMore}
+              className={isFetchingMore ? 'animate-pulse' : ''}
+              style={{ 
+                padding: '0.8rem 2.5rem', 
+                backgroundColor: '#1877f2', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '999px', 
+                fontWeight: '700', 
+                fontSize: '1rem',
+                cursor: isFetchingMore ? 'not-allowed' : 'pointer', 
+                opacity: isFetchingMore ? 0.7 : 1, 
+                transition: 'all 0.3s ease', 
+                boxShadow: '0 10px 15px -3px rgba(24,119,242,0.3)',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem'
+              }}
+            >
+              {isFetchingMore ? (
+                <>
+                  <div style={{ width: '18px', height: '18px', border: '2px solid white', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  Laddar inlägg...
+                </>
+              ) : 'Visa äldre inlägg ↓'}
+            </button>
+          </div>
+        )}
+        
+        {!hasMore && posts.length > 0 && (
+          <p style={{ textAlign: 'center', color: '#65676b', fontSize: '0.9rem', padding: '1rem', fontStyle: 'italic' }}>
+            Du har nått slutet av nyhetsflödet. Heja dig! ✨
+          </p>
+        )}
       </div>
+
 
       {showReportModal && (
          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>

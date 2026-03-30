@@ -5,7 +5,7 @@ import { createClient as createServerClient } from '@/utils/supabase/server';
 
 import { hasPermission } from './userActions';
 
-const ROOT_EMAILS = ['apersson508@gmail.com'];
+// ROOT_EMAILS är nu utfasat till förmån för 'is_root' kolumnen i databasen.
 
 // Setup Supabase Admin Client
 let supabaseAdmin: any;
@@ -48,7 +48,10 @@ async function verifyAdminPermission(permissionRequired: string) {
     throw new Error(`Behörighet saknas för sektionen: ${permissionRequired}`);
   }
   
-  const isRoot = ROOT_EMAILS.includes(user.email || '');
+  // Hämta is_root status från databasen
+  const { data: profile } = await getAdminClient().from('profiles').select('is_root').eq('id', user.id).single();
+  const isRoot = !!profile?.is_root;
+  
   return { userId: user.id, isRoot };
 }
 
@@ -56,17 +59,17 @@ export async function toggleBlockUser(userId: string, newStatus: boolean) {
   try {
     const { isRoot } = await verifyAdminPermission('perm_users');
 
-    // Root Protection
-    const { data: targetProfile } = await getAdminClient().from('profiles').select('auth_email').eq('id', userId).single();
+    // Root Protection (Baserat på is_root flaggan)
+    const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
     
-    if (targetProfile?.auth_email && ROOT_EMAILS.includes(targetProfile.auth_email)) {
+    if (targetProfile?.is_root) {
       throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ is_banned: newStatus }).eq('id', userId);
     if (error) throw error;
 
-    await adminLogAction(`${newStatus ? 'BLOCKERADE' : 'AVBLOCKERADE'} användare ${userId}`);
+    await adminLogAction(`${newStatus ? 'BLOCKERADE' : 'AVBLOCKERADE'} användare ${targetProfile?.username || userId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -203,16 +206,16 @@ export async function adminUpdatePermissions(userId: string, payload: any) {
   try {
     const { userId: executorId } = await verifyAdminPermission('perm_roles');
 
-    // Root Protection
-    const { data: targetProfile } = await getAdminClient().from('profiles').select('auth_email').eq('id', userId).single();
-    if (targetProfile?.auth_email && ROOT_EMAILS.includes(targetProfile.auth_email)) {
+    // Root Protection (Baserat på is_root flaggan)
+    const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
+    if (targetProfile?.is_root) {
       throw new Error('Säkerhetsspärr: Root-administratörens roller kan aldrig ändras.');
     }
 
     const { error } = await getAdminClient().from('profiles').update(payload).eq('id', userId);
     if (error) throw error;
 
-    await adminLogAction(`ÄNDRADE behörigheter för användare ${userId}`, userId);
+    await adminLogAction(`ÄNDRADE behörigheter för ${targetProfile?.username || userId}`, userId);
 
     // Skicka notis om admin-status ändras
     if (payload.hasOwnProperty('is_admin')) {
@@ -271,16 +274,16 @@ export async function adminResetAvatar(targetUserId: string) {
   try {
     const { isRoot } = await verifyAdminPermission('perm_images');
     
-    // Root-skydd
-    const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
+    // Root-skydd (Baserat på is_root flaggan)
+    const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
+    if (target?.is_root) {
        throw new Error('Säkerhetsspärr: Root-administratörens bild kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ avatar_url: null }).eq('id', targetUserId);
     if (error) throw error;
 
-    await adminLogAction(`NOLLSTÄLLDE avatar för ${targetUserId}`);
+    await adminLogAction(`NOLLSTÄLLDE avatar för ${target?.username || targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -291,16 +294,16 @@ export async function adminResetPresentation(targetUserId: string) {
   try {
     const { isRoot } = await verifyAdminPermission('perm_content');
     
-    // Root-skydd
-    const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
+    // Root-skydd (Baserat på is_root flaggan)
+    const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
+    if (target?.is_root) {
        throw new Error('Säkerhetsspärr: Root-administratörens bio kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ presentation: '' }).eq('id', targetUserId);
     if (error) throw error;
 
-    await adminLogAction(`NOLLSTÄLLDE bio för ${targetUserId}`);
+    await adminLogAction(`NOLLSTÄLLDE bio för ${target?.username || targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -311,16 +314,16 @@ export async function adminResetTheme(targetUserId: string) {
   try {
     await verifyAdminPermission('perm_content');
     
-    // Root-skydd
-    const { data: target } = await getAdminClient().from('profiles').select('auth_email').eq('id', targetUserId).single();
-    if (target?.auth_email && ROOT_EMAILS.includes(target.auth_email)) {
+    // Root-skydd (Baserat på is_root flaggan)
+    const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
+    if (target?.is_root) {
        throw new Error('Säkerhetsspärr: Root-administratörens tema kan inte nollställas här.');
     }
 
     const { error } = await getAdminClient().from('profiles').update({ custom_style: null }).eq('id', targetUserId);
     if (error) throw error;
 
-    await adminLogAction(`NOLLSTÄLLDE tema för ${targetUserId}`);
+    await adminLogAction(`NOLLSTÄLLDE tema för ${target?.username || targetUserId}`);
     return { success: true };
   } catch (err: any) {
     return { error: err.message };
@@ -400,12 +403,11 @@ export async function adminRunDeepScan() {
 
     // 8. Dubbelkoll: Root-Admin IP Spärrad (Säkerhetsnät)
     try {
-      const { data: rootEmail } = await getAdminClient().rpc('get_root_admin_email_fallback'); // Fallback if query fails
-      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').in('auth_email', ROOT_EMAILS).maybeSingle();
+      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').eq('is_root', true).maybeSingle();
       if (rootData?.last_ip) {
         const { count: isBlocked } = await getAdminClient().from('blocked_ips').select('*', { count: 'exact', head: true }).eq('ip', rootData.last_ip);
         if (isBlocked && isBlocked > 0) {
-          issues.push({ id: 'cleanup_root_ip', title: 'KRITISK: Root-IP Spärrad', status: 'warning', message: `Din nuvarande hem-IP (${rootData.last_ip}) är listad som spärrad. Detta kan orsaka problem!` });
+          issues.push({ id: 'cleanup_root_ip', title: 'KRITISK: Root-IP Spärrad', status: 'warning', message: `En Root-IP (${rootData.last_ip}) är listad som spärrad. Detta kan orsaka problem!` });
         }
       }
     } catch(e) {}
@@ -474,11 +476,11 @@ export async function adminFixDeepScanIssue(issueId: string) {
       await getAdminClient().from('guestbook').delete().eq('content', '');
       fixedMsg = 'Rensade bort tomma gästboksinlägg.';
     } else if (issueId === 'cleanup_root_ip') {
-      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').eq('auth_email', 'apersson508@gmail.com').single();
+      const { data: rootData } = await getAdminClient().from('profiles').select('last_ip').eq('is_root', true).maybeSingle();
       if (rootData?.last_ip) {
         await getAdminClient().from('blocked_ips').delete().eq('ip', rootData.last_ip);
       }
-      fixedMsg = 'Tog bort spärren för din nuvarande Root-IP.';
+      fixedMsg = 'Tog bort spärren för Root-IP.';
     } else if (issueId === 'cleanup_forum') {
       await getAdminClient().from('forum_posts').delete().eq('content', '');
       fixedMsg = 'Rensade bort tomma foruminlägg.';

@@ -72,24 +72,14 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
   }, [supabase, currentUser?.id]);
 
   async function fetchAdmins() {
-    const { data } = await supabase.from('profiles').select('*').eq('is_admin', true);
+    const { data, error } = await supabase.from('profiles')
+      .select('*')
+      .eq('is_admin', true)
+      .order('is_root', { ascending: false })
+      .order('username', { ascending: true });
+      
     if (data) {
-      const dbAdmins = [...data];
-      const meIdx = dbAdmins.findIndex((u: any) => u.username?.toLowerCase() === 'admin' || u.username?.toLowerCase() === 'apersson508' || u.id === currentUser.id || (u.perm_roles && u.is_admin));
-      if (meIdx !== -1) {
-        const me = dbAdmins.splice(meIdx, 1)[0];
-        dbAdmins.unshift(me);
-      } else if (currentUser?.auth_email?.toLowerCase() === 'apersson508@gmail.com' || currentUser?.username?.toLowerCase() === 'admin') {
-        dbAdmins.unshift({
-          id: currentUser.id || 'root-fallback',
-          username: currentUser.username || 'apersson508',
-          is_admin: true,
-          perm_users: true, perm_content: true, perm_rooms: true,
-          perm_support: true, perm_logs: true, perm_roles: true, perm_chat: true,
-          perm_diagnostics: true, perm_stats: true
-        });
-      }
-      setAdmins(dbAdmins);
+      setAdmins(data);
     }
   }
 
@@ -125,8 +115,8 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
 
 
   const handleRemoveAdmin = async (user: any) => {
-    if (user.id === currentUser.id || user.username?.toLowerCase() === 'apersson508') return alert('Du kan inte ta bort din egen admin-status.');
-    if (user.perm_roles && user.is_admin) return alert('Du kan inte ta bort ett Root-konto!');
+    if (user.id === currentUser.id) return alert('Du kan inte ta bort din egen admin-status.');
+    if (user.is_root) return alert('Säkerhetsspärr: Du kan inte ta bort en Root-administratör!');
 
     const res = await adminUpdatePermissions(user.id, {
       is_admin: false, 
@@ -207,7 +197,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
         {admins.map(person => {
           const isSelf = person.id === currentUser.id;
-          const isRootAccount = person.username?.toLowerCase() === 'apersson508' || (person.is_admin && person.perm_roles);
+          const isRootAccount = !!person.is_root;
           const cannotTouch = isRootAccount || isSelf;
 
           return (
@@ -244,9 +234,11 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
             <button onClick={() => setActiveEditAdmin(null)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', fontSize: '2rem', cursor: 'pointer', color: 'var(--text-main)' }}>&times;</button>
             <h2 style={{ fontSize: '1.5rem', marginBottom: '1.5rem', color: 'var(--text-main)' }}>Behörigheter för {activeEditAdmin.username}</h2>
 
-            {activeEditAdmin.username?.toLowerCase() === 'apersson508' ? (
+            {activeEditAdmin.is_root ? (
               <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fca5a5', padding: '1.5rem', borderRadius: '8px', color: '#b91c1c' }}>
-                Detta konto är ett root-konto och behåller alltid alla underliggande befogenheter. Säkerhetsspärr är aktiv.
+                <ShieldAlert size={24} style={{ marginBottom: '0.5rem' }} />
+                <p style={{ fontWeight: 'bold', margin: 0 }}>Root Super-Admin Skydd</p>
+                Detta konto är systemets ägare och har permanent tillgång till alla funktioner. Behörigheter kan inte begränsas för Root.
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '1rem' }}>
@@ -258,7 +250,7 @@ const AdminPermissions = ({ supabase, currentUser }: { supabase: any, currentUse
                 <PermissionCard title="Chattrum" desc="Skapa rum, lösenord, etc." icon={Terminal} checked={!!activeEditAdmin.perm_rooms} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_rooms', !activeEditAdmin.perm_rooms)} />
                 <PermissionCard title="Supportärenden" desc="Läs/svara supporttickets." icon={LifeBuoy} checked={!!activeEditAdmin.perm_support} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_support', !activeEditAdmin.perm_support)} />
                 <PermissionCard title="Loggar" desc="Läs granskningsloggen." icon={History} checked={!!activeEditAdmin.perm_logs} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_logs', !activeEditAdmin.perm_logs)} />
-                <PermissionCard title="Vårdcentralen" desc="Systemåterställning och Servervård." icon={Wrench} checked={!!activeEditAdmin.perm_diagnostics} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_diagnostics', !activeEditAdmin.perm_diagnostics)} />
+                <PermissionCard title="Hälsokontroll" desc="Systemåterställning och Servervård." icon={Wrench} checked={!!activeEditAdmin.perm_diagnostics} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_diagnostics', !activeEditAdmin.perm_diagnostics)} />
                 <PermissionCard title="Super-Admin" desc="Befordra admins & ändra roller." icon={ShieldAlert} checked={!!activeEditAdmin.perm_roles} onChange={() => handleTogglePermission(activeEditAdmin, 'perm_roles', !activeEditAdmin.perm_roles)} danger={true} />
               </div>
             )}

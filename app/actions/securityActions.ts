@@ -7,7 +7,7 @@ import { headers, cookies } from 'next/headers';
 import { hasPermission } from './userActions';
 import { adminLogAction } from './auditActions';
 
-const ROOT_EMAILS = ['apersson508@gmail.com'];
+// ROOT_EMAILS är nu utfasat till förmån för 'is_root' kolumnen i databasen.
 
 // Setup Supabase Admin Client
 let supabaseAdmin: any;
@@ -76,6 +76,34 @@ export async function updateUserIP(userId: string) {
 }
 
 /**
+ * SYNC HEARTBEAT: Uppdaterar både last_seen OCH last_ip i realtid.
+ * Körs var 60:e sekund från Header.tsx för att säkerställa att Admin-panelen
+ * alltid visar rätt IP även om användaren byter nätverk (WiFi -> Mobil).
+ */
+export async function syncUserHeartbeatAction(userId: string) {
+  try {
+    if (!userId || userId === 'guest') return { success: true };
+    
+    const ip = await getClientIP();
+    const admin = getAdminClient();
+    
+    const { error } = await admin
+      .from('profiles')
+      .update({ 
+        last_seen: new Date().toISOString(),
+        last_ip: (ip && ip !== '::1' && ip !== '127.0.0.1') ? ip : null 
+      })
+      .eq('id', userId);
+
+    if (error) throw error;
+    return { success: true, ip };
+  } catch (err: any) {
+    console.error('[syncUserHeartbeatAction] Failed:', err.message);
+    return { error: err.message };
+  }
+}
+
+/**
  * BANG-INLOGGNING: Konsoliderad säkerhetskontroll
  * Utför både session_key-uppdatering och IP-registrering i EN ENDA databastransaktion.
  * Detta minimerar väntetid och förhindrar krockar mellan olika enheter.
@@ -129,12 +157,37 @@ export async function completeLoginProcess(userId: string, sessionKey: string) {
 }
 
 /**
- * Loggar ut användaren och rensar cookies på servernivå (Säkert)
+ * Loggar ut användaren och rensar cookies på servernivå samt i databasen (Fullständig utloggning)
  */
 export async function logoutAction() {
-  const cookieStore = await cookies();
-  cookieStore.delete('facechat_session_key');
-  return { success: true };
+  try {
+    const supabase = await createServerClient();
+    const { data: { user } } = await supabase.auth.getUser();
+
+    if (user) {
+      // 1. Nollställ sessions-nyckeln i databasen för att döda sessionen på servern
+      const admin = getAdminClient();
+      await admin
+        .from('profiles')
+        .update({ session_key: null })
+        .eq('id', user.id);
+      
+      // 2. Logga ut från Supabase Auth
+      await supabase.auth.signOut();
+    }
+
+    // 3. Rensa Middleware-cookien
+    const cookieStore = await cookies();
+    cookieStore.delete('facechat_session_key');
+    
+    return { success: true };
+  } catch (err: any) {
+    console.error('[logoutAction] Cleanup failed:', err.message);
+    // Vi rensar cookien ändå för att användaren ska bli "utloggad" lokalt
+    const cookieStore = await cookies();
+    cookieStore.delete('facechat_session_key');
+    return { success: true };
+  }
 }
 
 // --- ORD-FILTER ACTIONS ---
@@ -191,13 +244,13 @@ export async function adminBlockIP(ip: string, reason: string) {
     const authorized = await hasPermission(user.id, 'perm_users');
     if (!authorized) throw new Error('Behörighet saknas.');
 
-    // --- ROOT IP IMMUNITY CHECK ---
+    // --- ROOT IP IMMUNITY CHECK (Baserat på is_root flaggan) ---
     const { data: rootProfiles } = await getAdminClient()
       .from('profiles')
       .select('last_ip')
-      .in('auth_email', ROOT_EMAILS);
+      .eq('is_root', true);
 
-    const rootIps = rootProfiles?.map((p: any) => p.last_ip) || [];
+    const rootIps = rootProfiles?.map((p: any) => p.last_ip).filter(Boolean) || [];
     if (rootIps.includes(ip)) {
       throw new Error(`Säkerhetsspärr: Denna IP-adress (${ip}) är skyddad eftersom den tillhör en Root-administratör.`);
     }

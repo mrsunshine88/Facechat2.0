@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/utils/supabase/client'
 import { User, MessageSquare, MessagesSquare, LayoutGrid, Search, Bell, LogOut, ShieldAlert, Settings, Menu, X, Home } from 'lucide-react'
-import { logoutAction } from '@/app/actions/securityActions'
+import { logoutAction, syncUserHeartbeatAction } from '@/app/actions/securityActions'
 import { getUnreadSupportCountAction, getUserBlocksAction } from '@/app/actions/userActions'
 
 
@@ -56,8 +56,21 @@ export default function Header() {
   }, [pathname, profile, user]);
 
   // BACKGROUND SECURITY HEARTBEAT (Runs once on mount + every 60s)
-  // MODERN FACECHAT: Säkerheten sköts nu helt av Middleware (Server-side)
-  // Vi har tagit bort Heartbeats härifrån för att maximera hastighet.
+  // Fixar "0 inloggade" felet i Admin genom att faktiskt uppdatera databasen!
+  useEffect(() => {
+    if (!user || isBlockedRoute || isLoginRoute) return;
+    
+    const sendHeartbeat = async () => {
+      try {
+        await syncUserHeartbeatAction(user.id);
+      } catch (err) {}
+    };
+
+    sendHeartbeat(); // Direkt vid start
+    const interval = setInterval(sendHeartbeat, 60000); // Varje minut
+    
+    return () => clearInterval(interval);
+  }, [user?.id, isBlockedRoute, isLoginRoute, supabase]);
 
   // Notiser (Kopplat till Supabase)
   const [notifications, setNotifications] = useState<any[]>([])

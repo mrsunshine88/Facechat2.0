@@ -67,7 +67,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       .limit(1);
 
     if (data && data.length > 0) {
-      setLastScanResult(data[0].action.replace('Vårdcentralen: ', ''));
+      setLastScanResult(data[0].action.replace('Diagnosverktyget: ', '').replace('Vårdcentralen: ', ''));
     }
   };
 
@@ -214,9 +214,9 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
          updateOne('reports', { status: 'ok', message: '✅ Allt grönt.' });
       }
 
-      const fifteenDaysAgo = new Date();
-      fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15);
-      const { count: logsToDelete } = await supabase.from('admin_logs').delete({ count: 'exact' }).lt('created_at', fifteenDaysAgo.toISOString());
+      const thirtyDaysAgoLogs = new Date();
+      thirtyDaysAgoLogs.setDate(thirtyDaysAgoLogs.getDate() - 30);
+      const { count: logsToDelete } = await supabase.from('admin_logs').delete({ count: 'exact' }).lt('created_at', thirtyDaysAgoLogs.toISOString());
       if ((logsToDelete || 0) > 0) {
          fixesCount++;
          updateOne('logs', { status: 'ok', message: `✅ Rensade ${logsToDelete}.` });
@@ -225,6 +225,10 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       }
 
       fetchLatestScanResult();
+      
+      // LOGGA RESULTATET
+      const resultSummary = `Diagnosverktyget kördes: ${fixesCount === 0 ? 'Inga problem hittades.' : `Fixade ${fixesCount} systemrelaterade problem.`}`;
+      await adminLogAction(resultSummary);
 
     } catch (err: any) {
       console.error('Diagnosfel:', err);
@@ -276,7 +280,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     <div style={{ maxWidth: '1000px', margin: '0 auto', width: '100%' }}>
       <div className="admin-card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', padding: '1.25rem 1.5rem', backgroundColor: '#f0fdf4', border: '2px solid #10b981' }}>
         <div>
-          <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Wrench size={24} /> Vårdcentralen</h2>
+          <h2 style={{ fontSize: '1.5rem', fontWeight: '800', margin: 0, color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><Wrench size={24} /> Diagnosverktyget</h2>
           <p style={{ color: '#047857', margin: '0.25rem 0 0 0', fontSize: '0.875rem' }}>Fullständig system-skanning och lagning.</p>
         </div>
         <button

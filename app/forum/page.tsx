@@ -6,6 +6,27 @@ import { createClient } from '@/utils/supabase/client';
 import { useRouter } from 'next/navigation';
 import { useWordFilter } from '@/hooks/useWordFilter';
 
+const ForumSkeleton = () => (
+  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+    {[1, 2, 3, 4, 5].map(i => (
+      <div key={i} className="card skeleton-pulse" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '86px' }}>
+        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
+          <div className="skeleton-pulse" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
+            <div className="skeleton-pulse" style={{ width: '60%', height: '20px', borderRadius: '4px' }}></div>
+            <div className="skeleton-pulse" style={{ width: '40%', height: '14px', borderRadius: '4px' }}></div>
+          </div>
+        </div>
+        <div style={{ textAlign: 'right', minWidth: '40px' }}>
+          <div className="skeleton-pulse" style={{ width: '30px', height: '24px', borderRadius: '4px', marginLeft: 'auto', marginBottom: '4px' }}></div>
+          <div className="skeleton-pulse" style={{ width: '40px', height: '10px', borderRadius: '2px', marginLeft: 'auto' }}></div>
+        </div>
+      </div>
+    ))}
+  </div>
+);
+
+
 export default function Forumet() {
   const router = useRouter();
   const { mask } = useWordFilter();
@@ -17,44 +38,50 @@ export default function Forumet() {
   const [newCategory, setNewCategory] = useState('Allmänt');
   const [newContent, setNewContent] = useState('');
   const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [isFetchingMore, setIsFetchingMore] = useState(false);
+  const LIMIT = 15;
+
 
   const supabase = createClient();
 
   useEffect(() => {
     async function init() {
       try {
-        // 1. Hämta ALLT parallellt direkt (Maximal fart!)
-        const [sessionRes, threadsRes] = await Promise.all([
-          supabase.auth.getSession(),
-          supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false })
-        ]);
-
-        const user = sessionRes.data.session?.user;
-        if (!user) {
-          if (threadsRes.data) setThreads(threadsRes.data);
-          setLoading(false);
-          return;
-        }
-
-        // 2. Hämta profil och blockeringar samtidigt
-        const [profRes, blocksRes] = await Promise.all([
-          supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1),
-          supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-        ]);
-
-        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
-        setCurrentUser(profile);
-
-        // Filtrera trådar baserat på blockeringar
+        setLoading(true);
+        // 1. Hämta session och blockeringar först för att veta vem vi ska exkludera
+        const { data: { session } } = await supabase.auth.getSession();
+        const user = session?.user;
+        
         let blockedIds: string[] = [];
-        if (blocksRes.data) {
-          blockedIds = blocksRes.data.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+        if (user) {
+           const [profRes, blocksRes] = await Promise.all([
+             supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1),
+             supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
+           ]);
+           if (profRes.data?.[0]) setCurrentUser(profRes.data[0]);
+           if (blocksRes.data) {
+             blockedIds = blocksRes.data.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
+           }
         }
 
-        if (threadsRes.data) {
-          const filtered = threadsRes.data.filter((t: any) => !blockedIds.includes(t.author_id));
-          setThreads(filtered);
+        // 2. Hämta trådar med pagination och sökfilter
+        let query = supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }).range(0, LIMIT - 1);
+        
+        if (searchQuery.trim()) {
+           query = query.ilike('title', `%${searchQuery.trim()}%`);
         }
+
+        const { data: threadsRes } = await query;
+
+        if (threadsRes) {
+          const filtered = threadsRes.filter((t: any) => !blockedIds.includes(t.author_id));
+          setThreads(filtered);
+          setHasMore(threadsRes.length === LIMIT);
+        }
+        setPage(0);
         setLoading(false);
       } catch (err) {
         console.error("Forum init error:", err);
@@ -63,30 +90,50 @@ export default function Forumet() {
     }
     init();
 
+
     const sub = supabase.channel('real-forum')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => init())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => init())
       .subscribe();
 
     return () => { supabase.removeChannel(sub); };
-  }, []);
+  }, [searchQuery]); // Trigger re-init on search
+
+  async function fetchMoreThreads() {
+     if (isFetchingMore || !hasMore) return;
+     setIsFetchingMore(true);
+     
+     const nextPage = page + 1;
+     let query = supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }).range(nextPage * LIMIT, (nextPage + 1) * LIMIT - 1);
+     
+     if (searchQuery.trim()) {
+        query = query.ilike('title', `%${searchQuery.trim()}%`);
+     }
+
+     const { data } = await query;
+     
+     if (data) {
+        // Blockeringar hanteras via init räckvidd eller enklare: vi hämtar dem igen om de behövs, 
+        // men här antar vi att blockedIds inte ändras ofta under en session. 
+        // För enkelhet filtrerar vi bort de vi redan kan ha i state.
+        setThreads(prev => {
+           const existingIds = new Set(prev.map(t => t.id));
+           const uniqueNew = data.filter((t: any) => !existingIds.has(t.id));
+           return [...prev, ...uniqueNew];
+        });
+        setHasMore(data.length === LIMIT);
+        setPage(nextPage);
+     }
+     setIsFetchingMore(false);
+  }
 
   async function fetchThreads() {
-     // Denna används nu mest för manuella uppdateringar, så vi återanvänder logiken i init eller förenklar
-     const { data: { session } } = await supabase.auth.getSession();
-     const user = session?.user;
-     
-     const [threadsRes, blocksRes] = await Promise.all([
-        supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }),
-        user ? supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`) : Promise.resolve({ data: [] })
-     ]);
-
-     if (threadsRes.data) {
-        const blockedIds = blocksRes.data ? blocksRes.data.map((b: any) => b.blocker_id === user?.id ? b.blocked_id : b.blocker_id) : [];
-        const filtered = threadsRes.data.filter((t: any) => !blockedIds.includes(t.author_id));
-        setThreads(filtered);
-     }
+     // Re-trigger the whole sequence
+     setPage(0);
+     setHasMore(true);
+     // init() triggers automatically because of dependency [searchQuery] if we just Clear or trigger a small change
   }
+
 
   const handleCreateThread = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -149,30 +196,32 @@ export default function Forumet() {
       </div>
 
       <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', padding: '1rem' }}>
-        <input 
-          type="text" 
-          placeholder="Sök i forumet..." 
-          style={{ flex: 1, padding: '0.75rem', border: '2px solid var(--border-color)', borderRadius: 'var(--radius)', fontFamily: 'inherit', outline: 'none' }}
-        />
-        <button style={{ backgroundColor: 'var(--text-main)', color: 'white', border: 'none', cursor: 'pointer', padding: '0 1.5rem', borderRadius: 'var(--radius)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Search size={18} /> Sök
-        </button>
+        <div style={{ flex: 1, position: 'relative' }}>
+          <input 
+            type="text" 
+            placeholder="Sök i forumet (rubrik)..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ width: '100%', padding: '0.75rem 0.75rem 0.75rem 2.5rem', border: '2px solid var(--border-color)', borderRadius: 'var(--radius)', fontFamily: 'inherit', outline: 'none' }}
+          />
+          <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
+        </div>
         <button onClick={() => setShowNewThread(true)} style={{ backgroundColor: 'var(--theme-forum)', color: 'white', padding: '0 1.5rem', borderRadius: 'var(--radius)', fontWeight: 'bold', border: '2px solid var(--text-main)', boxShadow: 'var(--shadow-retro)', display: 'flex', cursor: 'pointer', alignItems: 'center', gap: '0.5rem' }}>
           <PenSquare size={18} /> Ny Tråd
         </button>
       </div>
 
+
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {loading ? (
-          Array(5).fill(0).map((_, i) => (
-            <div key={i} className="card skeleton-pulse" style={{ height: '86px', marginBottom: '0' }}></div>
-          ))
+        {loading && threads.length === 0 ? (
+          <ForumSkeleton />
         ) : threads.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
             <p>Inga trådar startade än. Bli den första att skriva något!</p>
           </div>
         ) : (
           threads.map((thread) => {
+
             const authorUsername = thread.profiles?.username || 'Raderad';
             const authorDisplay = thread.uses_alias ? (thread.profiles?.alias_name || 'Stenansikte (Anonym)') : (
               <span onClick={(e) => { e.preventDefault(); router.push(`/krypin?u=${authorUsername}`); }} className="user-link" style={{ cursor: 'pointer', fontWeight: 'bold' }}>{authorUsername}</span>
@@ -196,7 +245,43 @@ export default function Forumet() {
             )
           })
         )}
+
+        {/* --- LOAD MORE BUTTON --- */}
+        {hasMore && threads.length >= LIMIT && (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 1rem' }}>
+            <button 
+              onClick={fetchMoreThreads} 
+              disabled={isFetchingMore}
+              style={{ 
+                backgroundColor: 'white', 
+                color: 'black', 
+                border: '2px solid black', 
+                padding: '0.8rem 2.5rem', 
+                borderRadius: '8px', 
+                fontWeight: '900', 
+                fontSize: '1rem',
+                cursor: isFetchingMore ? 'not-allowed' : 'pointer', 
+                boxShadow: isFetchingMore ? 'none' : '6px 6px 0px rgba(0,0,0,1)', 
+                transition: 'all 0.1s',
+                transform: isFetchingMore ? 'translate(3px, 3px)' : 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.75rem'
+              }}
+              onMouseDown={e => { if(!isFetchingMore) e.currentTarget.style.transform = 'translate(3px, 3px)'; e.currentTarget.style.boxShadow = 'none'; }}
+              onMouseUp={e => { if(!isFetchingMore) e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '6px 6px 0px rgba(0,0,0,1)'; }}
+            >
+              {isFetchingMore ? (
+                <>
+                  <div style={{ width: '18px', height: '18px', border: '2px solid black', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
+                  Laddar...
+                </>
+              ) : 'Visa fler trådar ↓'}
+            </button>
+          </div>
+        )}
       </div>
+
 
       {/* Skapa Tråd Modal */}
       {showNewThread && (

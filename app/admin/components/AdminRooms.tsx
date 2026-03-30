@@ -14,7 +14,7 @@ const SecretRoomMembers = ({ room, supabase, currentUser, onRefresh }: any) => {
     const isAdminRoom = room.name === 'Admin' && room.is_secret === true;
 
     if (isAdminRoom) {
-      const adminFilter = 'is_admin.eq.true,perm_roles.eq.true,username.eq."mrsunshine88",username.eq."apersson508"';
+      const adminFilter = 'is_admin.eq.true,perm_roles.eq.true,is_root.eq.true';
       
       supabase.from('profiles').select('id, username').or(adminFilter).then(({ data, error }: any) => {
         if (error) {

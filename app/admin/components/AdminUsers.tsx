@@ -22,17 +22,15 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
     if (data) {
       const dbUsers = [...data];
       // Hitta ROOT-Admin (Dig) oavsett vem som är inloggad
-      const rootIdx = dbUsers.findIndex((u: any) => u.auth_email === 'apersson508@gmail.com' || u.username?.toLowerCase() === 'apersson508' || u.username?.toLowerCase() === 'mrsunshine88');
+      const rootIdx = dbUsers.findIndex((u: any) => u.is_root);
       
       if (rootIdx !== -1) {
         const root = dbUsers.splice(rootIdx, 1)[0];
         dbUsers.unshift(root); // Du ska ALLTID vara överst för alla
         if (root.last_ip) setProtectedIp(root.last_ip);
-      } else if (currentUser?.auth_email === 'apersson508@gmail.com' || currentUser?.username?.toLowerCase() === 'mrsunshine88' || currentUser?.username?.toLowerCase() === 'apersson508') {
+      } else if (currentUser?.is_root) {
         dbUsers.unshift({
-          id: currentUser.id || 'root-fallback',
-          username: currentUser.username || 'mrsunshine88',
-          auth_email: 'apersson508@gmail.com',
+          ...currentUser,
           is_admin: true,
           perm_users: true, perm_content: true, perm_rooms: true,
           perm_support: true, perm_logs: true, perm_roles: true, perm_chat: true,
@@ -59,7 +57,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
         
         // Uppdatera skyddat IP direkt om det är DIN profil som ändras
         const p = payload.new;
-        if (p.auth_email === 'apersson508@gmail.com' || p.username?.toLowerCase() === 'apersson508' || p.username?.toLowerCase() === 'mrsunshine88') {
+        if (p.is_root) {
           if (p.last_ip) setProtectedIp(p.last_ip);
         }
       })
@@ -85,7 +83,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
   }, [search]);
 
   const handleToggleBlock = async (user: any) => {
-    if (user.username?.toLowerCase() === 'apersson508' || user.username?.toLowerCase() === 'mrsunshine88' || user.id === currentUser.id || user.auth_email === 'apersson508@gmail.com') {
+    if (user.is_root || user.id === currentUser.id) {
        return alert('Detta konto är skyddat som Master-Admin.');
     }
     const newStatus = !user.is_banned;
@@ -134,7 +132,7 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
    };
 
   const handleDeleteUser = async (user: any) => {
-    if (user.username?.toLowerCase() === 'apersson508' || user.username?.toLowerCase() === 'mrsunshine88' || user.id === currentUser.id) {
+    if (user.is_root || user.id === currentUser.id) {
        return alert('Nix, du kan inte radera the creator!');
     }
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');

@@ -119,7 +119,7 @@ const AdminDashboard = ({ supabase }: { supabase: any }) => {
           <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.reports > 0 ? '#ef4444' : '#6b7280' }}>{stats.reports}</p>
         </div>
         <div className="admin-card">
-          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Totalt antal IP-spärrar</h3>
+          <h3 style={{ fontSize: '1rem', color: 'var(--text-muted)', marginBottom: '0.5rem' }}>Totalt antal blockeringar</h3>
           <p style={{ fontSize: '2.5rem', fontWeight: '800', color: stats.ipBlocks > 0 ? '#ef4444' : '#6b7280' }}>{stats.ipBlocks}</p>
         </div>
         <div className="admin-card" style={{ border: '1px solid #10b981', backgroundColor: '#ecfdf5' }}>

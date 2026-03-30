@@ -5,7 +5,7 @@ import { createClient as createServerClient } from '@/utils/supabase/server';
 import { sanitizeCSS } from '@/utils/securityUtils';
 import { adminLogAction } from './auditActions';
 
-const ROOT_EMAILS = ['apersson508@gmail.com'];
+// ROOT_EMAILS har raderats för att ersättas av den databasstyrda 'is_root'-flaggan.
 
 /**
  * Centraliserad behörighetskontroll. 
@@ -21,12 +21,8 @@ export async function hasPermission(userId: string, permissionType: string): Pro
   const { data: profile } = await supabase.from('profiles').select('*').eq('id', userId).single();
   if (!profile) return false;
 
-  // 1. Root-immunitet (Kollar mejl och username)
-  const isRoot = ROOT_EMAILS.includes(profile.auth_email) || 
-                 profile.username?.toLowerCase() === 'mrsunshine88' || 
-                 profile.username?.toLowerCase() === 'apersson508';
-  
-  if (isRoot) return true;
+  // 1. Root-immunitet (Kollar is_root flaggan direkt från DB)
+  if (profile.is_root) return true;
 
   // 2. Kolla specifik behörighets-flagga
   // Typen 'admin' är den mest grundläggande
@@ -67,10 +63,10 @@ export async function deleteUserAccount(userId: string) {
     }
   );
 
-  const { data: profList } = await supabaseAdmin.from('profiles').select('username').eq('id', userId).limit(1);
+  const { data: profList } = await supabaseAdmin.from('profiles').select('is_root').eq('id', userId).limit(1);
   const userProfile = profList && profList.length > 0 ? profList[0] : null;
-  const isRoot = userProfile?.username?.toLowerCase() === 'apersson508' || userProfile?.username?.toLowerCase() === 'mrsunshine88';
-  if (isRoot) {
+  const isRootAccount = !!userProfile?.is_root;
+  if (isRootAccount) {
     return { error: 'Säkerhetsspärr: Detta konto är skyddat som root-administratör och kan aldrig raderas.' };
   }
 
@@ -370,7 +366,7 @@ export async function toggleUserBlockAction(targetUserId: string, shouldBlock: b
     // 1. Säkerhetskontroll: Kan inte blockera Root eller Admins
     const { data: targetProfile } = await supabaseAdmin
       .from('profiles')
-      .select('username, is_admin, perm_users, perm_content, perm_rooms, perm_roles, perm_support, perm_logs, perm_stats, perm_diagnostics, perm_chat, auth_email')
+      .select('username, is_admin, perm_users, perm_content, perm_rooms, perm_roles, perm_support, perm_logs, perm_stats, perm_diagnostics, perm_chat, is_root')
       .eq('id', targetUserId)
       .single();
 
@@ -386,8 +382,7 @@ export async function toggleUserBlockAction(targetUserId: string, shouldBlock: b
                       targetProfile.perm_diagnostics || 
                       targetProfile.perm_chat;
       
-      const isRoot = targetProfile.auth_email === 'apersson508@gmail.com' || 
-                     targetProfile.username?.toLowerCase() === 'mrsunshine88';
+      const isRoot = !!targetProfile.is_root;
 
       if (isAdmin || isRoot) {
         return { error: 'Det går inte att blockera en administratör.' };
@@ -438,16 +433,17 @@ export async function getUnreadSupportCountAction() {
     );
 
     // Hämta profil för att kolla behörighet
+    // Hämta profil för att kolla behörighet
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('is_admin, perm_support, perm_roles, auth_email')
+      .select('is_admin, perm_support, perm_roles, is_root')
       .eq('id', user.id)
       .single();
 
     if (!profile) return { count: 0 };
 
-    const isSuperAdmin = profile.auth_email?.toLowerCase() === 'apersson508@gmail.com' || profile.perm_roles;
-    const canManageSupport = isSuperAdmin || profile.is_admin || profile.perm_support;
+    const isSuperAdmin = !!profile.is_root || !!profile.perm_roles;
+    const canManageSupport = isSuperAdmin || !!profile.is_admin || !!profile.perm_support;
 
     if (canManageSupport) {
       // Admin: Räkna alla öppna ohanterade ärenden som inte är raderade

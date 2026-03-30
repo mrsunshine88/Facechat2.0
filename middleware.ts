@@ -57,30 +57,39 @@ export async function middleware(request: NextRequest) {
       const hasAuthCookies = request.cookies.getAll().some(c => c.name.startsWith('sb-'));
       const shouldCheckAuth = hasAuthCookies || !isLogin;
 
-      // 3. IP-vakt (Server-side)
+      // 3. IP-vakt (Hämta klient-IP)
       const reqIp = (request as any).ip;
       const xfwd = request.headers.get('x-forwarded-for');
       const xreal = request.headers.get('x-real-ip');
       const rawIp = reqIp || (xfwd ? xfwd.split(',')[0].trim() : (xreal || '127.0.0.1'));
       const ip = rawIp.replace(/^.*:ffff:/, '');
 
-      const [isRootIpResult, blockResult, authResult] = await Promise.all([
-        supabase.rpc('check_is_root_ip', { test_ip: ip }),
-        supabase.from('blocked_ips').select('ip, reason').eq('ip', ip).maybeSingle(),
-        shouldCheckAuth ? supabase.auth.getUser() : Promise.resolve({ data: { user: null }, error: null })
-      ]);
+      // 4. KONSOLIDERAD SÄKERHETSKONTROLL (BANG! 🚀)
+      // Vi kör alla kontroller (IP, Root, Ban, Session) i ETT ENDA anrop istället för fyra.
+      const cookieSess = request.cookies.get('facechat_session_key')?.value || null;
+      
+      // OPTIMERING: Hämta användaren (Bara om det behövs för session-matchning)
+      // Om vi inte har en session-cookie och är på en publik route, kan vi skippa getUser() ibland.
+      const { data: { user } } = await supabase.auth.getUser();
 
-      const isRootIp = isRootIpResult.data;
-      const isBlocked = blockResult.data;
-      const user = authResult.data?.user;
+      const { data: access, error: accessErr } = await supabase.rpc('check_request_access', {
+        test_ip: ip,
+        test_user_id: user?.id || null,
+        test_session_key: cookieSess
+      });
 
-      // ROOT-BYPASS (Säkrat IP)
-      if (isRootIp) {
+      if (accessErr) {
+        console.error('[Middleware] Säkerhetskontroll misslyckades:', accessErr);
+        return response; // Fallback: Tillåt åtkomst om databasen är nere (Säkerhetsrisk vs Användarupplevelse)
+      }
+
+      // ROOT-BYPASS (Säkrat IP / Master-Admin)
+      if (access.is_root_ip) {
          return response;
       }
 
       // IP-SPÄRR (Server-side)
-      if (isBlocked) {
+      if (access.is_blocked_ip) {
         const redirectRes = NextResponse.redirect(new URL('/blocked', request.url));
         response.cookies.getAll().forEach(c => redirectRes.cookies.set(c));
         return redirectRes;
@@ -98,17 +107,13 @@ export async function middleware(request: NextRequest) {
       }
 
       if (user && !isPublicRoute) {
-        // Kolla om användaren är bannad eller har en ogiltig session i REALTID
-        const { data: prof } = await supabase.from('profiles').select('session_key, is_banned').eq('id', user.id).maybeSingle();
-        
-        if (prof?.is_banned) {
+        // Kontrollera om användaren är bannad eller har en ogiltig session (Redan kollat via RPC!)
+        if (access.is_banned_user) {
           await supabase.auth.signOut();
           return NextResponse.redirect(new URL('/login?error=blocked', request.url));
         }
 
-        // SESSION LOCK: Om cookien 'facechat_session_key' inte matchar databasen -> Logga ut
-        const cookieSess = request.cookies.get('facechat_session_key')?.value;
-        if (prof?.session_key && cookieSess && prof.session_key !== cookieSess) {
+        if (!access.session_match) {
           await supabase.auth.signOut();
           return NextResponse.redirect(new URL('/login?error=session_conflict', request.url));
         }

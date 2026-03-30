@@ -171,7 +171,7 @@ const KrypinSkeleton = () => (
 
 export default function MittKrypin() {
    return (
-      <React.Suspense fallback={<div style={{ padding: '4rem', textAlign: 'center', color: 'var(--text-muted)' }}>Laddar krypin...</div>}>
+      <React.Suspense fallback={<KrypinSkeleton />}>
          <MittKrypinContent />
       </React.Suspense>
    )

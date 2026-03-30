@@ -102,7 +102,7 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
         if (error) return alert('Kunde inte radera chattmeddelande: ' + error.message);
       }
       await adminResolveReport(report.id, 'resolved');
-      await adminLogAction(`Hanterade en anmälan och raderade ${table || report.item_type}-inlägg.`, report.reported_user_id);
+      await adminLogAction(`Hanterade en anmälan mot ${report.reported?.username || 'Okänd'} och raderade ${table || report.item_type}-inlägg.`, report.reported_user_id);
       fetchReports();
     }
   };
@@ -134,8 +134,9 @@ const AdminReports = ({ supabase, currentUser }: { supabase: any, currentUser: a
   };
 
   const handleDismiss = async (id: string) => {
+    const report = reports.find(r => r.id === id);
     await adminResolveReport(id, 'dismissed');
-    await adminLogAction(`Avvisade anmälan (ID: ${id}) utan åtgärd.`);
+    await adminLogAction(`Avvisade anmälan (${id}) mot ${report?.reported?.username || 'Okänd'} utan åtgärd.`);
     fetchReports();
   }
 
