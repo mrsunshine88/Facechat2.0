@@ -72,9 +72,17 @@ export async function deleteUserAccount(userId: string) {
 
   try {
     // 1. Hämta profil-info för att kunna rensa lagring (t.ex. avatar)
-    const { data: profile } = await supabaseAdmin.from('profiles').select('avatar_url, is_admin').eq('id', userId).maybeSingle();
+    const { data: profile } = await supabaseAdmin.from('profiles').select('avatar_url, is_admin, username').eq('id', userId).maybeSingle();
 
-    // 2. Radera all användardata från olika tabeller (GDPR - "No Trace")
+    // 2. FÖRSÖK RADERA AUTH-KONTOT (BÖRJA HÄR)
+    // Om användaren redan är borta från Auth (User not found), ignorerar vi det och fortsätter städa DB.
+    const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
+    if (authError && authError.message !== 'User not found') {
+       console.error("Allvarligt fel vid radering av auth-konto:", authError);
+       return { error: 'Kunde inte radera inloggningskonto: ' + authError.message };
+    }
+
+    // 3. Radera all användardata från olika tabeller (GDPR - "No Trace")
     const tables = [
       { name: 'forum_posts', col: 'author_id' },
       { name: 'forum_threads', col: 'author_id' },
@@ -103,8 +111,7 @@ export async function deleteUserAccount(userId: string) {
       await supabaseAdmin.from(t.name).delete().eq(t.col, userId);
     }
 
-    // 2.5 Rensa special-referenser (t.ex. arrayer i rums-listor)
-    // Vi tar bort användarens ID från 'allowed_users' arrayen i alla chat_rooms (GDPR)
+    // 4. Rensa special-referenser (t.ex. arrayer i rums-listor)
     const { data: rooms } = await supabaseAdmin.from('chat_rooms').select('id, allowed_users').filter('allowed_users', 'cs', `["${userId}"]`);
     if (rooms && rooms.length > 0) {
       for (const room of rooms) {
@@ -118,23 +125,19 @@ export async function deleteUserAccount(userId: string) {
       await supabaseAdmin.from('admin_logs').delete().eq('admin_id', userId);
     }
 
-    // 3. Rensa användarens profil
-    await supabaseAdmin.from('profiles').delete().eq('id', userId);
+    // 5. RADERA SJÄLVA PROFILEN (VIKTIGT!)
+    const { error: profileDeleteError } = await supabaseAdmin.from('profiles').delete().eq('id', userId);
+    if (profileDeleteError) {
+       console.error("Fel vid radering av profil-rad:", profileDeleteError);
+       return { error: 'Inloggning raderad, men profil-data kunde inte slutföras: ' + profileDeleteError.message };
+    }
     
-    // 4. RADERA PROFILBILD FRÅN STORAGE (GDPR)
+    // 6. RADERA PROFILBILD FRÅN STORAGE (GDPR)
     if (profile?.avatar_url && profile.avatar_url.includes('/avatars/')) {
       const fileName = profile.avatar_url.split('/').pop()?.split('?')[0];
       if (fileName) {
         await supabaseAdmin.storage.from('avatars').remove([fileName]);
       }
-    }
-    
-    // 3. Radera själva auth.users-kontot så att e-postadressen frigörs
-    const { data, error } = await supabaseAdmin.auth.admin.deleteUser(userId);
-    
-    if (error) {
-      console.error("Fel vid radering av auth-konto:", error);
-      return { error: error.message };
     }
     
     return { success: true };

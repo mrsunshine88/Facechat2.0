@@ -49,22 +49,33 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setUser(currentUser);
 
       if (currentUser) {
-        const { data: profData } = await supabase
+        let { data: profData, error: profError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', currentUser.id)
           .single();
         
+        // --- RACE CONDITION FIX ---
+        // Om profilen inte hittas (eller om nyckeln inte matchar än), 
+        // vänta en kort stund och försök igen. Det kan ta några millisekunder 
+        // för auth-skrivningen att propagera till profiles-tabellen vid login.
+        const localSessKey = localStorage.getItem('facechat_session_key');
+        if (!profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey)) {
+           console.log('[UserContext] Profil ej redo (Race condition?). Väntar 800ms...');
+           await new Promise(resolve => setTimeout(resolve, 800));
+           const retry = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+           if (retry.data) profData = retry.data;
+        }
+
         if (profData?.is_banned) {
            await supabase.auth.signOut();
            localStorage.removeItem('facechat_persistent_session');
+           localStorage.removeItem('facechat_session_key');
            window.location.href = '/login?error=Ditt konto är avstängt.';
            return;
         }
 
         // --- SINGLE SESSION ENFORCEMENT ---
-        // Kolla om detta är den senaste enheten som loggat in
-        const localSessKey = localStorage.getItem('facechat_session_key');
         if (profData?.session_key && localSessKey && profData.session_key !== localSessKey) {
            console.warn('[UserContext] Session mismatch - Kicking out.');
            await supabase.auth.signOut();
@@ -84,6 +95,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
     } catch (error: any) {
       console.error('Error fetching user/profile:', error);
+      setProfile(null);
     } finally {
       setLoading(false);
     }
