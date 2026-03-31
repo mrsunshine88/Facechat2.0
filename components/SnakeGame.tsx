@@ -1,833 +1,499 @@
 "use client";
 
 import { useEffect, useRef, useState } from 'react';
-import { createClient } from '@/utils/supabase/client';
-import { Trophy, Gamepad2, AlertCircle, ArrowLeft, Volume2, VolumeX } from 'lucide-react';
-
-type GameType = 'menu' | 'snake' | 'racing' | 'breakout' | 'invaders' | 'tetris';
-
-const GAMES = [
-  { id: 'snake', name: 'SNAKE', emoji: '🐍' },
-  { id: 'racing', name: 'RACING', emoji: '🏎️' },
-  { id: 'breakout', name: 'BREAKOUT', emoji: '🧱' },
-  { id: 'invaders', name: 'ASTRO', emoji: '🚀' },
-  { id: 'tetris', name: 'TETRIS', emoji: '🧩' },
-];
+import { createBrowserClient } from '@supabase/ssr';
+import { Trophy, Gamepad2, AlertCircle } from 'lucide-react';
 
 export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   
-  const [activeScreen, setActiveScreen] = useState<GameType>('menu');
+  // Spel-states
   const [isPlaying, setIsPlaying] = useState(false);
   const [isGameOver, setIsGameOver] = useState(false);
   const [score, setScore] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isMuted, setIsMuted] = useState(false);
-  const [achievedRank, setAchievedRank] = useState<number | null>(null);
   
+  // Leaderboard-states
   const [topScores, setTopScores] = useState<any[]>([]);
-  const [leaderboardGame, setLeaderboardGame] = useState<string>('snake');
   
-  const selectedMenuIndex = useRef(0);
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
-  const supabase = createClient();
+  // Nokias klassiska färger
+  const BG_COLOR = '#c7f0d8'; 
+  const FG_COLOR = '#43523d';
 
-  const BG_COLOR = '#879e86'; // Classic Nokia green/grey 
-  const FG_COLOR = '#000000'; // Black LCD
+  // Spel-konstanter
+  const GRID_SIZE = 13; // Lite mindre för mobilen (13 * 20 = 260px)
+  const TILE_COUNT = 20; // 20x20 spelyta. Bredd: 20*13 = 260px.
   
-  const GRID_SIZE = 16;
-  const TILE_COUNT = 20; 
-  const CANVAS_SIZE = GRID_SIZE * TILE_COUNT;
-
-  const gameState = useRef<any>({
-    activeGame: 'menu',
+  // Mutable game state för loopen (slippa re-renders mitt i frame)
+  const gameState = useRef({
+    isPlaying: false,
     score: 0,
-    speed: 120, // Millisekunder per frame
+    snake: [{ x: 10, y: 10 }],
+    food: { x: 5, y: 5 },
+    dx: 0,
+    dy: -1,
+    nextDx: 0,
+    nextDy: -1,
+    speed: 120, // millisekunder per frame
     lastRender: 0,
-    animationFrameId: 0,
-    frameCount: 0,
-    blinkOn: true,
-    isMuted: false,
-    
-    // Generella tangenter (continuous)
-    keys: { up: false, down: false, left: false, right: false, action: false, lastAction: false },
-
-    // Game states
-    snake: { body: [{x:10, y:10}], food: {x:5,y:5}, dx:0, dy:-1, nextDx:0, nextDy:-1 },
-    racing: { playerX: 8, enemies: [], roadOffset: 0, speedMult: 1 },
-    breakout: { paddleX: 8, ballX: 10, ballY: 10, ballDx: 1, ballDy: -1, bricks: [] },
-    invaders: { playerX: 9, bullets: [], enemies: [], stars: [], fireCooldown: 0, level: 1 },
-    tetris: { board: Array.from({length: 20}, () => Array(10).fill(0)), piece: {shape:[], x:4, y:0}, dropSpeed: 10, dropCounter: 0 }
+    animationFrameId: 0
   });
 
-  // ========== LJUDMOTOR (Web Audio API) ==========
-  const getAudioCtx = () => {
-    if (!(window as any).gameAudioCtx) {
-        const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
-        if (!AudioContext) return null;
-        (window as any).gameAudioCtx = new AudioContext();
-    }
-    if ((window as any).gameAudioCtx.state === 'suspended') {
-        (window as any).gameAudioCtx.resume();
-    }
-    return (window as any).gameAudioCtx;
-  };
-
-  const playSound = (type: 'blip' | 'blop' | 'crash' | 'score' | 'jump' | 'shoot') => {
-    try {
-        if (gameState.current.isMuted) return;
-        const ctx = getAudioCtx();
-        if (!ctx) return;
-        const osc = ctx.createOscillator();
-        const gain = ctx.createGain();
-        const now = ctx.currentTime;
-        
-        osc.connect(gain);
-        gain.connect(ctx.destination);
-        
-        if (type === 'blip') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(440, now);
-            osc.frequency.exponentialRampToValueAtTime(880, now + 0.1);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now); osc.stop(now + 0.1);
-        } else if (type === 'blop') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(300, now);
-            osc.frequency.exponentialRampToValueAtTime(150, now + 0.1);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now); osc.stop(now + 0.1);
-        } else if (type === 'jump') {
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(150, now);
-            osc.frequency.exponentialRampToValueAtTime(600, now + 0.15);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.15);
-            osc.start(now); osc.stop(now + 0.15);
-        } else if (type === 'shoot') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(800, now);
-            osc.frequency.exponentialRampToValueAtTime(100, now + 0.1);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now); osc.stop(now + 0.1);
-        } else if (type === 'score') {
-            osc.type = 'square';
-            osc.frequency.setValueAtTime(600, now);
-            osc.frequency.setValueAtTime(800, now + 0.05);
-            gain.gain.setValueAtTime(0.1, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.1);
-            osc.start(now); osc.stop(now + 0.1);
-        } else if (type === 'crash') {
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(100, now);
-            osc.frequency.exponentialRampToValueAtTime(10, now + 0.3);
-            gain.gain.setValueAtTime(0.2, now);
-            gain.gain.linearRampToValueAtTime(0.01, now + 0.3);
-            osc.start(now); osc.stop(now + 0.3);
-        }
-    } catch(e) {}
-  };
-
-  // ========== DATABASE HIGHSCORE ==========
-  const fetchHighScores = async (gameId: string) => {
-    setLeaderboardGame(gameId);
+  const fetchHighScores = async () => {
     const { data: scores, error } = await supabase
       .from('snake_scores')
-      .select(`id, score, created_at, user_id, game_id, profiles ( username, avatar_url )`)
-      .eq('game_id', gameId)
+      .select(`
+        id,
+        score,
+        created_at,
+        user_id,
+        profiles ( username, avatar_url )
+      `)
       .order('score', { ascending: false })
-      .order('created_at', { ascending: true })
       .limit(5);
 
     if (!error && scores) {
       setTopScores(scores);
-    } else {
-       if (error?.message?.includes("game_id")) {
-           const { data: oldScores } = await supabase
-               .from('snake_scores')
-               .select(`id, score, created_at, user_id, profiles ( username, avatar_url )`)
-               .order('score', { ascending: false })
-               .limit(5);
-           if (oldScores) setTopScores(oldScores);
-       }
     }
   };
 
   useEffect(() => {
-    fetchHighScores('snake');
-    gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
-    return () => cancelAnimationFrame(gameState.current.animationFrameId);
+    fetchHighScores();
+    return () => stopGame();
   }, []);
 
-  // Keyboard
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const keys = gameState.current.keys;
-      const s = gameState.current.snake;
-      
-      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'w', 'a', 's', 'd', 'Enter', 'Backspace', 'Escape'].includes(e.key)) {
-          if (document.activeElement?.tagName !== 'INPUT' && document.activeElement?.tagName !== 'TEXTAREA') {
-            e.preventDefault();
-          }
-      }
-      
-      if (e.key === 'ArrowUp' || e.key === 'w') { keys.up = true; if(s.dy === 0){ s.nextDx = 0; s.nextDy = -1;} }
-      if (e.key === 'ArrowDown' || e.key === 's') { keys.down = true; if(s.dy === 0){ s.nextDx = 0; s.nextDy = 1;} }
-      if (e.key === 'ArrowLeft' || e.key === 'a') { keys.left = true; if(s.dx === 0){ s.nextDx = -1; s.nextDy = 0;} }
-      if (e.key === 'ArrowRight' || e.key === 'd') { keys.right = true; if(s.dx === 0){ s.nextDx = 1; s.nextDy = 0;} }
-      if (e.key === ' ' || e.key === 'Enter') { keys.action = true; }
-      
-      if (e.key === 'Backspace' || e.key === 'Escape') {
-         setIsPlaying(false);
-         setIsGameOver(false);
-         setActiveScreen('menu');
-         gameState.current.activeGame = 'menu';
-      }
-    };
+  const spawnFood = (snakeBody: any[]) => {
+    let newFood: { x: number, y: number };
+    while (true) {
+      newFood = {
+        x: Math.floor(Math.random() * TILE_COUNT),
+        y: Math.floor(Math.random() * TILE_COUNT)
+      };
+      // Se till att äpplet inte spawnar inuti ormen
+      const isInsideSnake = snakeBody.some(segment => segment.x === newFood.x && segment.y === newFood.y);
+      if (!isInsideSnake) break;
+    }
+    return newFood;
+  };
 
-    const handleKeyUp = (e: KeyboardEvent) => {
-      const keys = gameState.current.keys;
-      if (e.key === 'ArrowUp' || e.key === 'w') keys.up = false;
-      if (e.key === 'ArrowDown' || e.key === 's') keys.down = false;
-      if (e.key === 'ArrowLeft' || e.key === 'a') keys.left = false;
-      if (e.key === 'ArrowRight' || e.key === 'd') keys.right = false;
-      if (e.key === ' ' || e.key === 'Enter') keys.action = false;
-    };
+  const startGame = () => {
+    if (!viewerUser) return; // Måste vara inloggad för att spela the real deal
     
-    window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('keyup', handleKeyUp);
-    return () => { window.removeEventListener('keydown', handleKeyDown); window.removeEventListener('keyup', handleKeyUp); };
-  }, []);
+    setIsPlaying(true);
+    setIsGameOver(false);
+    setScore(0);
+    
+    gameState.current = {
+      isPlaying: true,
+      score: 0,
+      snake: [
+        { x: 10, y: 10 },
+        { x: 10, y: 11 },
+        { x: 10, y: 12 }
+      ],
+      food: spawnFood([{ x: 10, y: 10 }, { x: 10, y: 11 }, { x: 10, y: 12 }]),
+      dx: 0,
+      dy: -1,
+      nextDx: 0,
+      nextDy: -1,
+      speed: 120,
+      lastRender: performance.now(),
+      animationFrameId: 0
+    };
 
-  // Push Controller
-  const handleDirBtn = (dir: string, press: boolean) => {
-     const keys = gameState.current.keys;
-     const s = gameState.current.snake;
-     if (dir === 'UP') { keys.up = press; if(press && s.dy === 0){ s.nextDx = 0; s.nextDy = -1; } }
-     if (dir === 'DOWN') { keys.down = press; if(press && s.dy === 0){ s.nextDx = 0; s.nextDy = 1; } }
-     if (dir === 'LEFT') { keys.left = press; if(press && s.dx === 0){ s.nextDx = -1; s.nextDy = 0; } }
-     if (dir === 'RIGHT') { keys.right = press; if(press && s.dx === 0){ s.nextDx = 1; s.nextDy = 0; } }
-     if (dir === 'ACTION') keys.action = press;
+    if (canvasRef.current) {
+        // Fix focus for keyboard
+        canvasRef.current.focus();
+    }
+
+    gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
   };
 
-  const initGame = (gameType: GameType) => {
-      gameState.current.activeGame = gameType;
-      gameState.current.score = 0;
-      gameState.current.lastRender = window.performance ? window.performance.now() : 0;
-      setScore(0);
-      setIsGameOver(false);
-      setAchievedRank(null);
-      setIsPlaying(true);
-      setActiveScreen(gameType);
-      
-      if (canvasRef.current) canvasRef.current.focus();
-      
-      if (gameType === 'snake') {
-          gameState.current.speed = 120;
-          gameState.current.snake = { body: [{x:10, y:10}, {x:10,y:11}, {x:10,y:12}], food: {x:5,y:5}, dx:0, dy:-1, nextDx:0, nextDy:-1 };
-      } else if (gameType === 'racing') {
-          gameState.current.speed = 60; 
-          gameState.current.racing = { playerX: 8, enemies: [], roadOffset: 0, speedMult: 1 };
-      } else if (gameType === 'breakout') {
-          gameState.current.speed = 70;
-          let bricks = [];
-          for(let i=1; i<19; i+=2) {
-             bricks.push({x: i, y: 2});
-             bricks.push({x: i, y: 4});
-             bricks.push({x: i, y: 6});
-          }
-          gameState.current.breakout = { paddleX: 8, ballX: 10, ballY: 15, ballDx: 1, ballDy: -1, bricks };
-      } else if (gameType === 'invaders') {
-          gameState.current.speed = 40; 
-          let stars = Array.from({length: 30}, () => ({x: Math.random()*20, y: Math.random()*20, s: Math.random()*0.5 + 0.1}));
-          gameState.current.invaders = { playerX: 9, bullets: [], enemies: [], stars, fireCooldown: 0, level: 1 };
-      } else if (gameType === 'tetris') {
-          gameState.current.speed = 50; 
-          gameState.current.tetris = { board: Array.from({length: 20}, () => Array(10).fill(0)), piece: getNewTetrisPiece(), dropSpeed: 10, dropCounter: 0 };
-      }
+  const stopGame = () => {
+    if (gameState.current.animationFrameId) {
+      cancelAnimationFrame(gameState.current.animationFrameId);
+    }
   };
 
-  const getNewTetrisPiece = () => {
-     const shapes = [
-        [{x:0,y:0}, {x:1,y:0}, {x:0,y:1}, {x:1,y:1}], // O
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:2,y:0}], // I
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:0,y:1}], // T
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:1,y:-1}], // L
-        [{x:-1,y:0}, {x:0,y:0}, {x:1,y:0}, {x:-1,y:-1}], // J
-        [{x:-1,y:0}, {x:0,y:0}, {x:0,y:-1}, {x:1,y:-1}], // S
-        [{x:-1,y:-1}, {x:0,y:-1}, {x:0,y:0}, {x:1,y:0}] // Z
-     ];
-     return { shape: shapes[Math.floor(Math.random() * shapes.length)], x: 4, y: 1 };
-  };
-
-  const submitScoreAndCheckNotifications = async (finalScore: number, gameIdOverwrite?: string) => {
-    setIsSubmitting(true);
-    if (!viewerUser || finalScore <= 0) { setIsSubmitting(false); return; }
-
-    const targetGame = gameIdOverwrite || gameState.current.activeGame;
-    const gameName = GAMES.find(g => g.id === targetGame)?.name || targetGame.toUpperCase();
-
-    // 1. Hämta de nuvarande topp-poängen INNAN vi sparar den nya
-    const { data: oldTopScores } = await supabase
-      .from('snake_scores')
-      .select('id, score, user_id, game_id')
-      .eq('game_id', targetGame)
-      .order('score', { ascending: false })
-      .limit(5);
-
-    // 2. Spara den nya poängen
-    const { error: insertError } = await supabase.from('snake_scores').insert({
-        user_id: viewerUser.id,
-        score: finalScore,
-        game_id: targetGame 
+  const sendNotification = async (targetUserId: string, message: string) => {
+    // Spara notisen i databasen
+    const { error: notifError } = await supabase.from('notifications').insert({
+        receiver_id: targetUserId,
+        actor_id: viewerUser.id,
+        type: 'high_score',
+        content: message,
+        link: '/krypin?spela=true'
     });
 
-    if (!insertError) {
-       // Uppdatera listan i UI:t
-       await fetchHighScores(targetGame);
+    if (notifError) console.error("Could not send db notification:", notifError);
 
-        if (oldTopScores) {
-          // 3. Kolla vilken rank vi faktiskt tog (Tack vare created_at ASC behåller den äldre poängen sin plats)
-          let rankStolen = -1;
-          for (let i = 0; i < oldTopScores.length; i++) {
-             if (finalScore > oldTopScores[i].score) { rankStolen = i; break; }
-          }
-          // Om poängen är lika och vi hamnar efter dem, men ändå i topp-5
-          if (rankStolen === -1 && oldTopScores.length < 5) {
-             rankStolen = oldTopScores.length;
-          }
+    // Kalla på push (om de har PWA)
+    await fetch('/api/send-push', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+           userId: targetUserId, 
+           title: "🏆 Ny Snake-Härskare!", 
+           message: message,
+           url: '/krypin?spela=true'
+        })
+    });
+  };
 
-          if (rankStolen !== -1 && rankStolen < 5) {
-             setAchievedRank(rankStolen);
-             // A. Notera den person vars rang vi direkt tog (Plats 1, 2, 3, 4 eller 5)
-             if (rankStolen < oldTopScores.length) {
-                const stolenFrom = oldTopScores[rankStolen];
-                if (stolenFrom.user_id !== viewerUser.id) {
-                   const message = rankStolen === 0 
-                       ? `Game over dunderklumpen! @${viewerUser.username} krossade just ditt rekord i ${gameName} och snodde 1:a platsen! 🏆`
-                       : `Gissa vem som precis snodde din ${rankStolen + 1}:e plats i ${gameName}? @${viewerUser.username}! In och ta tillbaka den! 🎮`;
-                   const revengeLink = `/krypin?spela=true&arcade=${targetGame}`;
-                   
-                   await supabase.from('notifications').insert({ receiver_id: stolenFrom.user_id, actor_id: viewerUser.id, type: 'high_score', content: message, link: revengeLink });
-                   await fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: stolenFrom.user_id, title: "🏆 Ny Arkad-Kung!", message: message, url: revengeLink }), headers: {'Content-Type': 'application/json'} });
-                }
-             }
+  const checkHighscoreKnockout = async (finalScore: number) => {
+    setIsSubmitting(true);
+    
+    // Vem var på plats 1, 2, etc? (Vi vet detta från topScores state:n som vi hämtade innan)
+    const oldTopScores = [...topScores];
+
+    // Spara nya scoret i databasen
+    const { error } = await supabase.from('snake_scores').insert({
+        user_id: viewerUser.id,
+        score: finalScore
+    });
+
+    if (!error) {
+       // Hämta den UPPDATERADE leaderboarden
+       await fetchHighScores();
+
+       // Låt oss göra lite snabb notis-magi om man slog någon!
+       // Kolla vem som var nummer 1 innan, om det var någon annan, och nu är VI nummer 1!
+       // Hittar vilken plats vi STJÄL på listan
+       let rankStolen = -1;
+       for (let i = 0; i < oldTopScores.length; i++) {
+          if (finalScore > oldTopScores[i].score) {
+             rankStolen = i;
+             break;
+          }
+       }
+       
+       if (rankStolen !== -1) {
+          const stolenFrom = oldTopScores[rankStolen];
+          
+          if (stolenFrom.user_id !== viewerUser.id) {
+             const rankName = rankStolen + 1;
+             const message = rankStolen === 0 
+                 ? `Game over dunderklumpen! @${viewerUser.username} krossade just ditt rekord i Snake och snodde 1:a platsen!`
+                 : `Gissa vem som precis snodde din ${rankName}:e plats i Snake? @${viewerUser.username}! In och ta tillbaka den!`;
              
-             // B. Notera den person som var 5:a och nu åker UT helt från listan
-             // Detta gäller bara om vi tog en plats BÄTTRE än 5:e plats (rankStolen < 4) 
-             // och listan redan var full (length >= 5)
-             if (oldTopScores.length >= 5 && rankStolen < 4) {
-                const gamlaFemman = oldTopScores[4];
-                // Notify ONLY if it's not the same person we already notified in step A
-                if (gamlaFemman.user_id !== viewerUser.id && (rankStolen >= oldTopScores.length || gamlaFemman.user_id !== oldTopScores[rankStolen].user_id)) {
-                   const message = `Ajtajtaj... @${viewerUser.username} har tyvärr puttat ner dig från Topp-5 listan i ${gameName}! Spela direkt för att ta tillbaka din plats! 📉`;
-                   const revengeLink = `/krypin?spela=true&arcade=${targetGame}`;
-                   await supabase.from('notifications').insert({ receiver_id: gamlaFemman.user_id, actor_id: viewerUser.id, type: 'high_score', content: message, link: revengeLink });
-                   await fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: gamlaFemman.user_id, title: "📉 Utkastad från Topp-5!", message: message, url: revengeLink }), headers: {'Content-Type': 'application/json'} });
-                }
+             await sendNotification(stolenFrom.user_id, message);
+          }
+          
+          // Om listan var full (osv), den gamla 5:an åker ut oavsett vems plats vi tog, SÅ LÄNGE vi inte tog 5:e platsen själv.
+          if (oldTopScores.length >= 5 && rankStolen < 4) {
+             const gamlaFemman = oldTopScores[4];
+             if (gamlaFemman.user_id !== viewerUser.id && gamlaFemman.user_id !== stolenFrom.user_id) {
+                await sendNotification(
+                   gamlaFemman.user_id,
+                   `Ajtajtaj... @${viewerUser.username} har tyvärr puttat ner dig från Topp-5 listan i Snake! Spela direkt för att ta tillbaka din plats!`
+                );
              }
           }
        }
     }
+    
     setIsSubmitting(false);
   };
 
-  const triggerGameOver = () => {
-     playSound('crash');
-     setIsPlaying(false);
-     setIsGameOver(true);
-     setScore(gameState.current.score); 
-     const endedGame = gameState.current.activeGame;
-     setLeaderboardGame(endedGame);
-     fetchHighScores(endedGame);
-     gameState.current.activeGame = 'menu';
-     submitScoreAndCheckNotifications(gameState.current.score, endedGame);
-  };
-
   const gameLoop = (timestamp: number) => {
-    if (gameState.current.activeGame === 'menu') {
-        const stateKeys = gameState.current.keys;
-        if (stateKeys.down && !stateKeys.lastAction) { selectedMenuIndex.current = (selectedMenuIndex.current + 1) % GAMES.length; playSound('blip'); }
-        if (stateKeys.up && !stateKeys.lastAction) { selectedMenuIndex.current = (selectedMenuIndex.current - 1 + GAMES.length) % GAMES.length; playSound('blip'); }
-        if (stateKeys.action && !stateKeys.lastAction) {
-           playSound('score');
-           initGame(GAMES[selectedMenuIndex.current].id as GameType);
+    if (!gameState.current.isPlaying) return;
+    
+    const state = gameState.current;
+    
+    // Styra hastigheten
+    if (timestamp - state.lastRender < state.speed) {
+      state.animationFrameId = requestAnimationFrame(gameLoop);
+      return;
+    }
+    
+    state.lastRender = timestamp;
+    
+    // Updatera direction baserat fr buffer
+    state.dx = state.nextDx;
+    state.dy = state.nextDy;
+    
+    // Flytta huvudet
+    const head = { x: state.snake[0].x + state.dx, y: state.snake[0].y + state.dy };
+    
+    // Krock med väggarna
+    if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) {
+      gameOver();
+      return;
+    }
+    
+    // Krock med sig själv
+    if (state.snake.some(segment => segment.x === head.x && segment.y === head.y)) {
+      gameOver();
+      return;
+    }
+    
+    state.snake.unshift(head);
+    
+    // Kolla om vi åt äpplet
+    if (head.x === state.food.x && head.y === state.food.y) {
+      state.score += 10;
+      setScore(state.score);
+      state.food = spawnFood(state.snake);
+      // Lite snabbare för varje äpple
+      state.speed = Math.max(50, state.speed - 2); 
+    } else {
+      state.snake.pop(); // Ta bort svansen om vi inte åt mat
+    }
+    
+    draw();
+    
+    if (gameState.current.isPlaying) {
+      state.animationFrameId = requestAnimationFrame(gameLoop);
+    }
+  };
+
+  const draw = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    
+    const state = gameState.current;
+    
+    // Fyll grön Nokia-bakgrund
+    ctx.fillStyle = BG_COLOR;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Rita "Pixel"-rutnät (supersvagt, för retrokänslan)
+    ctx.strokeStyle = "rgba(67, 82, 61, 0.1)"; 
+    for(let i=0; i<TILE_COUNT; i++) {
+        for(let j=0; j<TILE_COUNT; j++) {
+            ctx.strokeRect(i*GRID_SIZE, j*GRID_SIZE, GRID_SIZE, GRID_SIZE);
         }
-        stateKeys.lastAction = stateKeys.down || stateKeys.up || stateKeys.action;
-        drawMenu(timestamp);
-        gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
-        return;
     }
 
-    if (timestamp - gameState.current.lastRender >= gameState.current.speed) {
-        gameState.current.lastRender = timestamp;
-        gameState.current.frameCount++;
-        if (gameState.current.frameCount % 5 === 0) gameState.current.blinkOn = !gameState.current.blinkOn;
-        updateGameObjects();
-        drawGameEngine();
+    // Rita maten (Blinkande fyrkant istället för äpple!)
+    ctx.fillStyle = FG_COLOR;
+    const padding = 2; // Ge det lite marginal
+    ctx.fillRect(state.food.x * GRID_SIZE + padding, state.food.y * GRID_SIZE + padding, GRID_SIZE - padding*2, GRID_SIZE - padding*2);
+    
+    // Rita ormen
+    state.snake.forEach((segment, index) => {
+      // Huvudet lite större, svansen mindre
+      const isHead = index === 0;
+      ctx.fillStyle = FG_COLOR;
+      
+      if (isHead) {
+          ctx.fillRect(segment.x * GRID_SIZE + 1, segment.y * GRID_SIZE + 1, GRID_SIZE - 2, GRID_SIZE - 2);
+      } else {
+          // Svansen har en liten gap mellan blocken för retro effekt
+          ctx.fillRect(segment.x * GRID_SIZE + 2, segment.y * GRID_SIZE + 2, GRID_SIZE - 4, GRID_SIZE - 4);
+      }
+    });
+  };
+
+  const gameOver = () => {
+    setIsPlaying(false);
+    setIsGameOver(true);
+    gameState.current.isPlaying = false;
+    
+    const finalScore = gameState.current.score;
+    // Kolla Highscore, men kom ihåg React state uppdateras asynkront.
+    setScore(finalScore); 
+    
+    if (finalScore > 0) {
+        checkHighscoreKnockout(finalScore);
     }
-    gameState.current.animationFrameId = requestAnimationFrame(gameLoop);
   };
 
-  const updateGameObjects = () => {
-      const st = gameState.current;
-      const keys = st.keys;
-
-      if (st.activeGame === 'snake') {
-          st.snake.dx = st.snake.nextDx;
-          st.snake.dy = st.snake.nextDy;
-          const head = { x: st.snake.body[0].x + st.snake.dx, y: st.snake.body[0].y + st.snake.dy };
-          if (head.x < 0 || head.x >= TILE_COUNT || head.y < 0 || head.y >= TILE_COUNT) { triggerGameOver(); return; }
-          if (st.snake.body.some((segment:any) => segment.x === head.x && segment.y === head.y)) { triggerGameOver(); return; }
-          st.snake.body.unshift(head);
-          if (head.x === st.snake.food.x && head.y === st.snake.food.y) {
-              playSound('score');
-              st.score += 10;
-              st.snake.food = { x: Math.floor(Math.random() * TILE_COUNT), y: Math.floor(Math.random() * TILE_COUNT) };
-              st.speed = Math.max(50, st.speed - 2); 
-          } else {
-              st.snake.body.pop();
-          }
-      } else if (st.activeGame === 'racing') {
-          if (keys.left && st.racing.playerX > 2) st.racing.playerX -= 1;
-          if (keys.right && st.racing.playerX < TILE_COUNT - 5) st.racing.playerX += 1;
-          st.racing.roadOffset = (st.racing.roadOffset + 1) % 4;
-          if (st.frameCount % Math.max(5, Math.floor(20 / st.racing.speedMult)) === 0) {
-              const rX = Math.floor(Math.random() * (TILE_COUNT - 7)) + 3;
-              st.racing.enemies.push({ x: rX, y: -4, type: Math.random() > 0.5 ? 1 : 2 });
-          }
-          for (let i = st.racing.enemies.length - 1; i >= 0; i--) {
-              const e = st.racing.enemies[i];
-              e.y += 1 * st.racing.speedMult;
-              if (e.y > TILE_COUNT) {
-                  st.racing.enemies.splice(i, 1);
-                  st.score += 10;
-                  if (st.score % 100 === 0) { st.racing.speedMult += 0.2; playSound('score'); }
-              } else if (
-                  e.y + 3 > 15 && e.y < 18 &&
-                  e.x + 2 > st.racing.playerX && e.x < st.racing.playerX + 2
-              ) {
-                  triggerGameOver(); return;
-              }
-          }
-      } else if (st.activeGame === 'breakout') {
-          if (keys.left && st.breakout.paddleX > 0) st.breakout.paddleX--;
-          if (keys.right && st.breakout.paddleX < TILE_COUNT - 4) st.breakout.paddleX++;
-          st.breakout.ballX += st.breakout.ballDx;
-          st.breakout.ballY += st.breakout.ballDy;
-          if (st.breakout.ballX <= 0 || st.breakout.ballX >= TILE_COUNT - 1) { st.breakout.ballDx *= -1; playSound('blip'); }
-          if (st.breakout.ballY <= 0) { st.breakout.ballDy *= -1; playSound('blip'); }
-          if (st.breakout.ballY === 18 && st.breakout.ballX >= st.breakout.paddleX && st.breakout.ballX <= st.breakout.paddleX + 4) {
-             st.breakout.ballDy = -1; playSound('blop');
-          }
-          for(let i=0; i<st.breakout.bricks.length; i++) {
-             const b = st.breakout.bricks[i];
-             if (st.breakout.ballX === b.x || st.breakout.ballX === b.x + 1) {
-                if (st.breakout.ballY === b.y) {
-                    st.breakout.bricks.splice(i, 1);
-                    st.breakout.ballDy *= -1;
-                    playSound('score');
-                    st.score += 10;
-                    break;
-                }
-             }
-          }
-          if (st.breakout.bricks.length === 0) {
-              playSound('score');
-              st.speed = Math.max(30, st.speed - 5);
-              st.breakout.ballX = 10;
-              st.breakout.ballY = 15;
-              st.breakout.ballDy = -1;
-              st.breakout.paddleX = 8;
-              const level = Math.floor(st.score / 180) + 1;
-              const rows = Math.min(8, 3 + level);
-              for(let i=1; i<19; i+=2) {
-                 for(let r=0; r<rows; r++) {
-                     st.breakout.bricks.push({x: i, y: 1 + r*2});
-                 }
-              }
-              return;
-          }
-          if (st.breakout.ballY >= TILE_COUNT) { triggerGameOver(); return; }
-      } else if (st.activeGame === 'invaders') {
-          if (keys.left && st.invaders.playerX > 0) st.invaders.playerX -= 0.5;
-          if (keys.right && st.invaders.playerX < TILE_COUNT - 3) st.invaders.playerX += 0.5;
-          if (keys.action && st.invaders.fireCooldown <= 0) {
-             st.invaders.bullets.push({x: st.invaders.playerX + 1, y: 17});
-             if (st.invaders.level > 1) { st.invaders.bullets.push({x: st.invaders.playerX, y: 17}); st.invaders.bullets.push({x: st.invaders.playerX + 2, y: 17}); }
-             st.invaders.fireCooldown = Math.max(2, 6 - st.invaders.level); 
-             playSound('shoot');
-          }
-          if(st.invaders.fireCooldown > 0) st.invaders.fireCooldown--;
-          st.invaders.stars.forEach((s:any) => { s.y += s.s; if(s.y > TILE_COUNT) s.y = 0; });
-          if (st.frameCount % Math.max(10, 80 - Math.floor(st.score/100)) === 0) {
-             const randType = Math.random();
-             if (randType > 0.4) {
-                 const gapWidth = Math.max(3, 8 - Math.floor(st.score/1000));
-                 const gapX = Math.floor(Math.random() * (TILE_COUNT - gapWidth));
-                 for (let x = 0; x < TILE_COUNT; x+=2) {
-                     if (x < gapX || x > gapX + gapWidth) {
-                         st.invaders.enemies.push({x, y: -2, type: 1, hp: 5, dx: 0, dy: 0.15 + (st.score/10000)});
-                     }
-                 }
-                 if (Math.random() > 0.4) {
-                     st.invaders.enemies.push({x: gapX + gapWidth/2 - 0.5, y: -2, type: 3, hp: 1, dx: 0, dy: 0.2});
-                 }
-             } else {
-                 const type = 2;
-                 st.invaders.enemies.push({x: Math.random() * (TILE_COUNT-2), y: -2, type, hp: 1, dx: Math.random()>0.5?0.2:-0.2, dy: 0.2 + (st.score/10000)});
-                 st.invaders.enemies.push({x: Math.random() * (TILE_COUNT-2), y: -4, type, hp: 1, dx: Math.random()>0.5?0.2:-0.2, dy: 0.2 + (st.score/10000)});
-                 if (st.score > 200) st.invaders.enemies.push({x: Math.random() * (TILE_COUNT-2), y: -6, type, hp: 1, dx: Math.random()>0.5?0.3:-0.3, dy: 0.3});
-             }
-          }
-          for(let i=st.invaders.bullets.length-1; i>=0; i--) {
-             const b = st.invaders.bullets[i];
-             b.y -= 1;
-              if (b.y < 0) { st.invaders.bullets.splice(i, 1); continue; }
-              for(let j=0; j<st.invaders.enemies.length; j++) {
-                  const e = st.invaders.enemies[j];
-                  if (b.x >= e.x - 0.5 && b.x <= e.x+2 && b.y <= e.y+1 && b.y >= e.y-1) {
-                     st.invaders.bullets.splice(i, 1);
-                     if (e.type !== 3) e.hp--; 
-                     if (e.hp <= 0 && e.type !== 3) {
-                         st.invaders.enemies.splice(j, 1);
-                         playSound('blop');
-                         st.score += e.type * 10;
-                     }
-                     break;
-                  }
-              }
-          }
-          for(let i=st.invaders.enemies.length-1; i>=0; i--) {
-             const e = st.invaders.enemies[i];
-             e.y += e.dy; e.x += e.dx;
-             if (e.x < 0 || e.x > TILE_COUNT-2) e.dx *= -1; 
-             if (e.y > TILE_COUNT) { st.invaders.enemies.splice(i, 1); if (e.type === 1) { st.score += 2; } continue; }
-             if (e.y >= 17 && e.y <= 19 && e.x >= st.invaders.playerX - 1 && e.x <= st.invaders.playerX + 2) {
-                 if (e.type === 3) {
-                     st.invaders.enemies.splice(i, 1);
-                     playSound('score');
-                     st.score += 50;
-                     st.invaders.level++;
-                 } else {
-                     triggerGameOver(); return;
-                 }
-             }
-          }
-      } else if (st.activeGame === 'tetris') {
-          const p = st.tetris.piece;
-          const collides = (dx: number, dy: number, shape: any[]) => {
-              return shape.some(cell => {
-                 const nx = p.x + cell.x + dx;
-                 const ny = p.y + cell.y + dy;
-                 if (nx < 0 || nx >= 10 || ny >= 20) return true;
-                 if (ny >= 0 && st.tetris.board[ny][nx] !== 0) return true;
-                 return false;
-              });
-          };
-          if (keys.left && !st.keys.lastLeft) { if (!collides(-1, 0, p.shape)) { p.x--; playSound('blip'); } }
-          if (keys.right && !st.keys.lastRight) { if (!collides(1, 0, p.shape)) { p.x++; playSound('blip'); } }
-          if (keys.down) { if (!collides(0, 1, p.shape)) p.y++; }
-          if (keys.action && !st.keys.lastAction) {
-             const newShape = p.shape.map((c:any) => ({x: -c.y, y: c.x}));
-             if (!collides(0, 0, newShape)) { p.shape = newShape; playSound('jump'); }
-          }
-          st.keys.lastLeft = keys.left; st.keys.lastRight = keys.right; st.keys.lastAction = keys.action;
-          st.tetris.dropCounter++;
-          if (st.tetris.dropCounter >= st.tetris.dropSpeed) {
-             st.tetris.dropCounter = 0;
-             if (!collides(0, 1, p.shape)) { p.y++; } else {
-                 if (p.y <= 1) { triggerGameOver(); return; }
-                 p.shape.forEach((c:any) => {
-                     const ny = p.y + c.y; const nx = p.x + c.x;
-                     if (ny >= 0 && ny < 20) st.tetris.board[ny][nx] = 1;
-                 });
-                 let lines = 0;
-                 for(let y=19; y>=0; y--) {
-                     if (st.tetris.board[y].every((cell:number) => cell !== 0)) {
-                         st.tetris.board.splice(y, 1);
-                         st.tetris.board.unshift(new Array(10).fill(0));
-                         lines++; y++;
-                     }
-                 }
-                 if (lines > 0) {
-                     st.score += lines * 100; playSound('score');
-                     st.tetris.dropSpeed = Math.max(2, st.tetris.dropSpeed - 1);
-                 } else { playSound('crash'); }
-                 st.tetris.piece = getNewTetrisPiece();
-             }
-          }
+  // Keyboard events
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Förhindra att webbläsaren scrollar när vi styr med piltangenterna
+      if (gameState.current.isPlaying && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) {
+        e.preventDefault();
       }
-      const liveScoreEl = document.getElementById('arcade-live-score');
-      if (liveScoreEl) liveScoreEl.innerText = st.score.toString();
+
+      if (!isPlaying) return;
+      
+      const state = gameState.current;
+      
+      switch (e.key) {
+        case 'ArrowUp':
+        case 'w':
+          if (state.dy === 0) { state.nextDx = 0; state.nextDy = -1; e.preventDefault(); }
+          break;
+        case 'ArrowDown':
+        case 's':
+          if (state.dy === 0) { state.nextDx = 0; state.nextDy = 1; e.preventDefault(); }
+          break;
+        case 'ArrowLeft':
+        case 'a':
+          if (state.dx === 0) { state.nextDx = -1; state.nextDy = 0; e.preventDefault(); }
+          break;
+        case 'ArrowRight':
+        case 'd':
+          if (state.dx === 0) { state.nextDx = 1; state.nextDy = 0; e.preventDefault(); }
+          break;
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying]);
+
+  // Touch/D-pad Handlers
+  const handleDir = (newDx: number, newDy: number) => {
+      const state = gameState.current;
+      // Förhindra svängning över 180 grader
+      if (state.dx !== 0 && newDx !== 0) return;
+      if (state.dy !== 0 && newDy !== 0) return;
+      
+      state.nextDx = newDx;
+      state.nextDy = newDy;
   };
 
-  const drawMenu = (ts: number) => {
-      const cvt = canvasRef.current?.getContext('2d');
-      if (!cvt) return;
-      cvt.fillStyle = BG_COLOR;
-      cvt.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-      cvt.fillStyle = FG_COLOR;
-      cvt.font = 'bold 20px "Courier New", monospace';
-      cvt.textAlign = 'center';
-      cvt.fillText("FACECHAT ARCADE", CANVAS_SIZE/2, 40);
-      cvt.font = '14px "Courier New", monospace';
-      cvt.textAlign = 'left';
-      GAMES.forEach((game, index) => {
-         const isSelected = selectedMenuIndex.current === index;
-         const y = 80 + (index * 25);
-         if (isSelected) {
-            cvt.fillRect(20, y - 12, CANVAS_SIZE - 40, 18);
-            cvt.fillStyle = BG_COLOR;
-         } else {
-            cvt.fillStyle = FG_COLOR;
-         }
-         cvt.fillText(`${isSelected ? '▶ ' : '  '}${game.name} ${game.emoji}`, 30, y);
-      });
+  // För drag-swipe på mobilen
+  const touchStart = useRef({ x: 0, y: 0 });
+  const handleTouchStart = (e: React.TouchEvent) => {
+      touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
   };
-
-  const drawGameEngine = () => {
-      const cvt = canvasRef.current?.getContext('2d');
-      if (!cvt) return;
-      cvt.fillStyle = BG_COLOR;
-      cvt.fillRect(0, 0, CANVAS_SIZE, CANVAS_SIZE);
-      cvt.fillStyle = FG_COLOR;
-      const st = gameState.current;
-      const drawRect = (x: number, y: number, w: number, h: number) => {
-          cvt.fillRect(x * GRID_SIZE, y * GRID_SIZE, w * GRID_SIZE, h * GRID_SIZE);
-      };
-      if (st.activeGame === 'snake') {
-          drawRect(st.snake.food.x, st.snake.food.y, 1, 1);
-          st.snake.body.forEach((s:any) => drawRect(s.x, s.y, 1, 1));
-      } else if (st.activeGame === 'racing') {
-          for(let i=0; i<TILE_COUNT+4; i+=4) {
-             drawRect(1, i - st.racing.roadOffset, 1, 2);
-             drawRect(TILE_COUNT - 2, i - st.racing.roadOffset, 1, 2);
-          }
-          drawRect(st.racing.playerX, 16, 2, 3);
-          if (st.blinkOn) drawRect(st.racing.playerX + 0.5, 17, 1, 1);
-          st.racing.enemies.forEach((e:any) => {
-              drawRect(e.x, e.y, 2, 3);
-              if (e.type === 2) drawRect(e.x, e.y+1, 2, 1);
-          });
-      } else if (st.activeGame === 'breakout') {
-          drawRect(st.breakout.paddleX, 18, 4, 1);
-          drawRect(st.breakout.ballX, st.breakout.ballY, 1, 1);
-          st.breakout.bricks.forEach((b:any) => drawRect(b.x, b.y, 1.8, 1));
-      } else if (st.activeGame === 'invaders') {
-          st.invaders.stars.forEach((s:any) => drawRect(s.x, s.y, 0.1, 0.1));
-          drawRect(st.invaders.playerX + 1, 17, 1, 1);
-          drawRect(st.invaders.playerX, 18, 3, 1);
-          drawRect(st.invaders.playerX - 0.5, 19, 4, 0.5);
-          st.invaders.bullets.forEach((b:any) => drawRect(b.x, b.y, 0.5, 1));
-          st.invaders.enemies.forEach((e:any) => {
-              if (e.type === 1) { drawRect(e.x, e.y, 2, 2); if(!st.blinkOn) drawRect(e.x+0.5, e.y+0.5, 1, 1); }
-              else if (e.type === 2) { drawRect(e.x+0.5, e.y, 1, 1.5); drawRect(e.x-0.5, e.y+0.5, 3, 0.5); }
-              else if (e.type === 3) { if (!st.blinkOn) { drawRect(e.x+0.5, e.y, 1, 2); drawRect(e.x, e.y+0.5, 2, 1); } }
-          });
-      } else if (st.activeGame === 'tetris') {
-          const ox = 5;
-          cvt.strokeStyle = FG_COLOR; cvt.lineWidth = 1;
-          cvt.strokeRect(ox * GRID_SIZE - 2, 0, 10 * GRID_SIZE + 4, 20 * GRID_SIZE + 2);
-          for (let y = 0; y < 20; y++) {
-             for (let x = 0; x < 10; x++) {
-                if (st.tetris.board[y][x] !== 0) drawRect(ox + x, y, 1, 1);
-             }
-          }
-          st.tetris.piece.shape.forEach((c:any) => {
-              const ny = st.tetris.piece.y + c.y; const nx = st.tetris.piece.x + c.x;
-              if (ny >= 0) drawRect(ox + nx, ny, 1, 1);
-          });
+  const handleTouchEnd = (e: React.TouchEvent) => {
+      const touchEnd = { x: e.changedTouches[0].clientX, y: e.changedTouches[0].clientY };
+      const dx = touchEnd.x - touchStart.current.x;
+      const dy = touchEnd.y - touchStart.current.y;
+      
+      if (Math.abs(dx) > Math.abs(dy)) {
+          // Horizontal swipe
+          if (Math.abs(dx) > 30) handleDir(dx > 0 ? 1 : -1, 0);
+      } else {
+          // Vertical swipe
+          if (Math.abs(dy) > 30) handleDir(0, dy > 0 ? 1 : -1);
       }
   };
+
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
-       <div style={{ textAlign: 'center', position: 'relative' }}>
-          <button 
-             onClick={() => {
-                const newMute = !isMuted;
-                setIsMuted(newMute);
-                gameState.current.isMuted = newMute;
-             }} 
-             style={{ position: 'absolute', top: '-10px', right: 0, background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '50%', color: isMuted ? '#ef4444' : 'var(--text-muted)', cursor: 'pointer', padding: '0.6rem', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}
-          >
-             {isMuted ? <VolumeX size={20} /> : <Volume2 size={20} />}
-          </button>
-          <h2 style={{ fontSize: '1.75rem', color: '#10b981', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', fontFamily: 'Impact, sans-serif', letterSpacing: '1px', textShadow: '2px 2px 0 #0f172a' }}>
-             <Gamepad2 size={24} /> FACECHAT ARCADE
+    <div className="card inner-box" style={{ padding: '2rem', display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+       
+       <div style={{ textAlign: 'center' }}>
+          <h2 style={{ fontSize: '2rem', color: '#10b981', margin: '0 0 0.5rem 0', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem' }}>
+             <Gamepad2 size={32} /> R3TR0 SNAKE
           </h2>
-          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.85rem', fontWeight: 'bold' }}>DATOR: ESC/SUDD (MENY) | SPACE (SKJUT/OK)</p>
-          <p style={{ margin: '0.25rem 0 0 0', fontSize: '0.85rem', fontWeight: 'bold', color: '#10b981' }}>MOBIL: B (TILLBAKA/MENY) | A (OK/SKJUT)</p>
+          <p style={{ color: 'var(--text-muted)', margin: 0, fontSize: '0.9rem' }}>En hyllning till gamla goda Nokia-tiderna. Tävla om legend-status på Krypinet!</p>
        </div>
 
        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '2rem', justifyContent: 'center' }}>
-          <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '380px', width: '100%', boxSizing: 'border-box' }}>
+          
+          {/* VÄNSTER: SPELSKÄRMEN */}
+          <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', alignItems: 'center', maxWidth: '350px' }}>
+             
+             {/* Den Klassiska "Telefonens" Skärmram */}
              <div style={{ 
-                backgroundColor: '#1e293b', 
-                padding: '1.5rem', 
-                borderRadius: '16px 16px 0 0', 
-                border: '1px solid #0f172a',
-                borderBottom: 'none',
-                boxShadow: 'inset 0 2px 10px rgba(255,255,255,0.05), 0 10px 15px -5px rgba(0, 0, 0, 0.5)',
+                backgroundColor: '#1a1d18', 
+                padding: '1rem', 
+                borderRadius: '16px 16px 4px 4px', 
+                border: '4px solid #334155',
+                borderBottomWidth: '10px',
+                boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.5)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center'
+             }}>
+                 {/* Själva Canvas-ytan */}
+                 <div 
+                    style={{ position: 'relative', outline: 'none' }} 
+                    tabIndex={0}
+                    onTouchStart={handleTouchStart}
+                    onTouchEnd={handleTouchEnd}
+                 >
+                    <canvas 
+                        ref={canvasRef}
+                        width={TILE_COUNT * GRID_SIZE} 
+                        height={TILE_COUNT * GRID_SIZE}
+                        style={{ 
+                            backgroundColor: BG_COLOR, 
+                            border: `4px solid ${FG_COLOR}`,
+                            borderRadius: '4px',
+                            display: 'block',
+                            imageRendering: 'pixelated', // Krispiga pixlar!
+                            boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)',
+                            touchAction: 'none' // Förhindrar swipe/scroll över själva canvasen på mobil
+                        }}
+                    />
+
+                    {/* OVERLAYS för spelet (Start, Game Over) */}
+                    {!isPlaying && !isGameOver && (
+                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(199, 240, 216, 0.85)'}}>
+                          <button onClick={startGame} className="hover-lift" style={{ backgroundColor: FG_COLOR, color: BG_COLOR, fontSize: '1.25rem', fontFamily: '"Courier New", monospace', fontWeight: 'bold', padding: '0.75rem 1.5rem', border: 'none', borderRadius: '4px', cursor: 'pointer', boxShadow: '4px 4px 0px rgba(0,0,0,0.3)' }}>STARTA (Svep / Piltangenter)</button>
+                       </div>
+                    )}
+
+                    {isGameOver && (
+                       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(199, 240, 216, 0.95)'}}>
+                          {score > 0 && (topScores.length === 0 || score > (topScores[0]?.score || 0)) ? (
+                            <h3 style={{ margin: 0, color: '#ef4444', fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center', animation: 'blinkEffect 0.5s infinite alternate' }}>🏆 NYTT REKORD!</h3>
+                          ) : (
+                            <h3 style={{ margin: 0, color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center' }}>GAME OVER</h3>
+                          )}
+                          <p style={{ margin: '0.5rem 0 1.5rem 0', color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.2rem', fontWeight: 'bold' }}>Poäng: {score}</p>
+                          <button onClick={startGame} className="hover-lift" style={{ backgroundColor: FG_COLOR, color: BG_COLOR, fontSize: '1rem', fontFamily: '"Courier New", monospace', fontWeight: 'bold', padding: '0.75rem 1.25rem', border: 'none', borderRadius: '4px', cursor: 'pointer', boxShadow: '2px 2px 0px rgba(0,0,0,0.3)' }}>SPELA IGEN</button>
+                       </div>
+                    )}
+                 </div>
+
+                 <div style={{ width: '100%', display: 'flex', justifyContent: 'space-between', marginTop: '0.75rem', fontFamily: '"Courier New", monospace', fontWeight: 'bold', color: '#c7f0d8' }}>
+                    <span>SNAKE //</span>
+                    <span>SCORE: {score}</span>
+                 </div>
+             </div>
+
+             {/* MOBIL D-PAD ("Knappsatsen") Renderas alltid för retrokänslan */}
+             <div style={{ 
+                backgroundColor: '#334155', 
+                width: '100%', 
+                padding: '1rem', 
+                borderRadius: '0 0 24px 24px',
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
-                width: '100%',
-                boxSizing: 'border-box'
+                gap: '0.25rem',
+                borderTop: '2px solid #0f172a',
+                touchAction: 'none' // Lås scroll och zoom även här när man smattrar knapparna
              }}>
-                 <div style={{ 
-                    backgroundColor: '#cbd5e1', 
-                    padding: '10px', 
-                    borderRadius: '12px',
-                    width: '100%',
-                    boxSizing: 'border-box',
-                    boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)'
-                 }}>
-                     <div 
-                        style={{ position: 'relative', width: '100%', aspectRatio: '1/1', outline: 'none', backgroundColor: BG_COLOR, border: '4px inset #64748b', borderRadius: '4px', overflow: 'hidden' }} 
-                        tabIndex={0}
-                     >
-                        <canvas 
-                            ref={canvasRef}
-                            width={CANVAS_SIZE} 
-                            height={CANVAS_SIZE}
-                            style={{ 
-                                display: 'block',
-                                imageRendering: 'pixelated',
-                                width: '100%',
-                                height: '100%',
-                                touchAction: 'none' 
-                            }}
-                        />
-                        {isGameOver && (
-                           <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(135, 158, 134, 0.9)'}}>
-                              <h3 style={{ margin: 0, color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.5rem', fontWeight: '900', textAlign: 'center' }}>
-                                 {achievedRank === 0 ? "NY 1:A PLATS! 🏆" : (achievedRank !== null && achievedRank < 5 ? `NY ${achievedRank + 1}:A PLATS! 🎮` : "GAME OVER")}
-                              </h3>
-                              <p style={{ margin: '0.5rem 0 1rem 0', color: FG_COLOR, fontFamily: '"Courier New", monospace', fontSize: '1.2rem', fontWeight: 'bold' }}>Points: {score}</p>
-                              <button onClick={() => { setActiveScreen('menu'); gameState.current.activeGame = 'menu'; setIsGameOver(false); setIsPlaying(false); }} style={{ backgroundColor: FG_COLOR, color: BG_COLOR, fontSize: '0.9rem', fontFamily: '"Courier New", monospace', fontWeight: 'bold', padding: '0.5rem 1rem', border: 'none', borderRadius: '4px', cursor: 'pointer', boxShadow: '0 4px 6px rgba(0,0,0,0.3)' }}>MAIN MENU</button>
-                           </div>
-                        )}
-                     </div>
-                     
-                     <div style={{ 
-                         marginTop: '8px', 
-                         display: 'flex', 
-                         justifyContent: 'center', 
-                         alignItems: 'center',
-                         fontFamily: '"Courier New", monospace',
-                         fontWeight: '900',
-                         fontSize: '1.2rem',
-                         color: FG_COLOR,
-                         letterSpacing: '2px',
-                         minHeight: '24px'
-                     }}>
-                        {isPlaying ? (
-                            <>SCORE: <span id="arcade-live-score">{score}</span></>
-                        ) : (
-                            <span>ARCADE READY</span>
-                        )}
-                     </div>
+                 <button onClick={(e) => { handleDir(0, -1); e.preventDefault(); }} disabled={!isPlaying} style={{ width: '60px', height: '45px', borderRadius: '8px', border: 'none', backgroundColor: '#94a3b8', boxShadow: '0 4px 0 #475569', opacity: isPlaying ? 1 : 0.5, cursor: isPlaying ? 'pointer' : 'default' }}>▲</button>
+                 <div style={{ display: 'flex', gap: '2.5rem' }}>
+                    <button onClick={(e) => { handleDir(-1, 0); e.preventDefault(); }} disabled={!isPlaying} style={{ width: '60px', height: '45px', borderRadius: '8px', border: 'none', backgroundColor: '#94a3b8', boxShadow: '0 4px 0 #475569', opacity: isPlaying ? 1 : 0.5, cursor: isPlaying ? 'pointer' : 'default' }}>◀</button>
+                    <button onClick={(e) => { handleDir(1, 0); e.preventDefault(); }} disabled={!isPlaying} style={{ width: '60px', height: '45px', borderRadius: '8px', border: 'none', backgroundColor: '#94a3b8', boxShadow: '0 4px 0 #475569', opacity: isPlaying ? 1 : 0.5, cursor: isPlaying ? 'pointer' : 'default' }}>▶</button>
                  </div>
-             </div>
-
-             <div style={{ 
-                backgroundColor: '#1e293b', 
-                width: '100%', 
-                padding: '2rem 1.5rem', 
-                borderRadius: '0 0 24px 24px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'flex-end',
-                position: 'relative',
-                border: '1px solid #0f172a',
-                borderTop: '1px solid #334155',
-                boxShadow: 'inset 0 -5px 15px rgba(0,0,0,0.3), 0 20px 25px -5px rgba(0, 0, 0, 0.5)',
-                touchAction: 'none',
-                boxSizing: 'border-box'
-             }}>
-                 <div style={{ position: 'relative', width: '120px', height: '120px', flexShrink: 0 }}>
-                     <button 
-                        onPointerDown={(e) => { handleDirBtn('UP', true); e.preventDefault(); }} 
-                        onPointerUp={(e) => { handleDirBtn('UP', false); e.preventDefault(); }}
-                        onPointerLeave={() => handleDirBtn('UP', false)}
-                        style={{ position: 'absolute', top: 0, left: '40px', width: '40px', height: '40px', borderRadius: '8px 8px 0 0', border: 'none', backgroundColor: '#334155', boxShadow: 'inset 0 2px 2px rgba(255,255,255,0.1), 0 4px 0 #0f172a', cursor: 'pointer', touchAction: 'none' }}
-                     />
-                     <button 
-                        onPointerDown={(e) => { handleDirBtn('LEFT', true); e.preventDefault(); }} 
-                        onPointerUp={(e) => { handleDirBtn('LEFT', false); e.preventDefault(); }}
-                        onPointerLeave={() => handleDirBtn('LEFT', false)}
-                        style={{ position: 'absolute', top: '40px', left: 0, width: '40px', height: '40px', borderRadius: '8px 0 0 8px', border: 'none', backgroundColor: '#334155', boxShadow: 'inset 2px 0 2px rgba(255,255,255,0.1), 0 4px 0 #0f172a', cursor: 'pointer', touchAction: 'none' }}
-                     />
-                     <div style={{ position: 'absolute', top: '40px', left: '40px', width: '40px', height: '40px', backgroundColor: '#334155', zIndex: 0 }} />
-                     <button 
-                        onPointerDown={(e) => { handleDirBtn('RIGHT', true); e.preventDefault(); }} 
-                        onPointerUp={(e) => { handleDirBtn('RIGHT', false); e.preventDefault(); }}
-                        onPointerLeave={() => handleDirBtn('RIGHT', false)}
-                        style={{ position: 'absolute', top: '40px', right: 0, width: '40px', height: '40px', borderRadius: '0 8px 8px 0', border: 'none', backgroundColor: '#334155', boxShadow: 'inset -2px 0 2px rgba(0,0,0,0.2), 0 4px 0 #0f172a', cursor: 'pointer', touchAction: 'none' }}
-                     />
-                     <button 
-                        onPointerDown={(e) => { handleDirBtn('DOWN', true); e.preventDefault(); }} 
-                        onPointerUp={(e) => { handleDirBtn('DOWN', false); e.preventDefault(); }}
-                        onPointerLeave={() => handleDirBtn('DOWN', false)}
-                        style={{ position: 'absolute', bottom: 0, left: '40px', width: '40px', height: '40px', borderRadius: '0 0 8px 8px', border: 'none', backgroundColor: '#334155', boxShadow: 'inset 0 -2px 2px rgba(0,0,0,0.2), 0 4px 0 #0f172a', cursor: 'pointer', touchAction: 'none' }}
-                     />
-                 </div>
-                 <div style={{ flex: 1 }} />
-                 <div style={{ display: 'flex', gap: '0.8rem', alignItems: 'center', transform: 'rotate(-10deg)', marginRight: '5px', flexShrink: 0 }}>
-                     <button 
-                        onClick={(e) => { 
-                           setIsPlaying(false); setIsGameOver(false); setActiveScreen('menu'); gameState.current.activeGame = 'menu'; e.preventDefault(); 
-                        }} 
-                        style={{ width: '55px', height: '55px', borderRadius: '50%', border: 'none', backgroundColor: '#ef4444', boxShadow: 'inset -2px -2px 5px rgba(0,0,0,0.3), 0 6px 0 #991b1b', color: 'rgba(255,255,255,0.9)', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer', touchAction: 'none', marginTop: '30px' }}
-                     >B</button>
-                     <button 
-                        onPointerDown={(e) => { handleDirBtn('ACTION', true); e.preventDefault(); }} 
-                        onPointerUp={(e) => { handleDirBtn('ACTION', false); e.preventDefault(); }}
-                        onPointerLeave={() => handleDirBtn('ACTION', false)}
-                        style={{ width: '55px', height: '55px', borderRadius: '50%', border: 'none', backgroundColor: '#10b981', boxShadow: 'inset -2px -2px 5px rgba(0,0,0,0.3), 0 6px 0 #065f46', color: 'rgba(255,255,255,0.9)', fontWeight: 'bold', fontSize: '1.2rem', cursor: 'pointer', touchAction: 'none', marginBottom: '20px' }}
-                     >A</button>
-                 </div>
+                 <button onClick={(e) => { handleDir(0, 1); e.preventDefault(); }} disabled={!isPlaying} style={{ width: '60px', height: '45px', borderRadius: '8px', border: 'none', backgroundColor: '#94a3b8', boxShadow: '0 4px 0 #475569', opacity: isPlaying ? 1 : 0.5, cursor: isPlaying ? 'pointer' : 'default' }}>▼</button>
              </div>
           </div>
 
-          <div style={{ flex: '1 1 300px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.25rem', alignSelf: 'stretch', width: '100%', maxWidth: '100%', boxSizing: 'border-box', overflowX: 'hidden' }}>
-             <div style={{ paddingBottom: '1rem', borderBottom: '1px solid var(--border-color)', marginBottom: '1rem', position: 'relative' }}>
-                <select 
-                   value={leaderboardGame}
-                   onChange={(e) => fetchHighScores(e.target.value)}
-                   style={{ width: '100%', padding: '0.8rem 1rem', borderRadius: '8px', border: '1px solid var(--theme-krypin)', backgroundColor: 'var(--bg-body)', color: 'var(--text-main)', fontWeight: 'bold', fontSize: '1rem', cursor: 'pointer', outline: 'none', appearance: 'none', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.05)' }}
-                >
-                   {GAMES.map(g => (
-                      <option key={g.id} value={g.id}>{g.emoji} Topplista för {g.name}</option>
-                   ))}
-                </select>
-                <div style={{ position: 'absolute', right: '1rem', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: 'var(--text-muted)' }}>▼</div>
-             </div>
-
-             <h3 style={{ color: '#f59e0b', fontSize: '1.25rem', marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          {/* HÖGER: LEADERBOARD TOpp 5 */}
+          <div style={{ flex: '1 1 300px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '12px', padding: '1.5rem', alignSelf: 'flex-start' }}>
+             <h3 style={{ color: '#f59e0b', fontSize: '1.25rem', marginTop: 0, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '0.5rem', borderBottom: '1px solid var(--border-color)', paddingBottom: '0.5rem' }}>
                 <Trophy size={20} /> TOPP 5 KRYPIN-LEGENDER
              </h3>
-             {isSubmitting && <div style={{ color: 'var(--text-muted)' }}>Synkar poäng till stordatorn...</div>}
-             {!isSubmitting && topScores.length === 0 ? (
-                <p style={{ color: 'var(--text-muted)' }}>Mysteriskt tomt här... Bli den FÖRSTA mästaren i {GAMES.find(g=>g.id===leaderboardGame)?.name}! 👑</p>
+             
+             {topScores.length === 0 ? (
+                <p style={{ color: 'var(--text-muted)' }}>Mysteriskt tomt här... Bli den FÖRSTA mästaren! 👑</p>
              ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
                    {topScores.map((ts, index) => {
+                      // Guld, Silver, Brons, resten standard
                       let rankColor = 'var(--text-main)';
                       let medalg = '';
                       if (index === 0) { rankColor = '#fbbf24'; medalg = '🥇'; }
                       if (index === 1) { rankColor = '#94a3b8'; medalg = '🥈'; }
                       if (index === 2) { rankColor = '#b45309'; medalg = '🥉'; }
+                      
                       return (
                           <div key={ts.id} style={{ display: 'flex', alignItems: 'center', backgroundColor: 'var(--bg-body)', padding: '0.75rem', borderRadius: '8px', gap: '1rem' }}>
                               <span style={{ fontSize: '1.25rem', fontWeight: 'bold', minWidth: '30px', color: rankColor }}>
                                  {medalg || `#${index + 1}`}
                               </span>
+                              
                               <div style={{ width: '32px', height: '32px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden', flexShrink: 0 }}>
                                   {ts.profiles?.avatar_url ? (
                                      <img src={ts.profiles.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -835,24 +501,28 @@ export default function SnakeGame({ viewerUser }: { viewerUser: any }) {
                                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white' }}>?</div>
                                   )}
                               </div>
+                              
                               <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
                                  <a href={`/krypin?u=${ts.profiles?.username}`} style={{ color: 'var(--text-main)', textDecoration: 'none', fontWeight: 'bold', fontSize: '0.95rem' }}>@{ts.profiles?.username}</a>
                                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{new Date(ts.created_at).toLocaleDateString()}</span>
                               </div>
+                              
                               <span style={{ fontWeight: '900', color: '#10b981', fontSize: '1.1rem' }}>{ts.score}</span>
                           </div>
                       );
                    })}
                 </div>
              )}
-             <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', borderRadius: '8px', display: 'flex', gap: '0.75rem', color: '#2563eb' }}>
+
+             <div style={{ marginTop: '1.5rem', padding: '1rem', backgroundColor: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', display: 'flex', gap: '0.75rem', color: '#d97706' }}>
                 <AlertCircle size={20} style={{ flexShrink: 0 }} />
                 <p style={{ margin: 0, fontSize: '0.85rem', lineHeight: '1.4' }}>
-                   Dator eller Mobil? Du kan nu spela båda med piltangenterna, space för "action" eller klicka på knappsatsen på skärmen!
+                   Visste du att? Om du slår ut någon från Topp 5, skickar vi en <strong>automatisk snabb-notis</strong> direkt till dem så att de vet att de blivit av med titeln! Vässa tummarna.
                 </p>
              </div>
           </div>
        </div>
+
     </div>
   );
 }

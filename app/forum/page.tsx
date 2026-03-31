@@ -2,176 +2,71 @@
 
 import React, { useState, useEffect } from 'react';
 import { Search, PenSquare, Lock, User } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
+import { createBrowserClient } from '@supabase/ssr';
 import { useRouter } from 'next/navigation';
 import { useWordFilter } from '@/hooks/useWordFilter';
 
-const ForumSkeleton = () => (
-  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-    {[1, 2, 3, 4, 5].map(i => (
-      <div key={i} className="card skeleton-pulse" style={{ padding: '1.25rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '86px' }}>
-        <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', flex: 1 }}>
-          <div className="skeleton-pulse" style={{ width: '40px', height: '40px', borderRadius: '50%', flexShrink: 0 }}></div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', flex: 1 }}>
-            <div className="skeleton-pulse" style={{ width: '60%', height: '20px', borderRadius: '4px' }}></div>
-            <div className="skeleton-pulse" style={{ width: '40%', height: '14px', borderRadius: '4px' }}></div>
-          </div>
-        </div>
-        <div style={{ textAlign: 'right', minWidth: '40px' }}>
-          <div className="skeleton-pulse" style={{ width: '30px', height: '24px', borderRadius: '4px', marginLeft: 'auto', marginBottom: '4px' }}></div>
-          <div className="skeleton-pulse" style={{ width: '40px', height: '10px', borderRadius: '2px', marginLeft: 'auto' }}></div>
-        </div>
-      </div>
-    ))}
-  </div>
-);
-
-
 export default function Forumet() {
   const router = useRouter();
-  const { mask } = useWordFilter(() => {
-    fetchThreads();
-  });
   const [useAlias, setUseAlias] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const { mask } = useWordFilter();
   const [threads, setThreads] = useState<any[]>([]); 
   const [showNewThread, setShowNewThread] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('Allmänt');
   const [newContent, setNewContent] = useState('');
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
-  const [isFetchingMore, setIsFetchingMore] = useState(false);
-  const LIMIT = 15;
 
-
-  const supabase = createClient();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
-    async function init() {
-      try {
-        setLoading(true);
-        // 1. Hämta session och blockeringar först för att veta vem vi ska exkludera
-        const { data: { session } } = await supabase.auth.getSession();
-        const user = session?.user;
-        
-        let blockedIds: string[] = [];
-        if (user) {
-           const [profRes, blocksRes] = await Promise.all([
-             supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).limit(1),
-             supabase.from('user_blocks').select('*').or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`)
-           ]);
-           if (profRes.data?.[0]) setCurrentUser(profRes.data[0]);
-           if (blocksRes.data) {
-             blockedIds = blocksRes.data.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id);
-           }
-        }
-
-        // 2. Hämta trådar med pagination och sökfilter
-        let query = supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }).range(0, LIMIT - 1);
-        
-        if (searchQuery.trim()) {
-           query = query.ilike('title', `%${searchQuery.trim()}%`);
-        }
-
-        const { data: threadsRes } = await query;
-
-        if (threadsRes) {
-          const filtered = threadsRes.filter((t: any) => !blockedIds.includes(t.author_id));
-          setThreads(filtered);
-          setHasMore(threadsRes.length === LIMIT);
-        }
-        setPage(0);
-        setLoading(false);
-      } catch (err) {
-        console.error("Forum init error:", err);
-        setLoading(false);
+    async function fetchUser() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('id, username, alias_name').eq('id', user.id).single();
+        setCurrentUser(profile);
       }
     }
-    init();
+    fetchUser();
 
-
+    fetchThreads();
     const sub = supabase.channel('real-forum')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => init())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => init())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_threads' }, () => fetchThreads())
       .subscribe();
 
-    const handleWakeUp = () => {
-      if (document.visibilityState === 'visible') {
-        init();
-      }
-    };
-    window.addEventListener('focus', handleWakeUp);
-    document.addEventListener('visibilitychange', handleWakeUp);
-
-    return () => {
-      window.removeEventListener('focus', handleWakeUp);
-      document.removeEventListener('visibilitychange', handleWakeUp);
-      supabase.removeChannel(sub);
-    };
-  }, [searchQuery, supabase]); // Trigger re-init on search or if supabase client changes
-
-  async function fetchMoreThreads() {
-     if (isFetchingMore || !hasMore) return;
-     setIsFetchingMore(true);
-     
-     const nextPage = page + 1;
-     let query = supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false }).range(nextPage * LIMIT, (nextPage + 1) * LIMIT - 1);
-     
-     if (searchQuery.trim()) {
-        query = query.ilike('title', `%${searchQuery.trim()}%`);
-     }
-
-     const { data } = await query;
-     
-     if (data) {
-        // Blockeringar hanteras via init räckvidd eller enklare: vi hämtar dem igen om de behövs, 
-        // men här antar vi att blockedIds inte ändras ofta under en session. 
-        // För enkelhet filtrerar vi bort de vi redan kan ha i state.
-        setThreads(prev => {
-           const existingIds = new Set(prev.map(t => t.id));
-           const uniqueNew = data.filter((t: any) => !existingIds.has(t.id));
-           return [...prev, ...uniqueNew];
-        });
-        setHasMore(data.length === LIMIT);
-        setPage(nextPage);
-     }
-     setIsFetchingMore(false);
-  }
+    return () => { supabase.removeChannel(sub); };
+  }, []);
 
   async function fetchThreads() {
-     // Re-trigger the whole sequence
-     setPage(0);
-     setHasMore(true);
-     // init() triggers automatically because of dependency [searchQuery] if we just Clear or trigger a small change
+    const { data } = await supabase.from('forum_threads').select('*, profiles(username, alias_name), forum_posts(id)').order('created_at', { ascending: false });
+    if(data) setThreads(data);
+    setLoading(false);
   }
-
 
   const handleCreateThread = async (e: React.FormEvent) => {
     e.preventDefault();
-    if(!newTitle.trim() || !currentUser) return;
-    const { data: threadDataList } = await supabase.from('forum_threads').insert({
+    if(!newTitle.trim() || !newContent.trim() || !currentUser) return;
+    const { data: threadData } = await supabase.from('forum_threads').insert({
       author_id: currentUser.id,
       title: newTitle.trim(),
       category: newCategory,
       uses_alias: useAlias
-    }).select().limit(1);
-
-    const threadData = threadDataList && threadDataList.length > 0 ? threadDataList[0] : null;
+    }).select().single();
 
     if (threadData) {
       await supabase.from('forum_posts').insert({
         thread_id: threadData.id,
         author_id: currentUser.id,
-        content: newTitle.trim(),
+        content: newContent.trim(),
         uses_alias: useAlias
       });
       setShowNewThread(false);
-      setNewTitle('');
+      setNewTitle(''); setNewContent('');
       fetchThreads();
-      router.push(`/forum/${threadData.id}`);
     }
   };
 
@@ -188,7 +83,7 @@ export default function Forumet() {
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 'bold', textTransform: 'uppercase', color: 'var(--text-muted)' }}>Skriver som</span>
             <span style={{ fontWeight: 'bold', color: useAlias ? 'var(--theme-forum)' : 'var(--text-main)' }}>
-              {useAlias ? (currentUser?.alias_name || 'Stenansikte (Anonym)') : (currentUser ? `${currentUser.username}` : 'Laddar...')}
+              {useAlias ? (currentUser?.alias_name || 'Stenansikte (Anonym)') : (currentUser ? `@${currentUser.username}` : 'Laddar...')}
             </span>
           </div>
           <button 
@@ -210,35 +105,33 @@ export default function Forumet() {
       </div>
 
       <div className="card" style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', padding: '1rem' }}>
-        <div style={{ flex: 1, position: 'relative' }}>
-          <input 
-            type="text" 
-            placeholder="Sök i forumet (rubrik)..." 
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            style={{ width: '100%', padding: '0.75rem 0.75rem 0.75rem 2.5rem', border: '2px solid var(--border-color)', borderRadius: 'var(--radius)', fontFamily: 'inherit', outline: 'none' }}
-          />
-          <Search size={18} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-        </div>
+        <input 
+          type="text" 
+          placeholder="Sök i forumet..." 
+          style={{ flex: 1, padding: '0.75rem', border: '2px solid var(--border-color)', borderRadius: 'var(--radius)', fontFamily: 'inherit', outline: 'none' }}
+        />
+        <button style={{ backgroundColor: 'var(--text-main)', color: 'white', border: 'none', cursor: 'pointer', padding: '0 1.5rem', borderRadius: 'var(--radius)', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <Search size={18} /> Sök
+        </button>
         <button onClick={() => setShowNewThread(true)} style={{ backgroundColor: 'var(--theme-forum)', color: 'white', padding: '0 1.5rem', borderRadius: 'var(--radius)', fontWeight: 'bold', border: '2px solid var(--text-main)', boxShadow: 'var(--shadow-retro)', display: 'flex', cursor: 'pointer', alignItems: 'center', gap: '0.5rem' }}>
           <PenSquare size={18} /> Ny Tråd
         </button>
       </div>
 
-
       <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-        {loading && threads.length === 0 ? (
-          <ForumSkeleton />
+        {loading ? (
+          Array(5).fill(0).map((_, i) => (
+            <div key={i} className="card skeleton-pulse" style={{ height: '86px', marginBottom: '0' }}></div>
+          ))
         ) : threads.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem', color: 'var(--text-muted)' }}>
-            <p>Inga trådar startade än. Bli den första att skriva något!</p>
+            <p>Inga trådar startade än. Snart kopplas detta mot databasen!</p>
           </div>
         ) : (
           threads.map((thread) => {
-
             const authorUsername = thread.profiles?.username || 'Raderad';
             const authorDisplay = thread.uses_alias ? (thread.profiles?.alias_name || 'Stenansikte (Anonym)') : (
-              <span onClick={(e) => { e.preventDefault(); router.push(`/krypin?u=${authorUsername}`); }} className="user-link" style={{ cursor: 'pointer', fontWeight: 'bold' }}>{authorUsername}</span>
+              <span onClick={(e) => { e.preventDefault(); router.push(`/krypin?u=${authorUsername}`); }} className="user-link" style={{ cursor: 'pointer', fontWeight: 'bold' }}>@{authorUsername}</span>
             );
             const replyCount = thread.forum_posts ? Math.max(0, thread.forum_posts.length - 1) : 0;
             return (
@@ -247,7 +140,7 @@ export default function Forumet() {
                   <div style={{ overflow: 'hidden' }}>
                     <h3 style={{ fontSize: '1.125rem', marginBottom: '0.25rem', color: 'var(--text-main)', wordBreak: 'break-word' }}>{mask(thread.title)}</h3>
                     <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', margin: 0 }}>
-                      I <span style={{ fontWeight: '600', color: 'var(--theme-forum)' }}>{thread.category}</span> • Startad av {authorDisplay} • {new Date(thread.created_at).toLocaleString('sv-SE', { dateStyle: 'short', timeStyle: 'short' })}
+                      I <span style={{ fontWeight: '600', color: 'var(--theme-forum)' }}>{thread.category}</span> • Startad av {authorDisplay}
                     </p>
                   </div>
                   <div style={{ textAlign: 'right', color: 'var(--text-main)' }}>
@@ -259,43 +152,7 @@ export default function Forumet() {
             )
           })
         )}
-
-        {/* --- LOAD MORE BUTTON --- */}
-        {hasMore && threads.length >= LIMIT && (
-          <div style={{ display: 'flex', justifyContent: 'center', padding: '2rem 1rem' }}>
-            <button 
-              onClick={fetchMoreThreads} 
-              disabled={isFetchingMore}
-              style={{ 
-                backgroundColor: 'white', 
-                color: 'black', 
-                border: '2px solid black', 
-                padding: '0.8rem 2.5rem', 
-                borderRadius: '8px', 
-                fontWeight: '900', 
-                fontSize: '1rem',
-                cursor: isFetchingMore ? 'not-allowed' : 'pointer', 
-                boxShadow: isFetchingMore ? 'none' : '6px 6px 0px rgba(0,0,0,1)', 
-                transition: 'all 0.1s',
-                transform: isFetchingMore ? 'translate(3px, 3px)' : 'none',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '0.75rem'
-              }}
-              onMouseDown={e => { if(!isFetchingMore) e.currentTarget.style.transform = 'translate(3px, 3px)'; e.currentTarget.style.boxShadow = 'none'; }}
-              onMouseUp={e => { if(!isFetchingMore) e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '6px 6px 0px rgba(0,0,0,1)'; }}
-            >
-              {isFetchingMore ? (
-                <>
-                  <div style={{ width: '18px', height: '18px', border: '2px solid black', borderTopColor: 'transparent', borderRadius: '50%', animation: 'spin 1s linear infinite' }} />
-                  Laddar...
-                </>
-              ) : 'Visa fler trådar ↓'}
-            </button>
-          </div>
-        )}
       </div>
-
 
       {/* Skapa Tråd Modal */}
       {showNewThread && (
@@ -320,14 +177,15 @@ export default function Forumet() {
                   required
                 />
               </div>
-              
-              <div style={{ backgroundColor: '#f8fafc', padding: '1rem', borderRadius: '8px', border: '1px dashed var(--border-color)', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-                <p style={{ margin: 0 }}><strong>Tips:</strong> Du behöver bara en vass rubrik för att starta tråden. När tråden är skapad kan du skriva din första kommentar för att ge mer detaljer!</p>
-              </div>
-
+              <textarea 
+                value={newContent} onChange={e => setNewContent(e.target.value)}
+                placeholder="Beskriv ditt ämne här..." 
+                style={{ width: '100%', minHeight: '150px', padding: '0.75rem', borderRadius: '8px', border: '2px solid var(--border-color)', outline: 'none', resize: 'vertical' }}
+                required
+              />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '1rem' }}>
                 <span style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontWeight: '500' }}>
-                  Du skickar som: <span style={{ color: useAlias ? 'var(--theme-forum)' : 'inherit', fontWeight: 'bold' }}>{useAlias ? (currentUser?.alias_name || 'Stenansikte') : ``}</span>
+                  Du skickar som: <span style={{ color: useAlias ? 'var(--theme-forum)' : 'inherit', fontWeight: 'bold' }}>{useAlias ? (currentUser?.alias_name || 'Stenansikte') : `@${currentUser?.username}`}</span>
                 </span>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
                   <button type="button" onClick={() => setShowNewThread(false)} style={{ padding: '0.75rem 1.5rem', backgroundColor: 'var(--bg-color)', color: 'var(--text-main)', border: 'none', borderRadius: '8px', cursor: 'pointer', fontWeight: 'bold' }}>Avbryt</button>

@@ -46,7 +46,7 @@ BEGIN
   );
   RETURN new;
 END;
-$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
 
 CREATE TRIGGER on_auth_user_created
   AFTER INSERT ON auth.users
@@ -154,7 +154,7 @@ BEGIN
   
   RETURN COALESCE(total_size, 0);
 END;
-$$ SET search_path = public;
+$$;
 
 -- ==============================================================================
 -- 31. Privata inställningar för profilen (Mina Sidor)

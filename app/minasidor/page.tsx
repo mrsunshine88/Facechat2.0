@@ -2,9 +2,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { Book, Shield, HelpCircle, User, CheckCircle, AlertTriangle, Trash2 } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
-import { deleteUserAccount, updateUserProfile } from '../actions/userActions';
-import { NOTIF_SOUNDS, getSoundUrl } from '@/utils/sounds';
+import { createBrowserClient } from '@supabase/ssr';
+import { deleteUserAccount } from '../actions/userActions';
 
 const INTERESTS = [
   "Bakning", "Bilar och meckande", "Brädspel", "Båtliv och segling", "Camping",
@@ -51,8 +50,6 @@ const PrivacyToggle = ({ label, isVisible, onToggle }: { label: string, isVisibl
   );
 };
 
-const supabase = createClient();
-
 export default function MinaSidor() {
   const [activeTab, setActiveTab] = useState('Konto');
   const [showSaved, setShowSaved] = useState(false);
@@ -63,7 +60,6 @@ export default function MinaSidor() {
   const [newUsername, setNewUsername] = useState('');
   const [usernameError, setUsernameError] = useState('');
   const [newPassword, setNewPassword] = useState('');
-  const [deletePassword, setDeletePassword] = useState('');
   
   const [supportCategory, setSupportCategory] = useState('');
   const [supportMessage, setSupportMessage] = useState('');
@@ -73,56 +69,23 @@ export default function MinaSidor() {
   const [userReplyText, setUserReplyText] = useState('');
   const [customAlert, setCustomAlert] = useState<string | null>(null);
 
-  // Auto-hide custom alert toast
-  useEffect(() => {
-    if (customAlert) {
-      const timer = setTimeout(() => setCustomAlert(null), 4000);
-      return () => clearTimeout(timer);
-    }
-  }, [customAlert]);
-
   const [showPhone, setShowPhone] = useState(false);
   const [showAddress, setShowAddress] = useState(false);
   const [showZipcode, setShowZipcode] = useState(false);
   const [showInterests, setShowInterests] = useState(false);
   const [userInterests, setUserInterests] = useState<string[]>([]);
-  const [isPushEnabled, setIsPushEnabled] = useState(false);
-  const [selectedSound, setSelectedSound] = useState('default');
+
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
 
   useEffect(() => {
-    async function checkSub() {
-      if ('serviceWorker' in navigator && 'PushManager' in window) {
-        try {
-          const reg = await navigator.serviceWorker.getRegistration();
-          if (reg) {
-            const sub = await reg.pushManager.getSubscription();
-            if (sub) {
-              setIsPushEnabled(true);
-            }
-          }
-        } catch (e) {
-          console.error('Error checking push sub:', e);
-        }
-      }
-    }
-    checkSub();
-  }, []);
-
-
-  useEffect(() => {
-    async function init() {
+    async function fetchUser() {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) { /* Vänta på UserContext grace period */ return; }
-
-      const loadData = async () => {
-        // 1. Hämta ENDAST nödvändig profil-data parallellt (Blixtsnabb start!)
-        const [profRes, secRes] = await Promise.all([
-          supabase.from('profiles').select('*').eq('id', user.id).limit(1),
-          supabase.from('user_secrets').select('*').eq('user_id', user.id).limit(1)
-        ]);
-
-        const profile = profRes.data && profRes.data.length > 0 ? profRes.data[0] : null;
-        const secrets = secRes.data && secRes.data.length > 0 ? secRes.data[0] : null;
+      if (user) {
+        const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+        const { data: secrets } = await supabase.from('user_secrets').select('*').eq('user_id', user.id).maybeSingle();
         
         if (profile) {
           setCurrentUser({ ...profile, email: user.email, ...secrets });
@@ -132,101 +95,55 @@ export default function MinaSidor() {
           setShowZipcode(secrets?.show_zipcode || false);
           setShowInterests(profile.show_interests || false);
           setUserInterests(profile.interests || []);
-          setSelectedSound(profile.notif_sound || 'default');
         } else {
           setCurrentUser({ id: user.id, email: user.email, username: user.email?.split('@')[0] || 'Unknown' });
           setNewUsername(user.email?.split('@')[0] || 'Unknown');
         }
-      };
-
-      await loadData();
-
-      // Realtime listeners
-      const profileSub = supabase.channel('minasidor-self-update')
-        .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${user.id}` }, () => loadData())
-        .subscribe();
-      
-      return () => {
-        supabase.removeChannel(profileSub);
-      };
+      }
     }
-    init();
+    fetchUser();
   }, [supabase]);
 
-  // OPTIMERING: Hämta endast support-ärenden när man faktiskt klickar på Support-fliken
   useEffect(() => {
-    if (activeTab === 'Support' && currentUser?.id) {
-       // Hämta ärenden
-       supabase.from('support_tickets')
-         .select('*')
-         .eq('user_id', currentUser.id)
-         .eq('user_deleted', false)
-         .order('created_at', { ascending: false })
-         .then(({data}) => {
-            if (data) setMyTickets(data);
-         });
-       
-       // Starta lyssnare för just detta ärende
-       const fetchTickets = () => {
-          supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
-             if (data) setMyTickets(data);
-          });
-       };
-
-       const ticketSub = supabase.channel(`user-support-realtime-${currentUser.id}`)
-         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${currentUser.id}` }, () => fetchTickets())
-         .subscribe();
-       
-       const handleWakeUp = () => {
-          if (document.visibilityState === 'visible') fetchTickets();
-       };
-       window.addEventListener('focus', handleWakeUp);
-       document.addEventListener('visibilitychange', handleWakeUp);
-
-       return () => {
-         window.removeEventListener('focus', handleWakeUp);
-         document.removeEventListener('visibilitychange', handleWakeUp);
-         supabase.removeChannel(ticketSub);
-       };
+    if (currentUser?.id) {
+      const fetchMyTickets = async () => {
+        const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+        if (data) setMyTickets(data);
+      };
+      fetchMyTickets();
     }
-  }, [activeTab, currentUser?.id]);
+  }, [currentUser?.id, supabase]);
 
   const tabs = [
     { id: 'Konto', icon: User },
     { id: 'Personuppgifter', icon: Book },
     { id: 'Support', icon: HelpCircle },
-    { id: 'Blockerade', icon: Shield },
   ];
 
   const handleSaveKonto = async (e: React.FormEvent) => {
     e.preventDefault();
     setUsernameError('');
-    let hasChanges = false;
-    const payload: any = {};
-
-    // 1. Check Username
     if (newUsername.trim() !== currentUser.username) {
-      payload.username = newUsername.trim();
-      hasChanges = true;
-    }
-
-    // 2. Check Notification Sound
-    if (selectedSound !== currentUser.notif_sound) {
-      payload.notif_sound = selectedSound;
-      hasChanges = true;
-    }
-
-    // Execute Profile Update if anything changed
-    if (hasChanges) {
-      const res = await updateUserProfile(payload);
-      if (res.error) {
-        setUsernameError(res.error);
+      if (newUsername.trim().length < 3) {
+        setUsernameError('Användarnamnet måste vara minst 3 tecken.');
         return;
       }
-      setCurrentUser({ ...currentUser, ...payload });
+      // Check collision safely
+      const { data: existing } = await supabase.from('profiles').select('id').ilike('username', newUsername.trim()).limit(1)
+      if (existing && existing.length > 0) {
+        setUsernameError('Detta användarnamn är redan upptaget!');
+        return;
+      }
+      // Update Username
+      const { error } = await supabase.from('profiles').update({ username: newUsername.trim() }).eq('id', currentUser.id);
+      if (error) {
+        setUsernameError('Ett fel uppstod i Psql update: ' + error.message);
+        return;
+      }
+      setCurrentUser({ ...currentUser, username: newUsername.trim() });
     }
 
-    // 3. Password Update (Separate Auth API call)
+    // Har användaren fyllt i ett nytt lösenord? Update det vi Auth API.
     if (newPassword.trim().length > 0) {
       if (newPassword.trim().length < 6) {
         setUsernameError('Lösenordet måste vara minst 6 tecken.');
@@ -237,7 +154,7 @@ export default function MinaSidor() {
         setUsernameError('Kunde inte uppdatera lösenordet: ' + pwError.message);
         return;
       }
-      setNewPassword('');
+      setNewPassword(''); // Rensa fältet när det lyckats
     }
     
     setShowSaved(true);
@@ -246,30 +163,14 @@ export default function MinaSidor() {
 
   const handleDeleteMyAccount = async () => {
     if (!currentUser) return;
-    if (!deletePassword.trim()) {
-      setCustomAlert("Du måste ange ditt lösenord för att radera kontot.");
-      return;
-    }
-
     try {
-      // Verifiera lösenordet genom att försöka logga in igen
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: currentUser.email,
-        password: deletePassword
-      });
-
-      if (authError) {
-        setCustomAlert("Fel lösenord. Kontot kunde inte raderas.");
-        return;
-      }
-
       // Skriv logg direkt innan vi raderar the creator
       await supabase.from('admin_logs').insert({ 
         admin_id: currentUser.id, 
-        action: `SYSTEM: Användaren ${currentUser.username} skrotade sitt eget konto.` 
+        action: `SYSTEM: Användaren @${currentUser.username} skrotade sitt eget konto.` 
       });
-      // Radera kontot från databasen och Auth via Server Action (Session valideras på servern)
-      const res = await deleteUserAccount(currentUser.id);
+      // Radera kontot från databasen och Auth via Server Action
+      const res = await deleteUserAccount(currentUser.id, currentUser.id, false);
       if (res?.error) {
          setCustomAlert("Fel vid radering: " + res.error);
          return;
@@ -287,16 +188,16 @@ export default function MinaSidor() {
     if (!currentUser) return;
     const formData = new FormData(e.target as HTMLFormElement);
     const publicPayload = {
-      city: (formData.get('city') as string) || undefined,
+      city: formData.get('city') || null,
       show_interests: showInterests,
       interests: userInterests
     };
     
-    // Save public parts to 'profiles' via Secure Server Action
-    const res = await updateUserProfile(publicPayload);
+    // Save public parts to 'profiles'
+    const { error: error1 } = await supabase.from('profiles').update(publicPayload).eq('id', currentUser.id);
     
-    if (res.error) {
-       setCustomAlert('Kunde inte spara profilen: ' + res.error);
+    if (error1) {
+       setCustomAlert('Kunde inte spara profilen (Fel: ' + error1.message + ')');
        return;
     }
 
@@ -350,47 +251,23 @@ export default function MinaSidor() {
     // Skriv ett logg-event om systemhändelsen
     await supabase.from('admin_logs').insert({ 
       admin_id: currentUser.id, 
-      action: `SYSTEM: Användaren ${currentUser.username} skapade en support-ticket (${supportCategory}).` 
+      action: `SYSTEM: Användaren @${currentUser.username} skapade en support-ticket (${supportCategory}).` 
     });
 
     // Refresh list
     const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (data) setMyTickets(data);
-
-    // NOTIFIERA ALLA ADMINS!
-    const { data: adminUsers } = await supabase.from('profiles').select('id').eq('is_admin', true);
-    if (adminUsers && adminUsers.length > 0) {
-       const adminNotifs = adminUsers.map(adm => ({
-          receiver_id: adm.id,
-          actor_id: currentUser.id,
-          type: 'admin_alert',
-          content: `har skapat ett nytt supportärende (${supportCategory}).`,
-          link: '/admin?tab=support'
-       }));
-       await supabase.from('notifications').insert(adminNotifs);
-
-       adminUsers.forEach(adm => {
-          fetch('/api/send-push', {
-             method: 'POST', body: JSON.stringify({
-               userId: adm.id,
-               title: '🆘 Nytt Supportärende!',
-               message: `${currentUser.username}: ${supportMessage.substring(0, 30)}...`,
-               url: '/admin?tab=support'
-             }), headers: { 'Content-Type': 'application/json' }
-          }).catch(console.error);
-       });
-    }
   };
 
   const handleDeleteTicket = async (ticketId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if(!confirm('Är du säker på att du vill ta bort det här ärendet från din lista? Det försvinner endast för dig.')) return;
+    if(!confirm('Är du säker på att du vill ta bort det här ärendet för gott? Det försvinner även för Admin.')) return;
     
     // Add optimistic UI filter
     setMyTickets(myTickets.filter((t: any) => t.id !== ticketId));
     if (activeUserTicketId === ticketId) setActiveUserTicketId(null);
     
-    const { error } = await supabase.from('support_tickets').update({ user_deleted: true }).eq('id', ticketId);
+    const { error } = await supabase.from('support_tickets').delete().eq('id', ticketId);
     if(error){
       setCustomAlert(`Fel vid borttagning: ${error.message}`);
     }
@@ -420,35 +297,11 @@ export default function MinaSidor() {
     // Skriv ett logg-event 
     await supabase.from('admin_logs').insert({ 
       admin_id: currentUser.id, 
-      action: `SYSTEM: Användaren ${currentUser.username} svarade på support-ticket.` 
+      action: `SYSTEM: Användaren @${currentUser.username} svarade på support-ticket.` 
     });
 
     const { data } = await supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
     if (data) setMyTickets(data);
-
-    // NOTIFIERA ALLA ADMINS OM SVARET!
-    const { data: adminUsers } = await supabase.from('profiles').select('id').eq('is_admin', true);
-    if (adminUsers && adminUsers.length > 0) {
-       const adminNotifs = adminUsers.map(adm => ({
-          receiver_id: adm.id,
-          actor_id: currentUser.id,
-          type: 'admin_alert',
-          content: `har svarat på ett supportärende.`,
-          link: '/admin?tab=support'
-       }));
-       await supabase.from('notifications').insert(adminNotifs);
-
-       adminUsers.forEach(adm => {
-          fetch('/api/send-push', {
-             method: 'POST', body: JSON.stringify({
-               userId: adm.id,
-               title: '💬 Svar i Support!',
-               message: `${currentUser.username} har svarat på en ticket.`,
-               url: '/admin?tab=support'
-             }), headers: { 'Content-Type': 'application/json' }
-          }).catch(console.error);
-       });
-    }
   };
 
   const markUserRead = async (id: string) => {
@@ -493,7 +346,6 @@ export default function MinaSidor() {
       }, { onConflict: 'endpoint' });
 
       if (error) throw error;
-      setIsPushEnabled(true);
       setCustomAlert('Push-notiser är nu aktiverade för denna enhet! 🎉');
     } catch (err: any) {
       console.error(err);
@@ -501,46 +353,20 @@ export default function MinaSidor() {
     }
   };
 
-  const handleUnsubscribePush = async () => {
-    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      const subscription = await registration.pushManager.getSubscription();
-      if (subscription) {
-        const subJSON = subscription.toJSON();
-        if (currentUser) {
-           await supabase.from('push_subscriptions').delete().eq('endpoint', subJSON.endpoint);
-        }
-        await subscription.unsubscribe();
-        setIsPushEnabled(false);
-        setCustomAlert('Push-notiser är nu avstängda för denna enhet.');
-      } else {
-        setCustomAlert('Inga notiser var aktiva på denna enhet.');
-      }
-    } catch (err: any) {
-      setCustomAlert('Ett fel uppstod: ' + err.message);
-    }
-  };
-
-  const handleTestSound = () => {
-    if (selectedSound === 'none') return;
-    const url = getSoundUrl(selectedSound);
-    const audio = new Audio(url);
-    audio.volume = 0.5;
-    audio.play().catch(console.error);
-  };
-
   if (!currentUser) return <div style={{ padding: '2rem', minHeight: '100vh', backgroundColor: 'var(--bg-color)' }}>Laddar Mina Sidor...</div>;
 
   return (
     <div style={{ display: 'flex', gap: '2rem', minHeight: 'calc(100vh - 120px)' }} className="krypin-layout">
        
-      {/* Global Custom Alert Toast */}
+      {/* Global Custom Alert Modal */}
       {customAlert && (
-         <div className="animate-fade-in" style={{ position: 'fixed', bottom: '2rem', left: '50%', transform: 'translateX(-50%)', backgroundColor: 'var(--theme-krypin)', color: 'white', padding: '1rem 2rem', borderRadius: '999px', zIndex: 9999, display: 'flex', alignItems: 'center', gap: '1rem', boxShadow: '0 10px 25px rgba(0,0,0,0.3)', fontWeight: 'bold' }}>
-           <AlertTriangle size={20} />
-           <span>{customAlert}</span>
-           <button onClick={() => setCustomAlert(null)} style={{ background: 'none', border: 'none', color: 'white', cursor: 'pointer', marginLeft: '1rem', opacity: 0.8, fontSize: '1.2rem', padding: '0 0.5rem' }}>&times;</button>
+         <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+           <div className="card animate-fade-in" style={{ width: '100%', maxWidth: '400px', padding: '2.5rem', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+              <AlertTriangle size={48} color="var(--theme-krypin)" style={{ marginBottom: '1.5rem' }} />
+              <h3 style={{ marginTop: 0, marginBottom: '1rem', color: 'var(--text-main)', fontSize: '1.5rem', fontWeight: 'bold' }}>Meddelande</h3>
+              <p style={{ color: 'var(--text-muted)', marginBottom: '2rem', lineHeight: '1.6', fontSize: '1rem' }}>{customAlert}</p>
+              <button onClick={() => setCustomAlert(null)} style={{ background: 'var(--theme-krypin)', color: 'white', border: 'none', padding: '0.875rem 2rem', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', width: '100%', fontSize: '1rem', transition: 'transform 0.1s' }} className="hover-lift">Okej, jag förstår!</button>
+           </div>
          </div>
       )}
 
@@ -604,110 +430,36 @@ export default function MinaSidor() {
                </div>
 
                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', marginBottom: '1.5rem' }}>
-                  <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>Inbyggda Notifieringar</h3>
-                  <div style={{ padding: '1.5rem', border: '1px solid #10b981', borderRadius: '12px', backgroundColor: '#f0fdf4', display: 'flex', flexDirection: 'column', gap: '1.25rem' }}>
-                    
-                    {/* Part 1: Push API */}
-                    <div>
-                      <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>📱 Push-Notiser (Mobil/Dator)</h4>
-                      <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '1rem' }}>Få ett riktigt 'pling' i telefonen när du får Mejl, Gästboksinlägg, Chatt, Whiteboard och Forum!</p>
-                      {!isPushEnabled ? (
-                        <button type="button" onClick={handleSubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.3)', width: '100%' }} className="hover-lift">
-                          Aktivera Push-notiser för denna enhet 🎉
-                        </button>
-                      ) : (
-                        <button type="button" onClick={handleUnsubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#f0fdf4', color: '#047857', border: '2px solid #10b981', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.1)', width: '100%' }} className="hover-lift">
-                          ✅ Aktiverat! Klicka för att stänga av 🔕
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Part 2: Notification Sound (Retro!) */}
-                    <div style={{ borderTop: '1px solid #d1fae5', paddingTop: '1rem' }}>
-                       <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>🔔 Aviseringsljud (Nostalgi!)</h4>
-                       <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '0.75rem' }}>Välj vilket ljud som spelas upp när du är inne på Facechat.</p>
-                       <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', alignItems: 'center' }}>
-                          <select 
-                            value={selectedSound} 
-                            onChange={async (e) => {
-                               const newSound = e.target.value;
-                               setSelectedSound(newSound);
-                               if (currentUser) {
-                                  await updateUserProfile({ notif_sound: newSound });
-                               }
-                            }}
-                            style={{ flex: '1 1 200px', padding: '0.6rem', borderRadius: '8px', border: '1px solid #10b981', outline: 'none', backgroundColor: 'white', fontSize: '0.9rem', minWidth: '150px' }}
-                          >
-                            {NOTIF_SOUNDS.map(s => (
-                               <option key={s.id} value={s.id}>{s.name}</option>
-                            ))}
-                          </select>
-                          <button 
-                            type="button" 
-                            onClick={handleTestSound}
-                            disabled={selectedSound === 'none'}
-                            style={{ padding: '0.6rem 1.25rem', backgroundColor: selectedSound === 'none' ? '#cbd5e1' : '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: selectedSound === 'none' ? 'not-allowed' : 'pointer', fontSize: '0.85rem', flex: '0 0 auto' }}
-                          >
-                            Provlyssna 🔊
-                          </button>
-                          
-                          {/* NEW: Toggle for Notification Sounds On/Off (Account Synced) */}
-                          <button
-                            type="button"
-                            onClick={async () => {
-                               const newStatus = !currentUser?.notif_sound_enabled;
-                               setCurrentUser((prev: any) => ({ ...prev, notif_sound_enabled: newStatus }));
-                               await updateUserProfile({ notif_sound_enabled: newStatus });
-                            }}
-                            style={{ 
-                               padding: '0.6rem 1.25rem', 
-                               backgroundColor: currentUser?.notif_sound_enabled ? '#10b981' : '#ef4444', 
-                               color: 'white', 
-                               border: 'none', 
-                               borderRadius: '8px', 
-                               fontWeight: 'bold', 
-                               cursor: 'pointer', 
-                               fontSize: '0.85rem',
-                               display: 'flex',
-                               alignItems: 'center',
-                               gap: '0.4rem'
-                            }}
-                          >
-                             {currentUser?.notif_sound_enabled ? '🔔 Ljud På' : '🔕 Ljud Av'}
-                          </button>
-                       </div>
-                    </div>
-                  </div>
-                </div>
+                 <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '1rem', fontWeight: '700' }}>Inbyggda Notifieringar</h3>
+                 <div style={{ padding: '1.5rem', border: '1px solid #10b981', borderRadius: '8px', backgroundColor: '#f0fdf4' }}>
+                   <h4 style={{ margin: '0 0 0.5rem 0', color: '#064e3b', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>📱 Push-Notiser (Mobil/Dator)</h4>
+                   <p style={{ color: '#047857', fontSize: '0.875rem', marginBottom: '1rem' }}>Få ett riktigt 'pling' i telefonen när du får Mejl, Gästboksinlägg, Chatt, Whiteboard och Forum, även när skärmen är avstängd!</p>
+                   <button type="button" onClick={handleSubscribePush} style={{ padding: '0.75rem 1.5rem', backgroundColor: '#10b981', color: 'white', border: 'none', borderRadius: '8px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 4px 6px rgba(16,185,129,0.3)' }} className="hover-lift">
+                     Aktivera Push-notiser för denna enhet 🎉
+                   </button>
+                 </div>
+               </div>
    
                <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                  <button type="submit" style={{ backgroundColor: 'var(--theme-krypin)', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Spara ändringar</button>
                  
-                 {(currentUser?.username?.toLowerCase() !== 'apersson508' && currentUser?.email?.toLowerCase() !== 'apersson508@gmail.com') && (
-                   <div style={{ position: 'relative' }}>
-                     {!showConfirmDelete ? (
-                       <button type="button" onClick={() => setShowConfirmDelete(true)} style={{ color: '#ef4444', fontWeight: '600', fontSize: '0.875rem', textDecoration: 'underline', padding: '0.5rem', border: 'none', background: 'none', cursor: 'pointer' }}>Radera mitt konto</button>
-                     ) : (
-                       <div style={{ position: 'absolute', bottom: '100%', right: '0', width: '300px', marginBottom: '1rem', backgroundColor: 'var(--bg-card)', border: '2px solid #ef4444', borderRadius: '8px', padding: '1.5rem', boxShadow: 'var(--shadow-md)', zIndex: 10 }}>
+                 <div style={{ position: 'relative' }}>
+                   {!showConfirmDelete ? (
+                     <button type="button" onClick={() => setShowConfirmDelete(true)} style={{ color: '#ef4444', fontWeight: '600', fontSize: '0.875rem', textDecoration: 'underline', padding: '0.5rem', border: 'none', background: 'none', cursor: 'pointer' }}>Radera mitt konto</button>
+                   ) : (
+                     <div style={{ position: 'absolute', bottom: '100%', right: '0', width: '300px', marginBottom: '1rem', backgroundColor: 'var(--bg-card)', border: '2px solid #ef4444', borderRadius: '8px', padding: '1.5rem', boxShadow: 'var(--shadow-md)', zIndex: 10 }}>
                        <h4 style={{ color: '#ef4444', fontWeight: '700', marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}><AlertTriangle size={18} /> Är du helt säker?</h4>
                        <p style={{ fontSize: '0.875rem', color: 'var(--text-main)', marginBottom: '1rem' }}>All din historik från Facechat kommer att försvinna rakt ner i soptunnan.</p>
-                        <input 
-                          type="password" 
-                          value={deletePassword}
-                          onChange={e => setDeletePassword(e.target.value)}
-                          placeholder="Bekräfta med lösenord..." 
-                          style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem', fontSize: '0.875rem' }} 
-                        />
+                       <input type="password" placeholder="Beskäfta med lösenord..." style={{ width: '100%', padding: '0.5rem', borderRadius: '8px', border: '1px solid var(--border-color)', marginBottom: '1rem', fontSize: '0.875rem' }} />
                        <div style={{ display: 'flex', gap: '0.5rem' }}>
                          <button type="button" onClick={() => setShowConfirmDelete(false)} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#e5e7eb', borderRadius: '6px', border: 'none', cursor: 'pointer', fontWeight: '600', fontSize: '0.875rem' }}>Ångra</button>
                          <button type="button" onClick={handleDeleteMyAccount} style={{ flex: 1, padding: '0.5rem', backgroundColor: '#ef4444', color: 'white', border: 'none', cursor: 'pointer', borderRadius: '6px', fontWeight: '600', fontSize: '0.875rem' }}>Radera</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                 )}
-                </div>
-              </form>
+                       </div>
+                     </div>
+                   )}
+                 </div>
+               </div>
+             </form>
           )}
 
           {activeTab === 'Personuppgifter' && (
@@ -762,7 +514,6 @@ export default function MinaSidor() {
                       </div>
                    </div>
                 </div>
-
                 <button type="submit" style={{ alignSelf: 'flex-start', border: 'none', cursor: 'pointer', backgroundColor: 'var(--theme-krypin)', color: 'white', fontWeight: '600', padding: '0.75rem 2rem', borderRadius: '8px' }}>Spara uppgifter</button>
              </form>
           )}
@@ -814,14 +565,12 @@ export default function MinaSidor() {
                       </div>
                       
                       {ticket.status === 'open' ? (
-                        <div style={{ padding: '2rem', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '1rem', color: 'var(--text-muted)' }}>
-                           <HelpCircle size={48} opacity={0.2} />
-                           <p>Ingen har svarat än. Vi återkommer så snart vi kan!</p>
-                        </div>
+                        <form onSubmit={handleUserReply} style={{ padding: '1rem', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', display: 'flex', gap: '1rem' }}>
+                          <input type="text" value={userReplyText} onChange={e => setUserReplyText(e.target.value)} placeholder="Skriv ett svar..." style={{ flex: 1, padding: '0.875rem', borderRadius: '8px', border: '1px solid var(--border-color)', outline: 'none' }} />
+                          <button type="submit" style={{ backgroundColor: 'var(--theme-forum)', color: 'white', fontWeight: '600', padding: '0 1.5rem', borderRadius: '8px', border: 'none', cursor: 'pointer' }}>Skicka</button>
+                        </form>
                       ) : (
-                        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: '#ecfdf5', color: '#059669', fontWeight: 'bold', borderTop: '1px solid #10b981' }}>
-                          Ärendet har blivit löst av en Admin och är nu stängt.
-                        </div>
+                        <div style={{ padding: '1rem', textAlign: 'center', backgroundColor: '#ecfdf5', color: '#059669', fontWeight: 'bold', borderTop: '1px solid #10b981' }}>Ärendet har blivit löst av en Admin och är nu stängt.</div>
                       )}
                     </>
                   )
@@ -889,87 +638,11 @@ export default function MinaSidor() {
             )
           )}
 
-          {activeTab === 'Blockerade' && (
-            <div>
-              <h3 style={{ fontSize: '1.25rem', color: 'var(--text-main)', marginBottom: '0.5rem', fontWeight: '700' }}>Blockerade Användare</h3>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.875rem', marginBottom: '1.5rem' }}>Här ser du personer du har blockat. När du blockar någon kan ni inte se varandras profiler, inlägg eller skicka meddelanden till varandra.</p>
-              
-              <BlockedList supabase={supabase} currentUser={currentUser} setCustomAlert={setCustomAlert} />
-            </div>
-          )}
-
-
         </div>
       </div>
     </div>
   );
 }
-
-
-const BlockedList = ({ supabase, currentUser, setCustomAlert }: any) => {
-  const [blockedUsers, setBlockedUsers] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchBlocked = async () => {
-    setLoading(true);
-    const { data: blocks } = await supabase
-      .from('user_blocks')
-      .select('blocked_id, profiles!user_blocks_blocked_id_fkey(username, avatar_url)')
-      .eq('blocker_id', currentUser.id);
-    
-    if (blocks) {
-      setBlockedUsers(blocks.map((b: any) => ({
-        id: b.blocked_id,
-        username: b.profiles?.username || 'Okänd användare',
-        avatar_url: b.profiles?.avatar_url
-      })));
-    }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchBlocked();
-  }, []);
-
-  const handleUnblock = async (id: string, name: string) => {
-    const { error } = await supabase
-      .from('user_blocks')
-      .delete()
-      .eq('blocker_id', currentUser.id)
-      .eq('blocked_id', id);
-
-    if (error) {
-      setCustomAlert('Kunde inte avblockera: ' + error.message);
-    } else {
-      setCustomAlert(`Du har avblockerat ${name}.`);
-      fetchBlocked();
-    }
-  };
-
-  if (loading) return <div>Laddar listan...</div>;
-  if (blockedUsers.length === 0) return <div style={{ padding: '2rem', textAlign: 'center', border: '1px dashed var(--border-color)', borderRadius: '8px', color: 'var(--text-muted)' }}>Du har inte blockat någon ännu.</div>;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-      {blockedUsers.map(user => (
-        <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem', border: '1px solid var(--border-color)', borderRadius: '8px', backgroundColor: 'var(--bg-card)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-            <div style={{ width: '40px', height: '40px', borderRadius: '50%', backgroundColor: 'var(--theme-krypin)', overflow: 'hidden' }}>
-              {user.avatar_url ? <img src={user.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <User size={20} style={{ margin: '10px', color: 'white' }} />}
-            </div>
-            <strong style={{ color: 'var(--text-main)' }}>{user.username}</strong>
-          </div>
-          <button 
-            onClick={() => handleUnblock(user.id, user.username)}
-            style={{ padding: '0.5rem 1rem', borderRadius: '6px', border: '1px solid #ef4444', color: '#ef4444', backgroundColor: 'transparent', cursor: 'pointer', fontWeight: 'bold', fontSize: '0.75rem' }}
-          >
-            Häv Blockering
-          </button>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 const SettingsIcon = ({ size }: { size: number }) => (
   <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>

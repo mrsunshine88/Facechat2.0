@@ -2,7 +2,6 @@
 
 import React from 'react';
 import { Search, Filter, UserPlus } from 'lucide-react';
-import { createClient } from '@/utils/supabase/client';
 
 const CITIES = ["Alingsås", "Arvika", "Askersund", "Avesta", "Boden", "Bollnäs", "Borgholm", "Borlänge", "Borås", "Bräkne-Hoby", "Bålsta", "Båstad", "Djursholm", "Eksjö", "Enköping", "Eskilstuna", "Eslöv", "Fagersta", "Falkenberg", "Falköping", "Falun", "Filipstad", "Flen", "Gislaved", "Gävle", "Göteborg", "Hagfors", "Halla", "Halmstad", "Haparanda", "Hedemora", "Helsingborg", "Hjo", "Hudiksvall", "Huskvarna", "Härnösand", "Hässleholm", "Höganäs", "Jämjö", "Jönköping", "Kallinge", "Kalmar", "Karlshamn", "Karlskoga", "Karlskrona", "Karlstad", "Katrineholm", "Kiruna", "Kramfors", "Kristianstad", "Kristinehamn", "Kumla", "Kungsbacka", "Kungälv", "Köping", "Laholm", "Landskrona", "Lerum", "Lidingö", "Lidköping", "Lindesberg", "Linköping", "Listerby", "Ljungby", "Lomma", "Ludvika", "Luleå", "Lund", "Lycksele", "Lysekil", "Malmö", "Mariefred", "Mariestad", "Marstrand", "Motala", "Mölndal", "Mölnlycke", "Mörrum", "Nacka", "Nora", "Norrköping", "Norrtälje", "Nybro", "Nyköping", "Nynäshamn", "Nässjö", "Nättraby", "Olofström", "Oskarshamn", "Piteå", "Ramdala", "Ronneby", "Rödeby", "Sala", "Sandviken", "Sigtuna", "Simrishamn", "Skanör med Falsterbo", "Skara", "Skellefteå", "Skänninge", "Skövde", "Sollefteå", "Solna", "Staffanstorp", "Stockholm", "Strängnäs", "Strömstad", "Sundsvall", "Säffle", "Säter", "Sävsjö", "Söderhamn", "Söderköping", "Södertälje", "Sölvesborg", "Tidaholm", "Timrå", "Torshälla", "Tranås", "Trelleborg", "Trollhättan", "Trosa", "Tyresö", "Täby", "Uddevalla", "Ulricehamn", "Umeå", "Uppsala", "Vadstena", "Vallentuna", "Varberg", "Vaxholm", "Vetlanda", "Vimmerby", "Visby", "Vänersborg", "Värnamo", "Västervik", "Västerås", "Växjö", "Ystad", "Åkersberga", "Åmål", "Ängelholm", "Örebro", "Öregrund", "Örnsköldsvik", "Östersund", "Östhammar"].sort((a, b) => a.localeCompare(b, 'sv-SE'));
 
@@ -49,11 +48,14 @@ export default function SokOchSpana() {
   const [friends, setFriends] = React.useState<string[]>([]);
   const [pendingRequests, setPendingRequests] = React.useState<string[]>([]);
   const [viewerId, setViewerId] = React.useState<string | null>(null);
-  const [blockedUserIds, setBlockedUserIds] = React.useState<string[]>([]);
 
   React.useEffect(() => {
     async function fetchPeople() {
-      const supabase = createClient();
+      const { createBrowserClient } = await import('@supabase/ssr');
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
       
       const { data: { user } } = await supabase.auth.getUser();
       
@@ -68,61 +70,22 @@ export default function SokOchSpana() {
             setFriends(rels.filter(r => r.status === 'accepted').map(r => r.user_id_1 === user.id ? r.user_id_2 : r.user_id_1));
             setPendingRequests(rels.filter(r => r.status === 'pending').map(r => r.user_id_1 === user.id ? r.user_id_2 : r.user_id_1));
          }
-          
-          const { data: bData } = await supabase.from('user_blocks').select('*')
-              .or(`blocker_id.eq.${user.id},blocked_id.eq.${user.id}`);
-          if (bData) {
-              setBlockedUserIds(bData.map((b: any) => b.blocker_id === user.id ? b.blocked_id : b.blocker_id));
-          }
-
-          // Realtime subscription for friendships
-          const channel = supabase.channel('friendship_changes')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, (payload: any) => {
-              if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-                const newFriendship = payload.new;
-                if (newFriendship.status === 'accepted' && (newFriendship.user_id_1 === user.id || newFriendship.user_id_2 === user.id)) {
-                  const friendId = newFriendship.user_id_1 === user.id ? newFriendship.user_id_2 : newFriendship.user_id_1;
-                  setFriends(prev => [...prev, friendId]);
-                  setPendingRequests(prev => prev.filter(id => id !== friendId));
-                } else if (newFriendship.status === 'pending' && newFriendship.user_id_2 === user.id) {
-                  setPendingRequests(prev => [...prev, newFriendship.user_id_1]);
-                }
-              } else if (payload.eventType === 'DELETE') {
-                const oldFriendship = payload.old;
-                if (oldFriendship && (oldFriendship.user_id_1 === user.id || oldFriendship.user_id_2 === user.id)) {
-                  const friendId = oldFriendship.user_id_1 === user.id ? oldFriendship.user_id_2 : oldFriendship.user_id_1;
-                  setFriends(prev => prev.filter(id => id !== friendId));
-                  setPendingRequests(prev => prev.filter(id => id !== friendId));
-                }
-              }
-            })
-            .subscribe();
-
-          const { data } = await supabase.from('profiles').select('*').neq('id', user.id).order('created_at', { ascending: false }).limit(40);
-          if (data) setPeople(data);
-          
-          return () => {
-            supabase.removeChannel(channel);
-          };
-      } else {
-          const { data } = await supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(40);
-          if (data) setPeople(data);
       }
+      
+      let query = supabase.from('profiles').select('*').order('created_at', { ascending: false }).limit(40);
+      if (user) {
+        query = query.neq('id', user.id);
+      }
+      
+      const { data } = await query;
+      if (data) setPeople(data);
     }
     fetchPeople();
-  }, [viewerId]);
+  }, []);
 
   const handleAddFriend = async (e: React.MouseEvent, personId: string) => {
     e.stopPropagation();
     if (!viewerId) return;
-    if (viewerId === personId) {
-        alert("Du kan inte lägga till dig själv som vän.");
-        return;
-    }
-    if (blockedUserIds.includes(personId)) {
-        alert("Du kan inte lägga till en blockerad person som vän.");
-        return;
-    }
     
     const { createBrowserClient } = await import('@supabase/ssr');
     const supabase = createBrowserClient(
@@ -131,12 +94,10 @@ export default function SokOchSpana() {
     );
     
     // Check if reverse request exists
-    const { data: existingList } = await supabase.from('friendships')
+    const { data: existing } = await supabase.from('friendships')
       .select('*')
       .or(`and(user_id_1.eq.${personId},user_id_2.eq.${viewerId}),and(user_id_1.eq.${viewerId},user_id_2.eq.${personId})`)
-      .limit(1);
-      
-    const existing = existingList && existingList.length > 0 ? existingList[0] : null;
+      .single();
       
     if (existing) {
        // Make it 'accepted' if pending from the other side, or ignore
@@ -150,40 +111,18 @@ export default function SokOchSpana() {
        return;
     }
 
-    // ALWAYS SORT IDs to ensure consistency (id1 < id2)
-    const id1 = viewerId < personId ? viewerId : personId;
-    const id2 = viewerId < personId ? personId : viewerId;
-
-    const { error: insertError } = await supabase.from('friendships').insert({
-      user_id_1: id1,
-      user_id_2: id2,
+    const { error } = await supabase.from('friendships').insert({
+      user_id_1: viewerId,
+      user_id_2: personId,
       status: 'pending',
       action_user_id: viewerId
     });
     
-    if (!insertError) {
+    if (!error) {
       setPendingRequests([...pendingRequests, personId]);
     } else {
-      alert("Ett fel uppstod: " + insertError.message);
+      alert("Ett fel uppstod: " + error.message);
     }
-  };
-
-  const handleRemoveFriend = async (e: React.MouseEvent, personId: string) => {
-    e.stopPropagation();
-    if (!viewerId) return;
-    if (!confirm("Är du säker på att du vill ta bort den här personen som vän?")) return;
-    
-    const { createBrowserClient } = await import('@supabase/ssr');
-    const supabase = createBrowserClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-    );
-    
-    const id1 = viewerId < personId ? viewerId : personId;
-    const id2 = viewerId < personId ? personId : viewerId;
-    
-    await supabase.from('friendships').delete().eq('user_id_1', id1).eq('user_id_2', id2);
-    setFriends(friends.filter(f => f !== personId));
   };
 
   return (
@@ -232,7 +171,6 @@ export default function SokOchSpana() {
       <h2 style={{ fontSize: '1.25rem', marginBottom: '1.5rem', color: 'var(--text-main)', fontWeight: '600' }}>Kanske känner du...</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '1.5rem' }}>
         {people
-          .filter(person => !blockedUserIds.includes(person.id))
           .filter(person => selectedCity === 'Alla Städer' || person.city === selectedCity)
           .filter(person => selectedInterest === 'Alla Intressen' || (person.interests && person.interests.includes(selectedInterest)))
           .filter(person => !searchQuery || (person.username && person.username.toLowerCase().includes(searchQuery.toLowerCase())))
@@ -243,21 +181,22 @@ export default function SokOchSpana() {
              const now = new Date();
              return (now.getTime() - lastSeenDate.getTime()) <= 15 * 60 * 1000;
           })
-          .map((person) => {
+          .map((person, index) => {
             const isFriend = friends.includes(person.id);
             const isPending = pendingRequests.includes(person.id);
             const isOnline = person.last_seen ? (new Date().getTime() - new Date(person.last_seen).getTime()) <= 15 * 60 * 1000 : false;
 
             return (
-              <div key={person.id} className="card" onClick={() => window.location.href = `/krypin?u=${person.username}`} style={{ padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 0, position: 'relative', transition: 'transform 0.2s', cursor: 'pointer' }}>
+              <div key={index} className="card" onClick={() => window.location.href = `/krypin?u=${person.username}`} style={{ padding: '2rem 1.5rem', display: 'flex', flexDirection: 'column', alignItems: 'center', margin: 0, position: 'relative', transition: 'transform 0.2s', cursor: 'pointer' }}>
                 <div title={isOnline ? 'Inloggad just nu' : 'Offline'} style={{ position: 'absolute', top: '1.5rem', right: '1.5rem', width: '12px', height: '12px', backgroundColor: isOnline ? '#22c55e' : '#ef4444', borderRadius: '50%', border: '2px solid white' }}></div>
                 <div style={{ width: '90px', height: '90px', borderRadius: '50%', backgroundColor: '#e2e8f0', marginBottom: '1.25rem', overflow: 'hidden' }}>
                   {person.avatar_url && <img src={person.avatar_url} style={{ width:'100%', height:'100%', objectFit:'cover' }} alt="Avatar" />}
                 </div>
-                <h3 className="user-link" style={{ fontSize: '1.125rem', marginBottom: '0.25rem', textAlign: 'center' }}>{person.username || 'Okänd'}</h3>
+                <h3 className="user-link" style={{ fontSize: '1.125rem', marginBottom: '0.25rem', textAlign: 'center' }}>@{person.username || 'Okänd'}</h3>
                 <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', marginBottom: '0.25rem', fontWeight: '500' }}>📍 {person.city || 'Okänd ort'}</p>
+                
                 {isFriend ? (
-                  <button onClick={(e) => handleRemoveFriend(e, person.id)} style={{ width: '100%', backgroundColor: '#f0fdf4', color: '#166534', fontWeight: '600', padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px solid #bbf7d0', cursor: 'pointer' }} className="hover-lift">
+                  <button onClick={(e) => e.stopPropagation()} style={{ width: '100%', backgroundColor: '#f0fdf4', color: '#166534', fontWeight: '600', padding: '0.75rem', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', border: '1px solid #bbf7d0', cursor: 'default' }}>
                     <UserPlus size={18} /> ✅ Vänner
                   </button>
                 ) : isPending ? (
