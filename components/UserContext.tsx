@@ -114,9 +114,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  // 1. INITIAL LOAD (Runs only on mount)
   useEffect(() => {
-    fetchUserAndProfile();
+    // Vi förlitar oss på onAuthStateChange för att sköta synken.
+    // Detta för att undvika att Mount-processen och Listener-processen krockar och låser Auth-klienten.
+  }, []);
 
+  // 2. AUTH CHANGE LISTENER (Körs vid inloggning, utloggning och vid start)
+  useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log('[UserContext] Auth Change Triggered:', event);
       const currentUser = session?.user || null;

@@ -11,7 +11,7 @@ export default function PushManager() {
     if (loading) return;
 
     if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
-      navigator.serviceWorker.register('/sw.js?v=3').then(
+      navigator.serviceWorker.register('/sw.js?v=4').then(
         function (registration) {
           console.log('Service Worker registration successful with scope: ', registration.scope)
         },
