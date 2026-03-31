@@ -469,8 +469,8 @@ function ChattrumContent() {
       {/* Mitten: Chatt */}
       <div className={`card chat-main-card ${isSpectator ? 'spectator-mode' : ''}`} style={{ margin: 0, padding: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden', border: isSpectator ? '3px solid #ef4444' : '1px solid var(--border-color)', boxShadow: isSpectator ? '0 0 20px rgba(239, 68, 68, 0.2)' : 'none' }}>
         
-        {/* Mobile Header Toggle */}
-        <div className="mobile-only-flex" style={{ padding: '0.5rem 1rem', borderBottom: '1px solid var(--border-color)', backgroundColor: isSpectator ? '#fef2f2' : 'var(--bg-card)', alignItems: 'center', justifyContent: 'space-between' }}>
+        {/* Mobile Header Toggle (Fixed at top) */}
+        <div className="mobile-only-flex" style={{ position: 'sticky', top: 0, zIndex: 500, padding: '0.5rem 1rem', borderBottom: '1px solid var(--border-color)', backgroundColor: isSpectator ? '#fef2f2' : 'var(--bg-card)', alignItems: 'center', justifyContent: 'space-between' }}>
            <button onClick={() => setMobileDropdownOpen(!mobileDropdownOpen)} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'none', border: 'none', color: 'var(--theme-chat)', fontWeight: '600' }}>
               #{activeRoom ? activeRoom.name : 'Byt Rum'} <ChevronDown size={14} style={{ transform: mobileDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
            </button>
@@ -507,7 +507,7 @@ function ChattrumContent() {
 
         {/* Mobile Room Selection Overlay */}
         {mobileDropdownOpen && (
-          <div className="mobile-only-block" style={{ position: 'absolute', top: '50px', left: 0, right: 0, bottom: 0, zIndex: 50, backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1.5rem', overflowY: 'auto', animation: 'fadeIn 0.2s ease-out' }}>
+          <div className="mobile-only-block" style={{ position: 'fixed', top: '100px', left: 0, right: 0, bottom: 0, zIndex: 1100, backgroundColor: 'white', display: 'flex', flexDirection: 'column', gap: '0.8rem', padding: '1.5rem', overflowY: 'auto', animation: 'fadeIn 0.2s ease-out' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
                <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text-muted)', letterSpacing: '0.05rem' }}>TILLGÄNGLIGA RUM</div>
                <button onClick={() => setMobileDropdownOpen(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: '50%', width: '32px', height: '32px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-main)', cursor: 'pointer' }}>

@@ -167,15 +167,25 @@ export default function MinaSidor() {
          });
        
        // Starta lyssnare för just detta ärende
+       const fetchTickets = () => {
+          supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
+             if (data) setMyTickets(data);
+          });
+       };
+
        const ticketSub = supabase.channel(`user-support-realtime-${currentUser.id}`)
-         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${currentUser.id}` }, () => {
-            supabase.from('support_tickets').select('*').eq('user_id', currentUser.id).eq('user_deleted', false).order('created_at', { ascending: false }).then(({data}) => {
-               if (data) setMyTickets(data);
-            });
-         })
+         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets', filter: `user_id=eq.${currentUser.id}` }, () => fetchTickets())
          .subscribe();
        
+       const handleWakeUp = () => {
+          if (document.visibilityState === 'visible') fetchTickets();
+       };
+       window.addEventListener('focus', handleWakeUp);
+       document.addEventListener('visibilitychange', handleWakeUp);
+
        return () => {
+         window.removeEventListener('focus', handleWakeUp);
+         document.removeEventListener('visibilitychange', handleWakeUp);
          supabase.removeChannel(ticketSub);
        };
     }
