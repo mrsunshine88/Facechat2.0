@@ -98,8 +98,20 @@ export default function Forumet() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'forum_posts' }, () => init())
       .subscribe();
 
-    return () => { supabase.removeChannel(sub); };
-  }, [searchQuery]); // Trigger re-init on search
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        init();
+      }
+    };
+    window.addEventListener('focus', handleWakeUp);
+    document.addEventListener('visibilitychange', handleWakeUp);
+
+    return () => {
+      window.removeEventListener('focus', handleWakeUp);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      supabase.removeChannel(sub);
+    };
+  }, [searchQuery, supabase]); // Trigger re-init on search or if supabase client changes
 
   async function fetchMoreThreads() {
      if (isFetchingMore || !hasMore) return;

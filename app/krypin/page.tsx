@@ -408,18 +408,37 @@ function MittKrypinContent() {
              globalChannel = supabase.channel('realtime_krypin_' + profileToView.id)
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'guestbook' }, () => fetchGuestbook(profileToView.id))
                 .on('postgres_changes', { event: '*', schema: 'public', table: 'private_messages' }, () => fetchMessages(activeUser.id))
+                .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => fetchFriends(profileToView.id, activeUser.id))
                 .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles' }, (payload: any) => {
                    if (payload.new.id === activeUser.id && payload.new.is_banned) window.location.href = '/bannad';
-                   if (payload.new.id === profileToView.id) setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
+                   if (payload.new.id === profileToView.id) {
+                      setCurrentUser((prev: any) => ({ ...prev, ...payload.new }));
+                      // If presentation or style changed, ensure it's reflected
+                      if (payload.new.presentation) setPresentationText(payload.new.presentation);
+                   }
                 })
                 .subscribe();
+
+             const handleWakeUp = () => {
+                if (document.visibilityState === 'visible') {
+                   fetchGuestbook(profileToView.id);
+                   fetchFriends(profileToView.id, activeUser.id);
+                   if (!targetUsername || targetUsername === activeUser.username) {
+                      fetchMessages(activeUser.id);
+                   }
+                }
+             };
+             window.addEventListener('focus', handleWakeUp);
+             document.addEventListener('visibilitychange', handleWakeUp);
+
+             return () => {
+                window.removeEventListener('focus', handleWakeUp);
+                document.removeEventListener('visibilitychange', handleWakeUp);
+                if (globalChannel) supabase.removeChannel(globalChannel);
+             };
           } catch (err) { console.error("Init data error:", err); }
        }
        if (!userLoading) initData();
-
-       return () => {
-          if (globalChannel) supabase.removeChannel(globalChannel);
-       };
     }, [targetUsername, globalViewer, userLoading, supabase]);
 
    const chatWith = searchParams?.get('chatWith');

@@ -146,6 +146,28 @@ END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
 
+-- 2.2 Bild-optimerare (RPC)
+-- -------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION public.optimize_uploaded_images()
+RETURNS integer AS $$
+DECLARE
+  optimized_images integer;
+BEGIN
+  -- BILD-OPTIMERING: Tvinga 400px Jpeg (80%) på alla avatarer genom att rensa gamla parametrar
+  WITH upd AS (
+      UPDATE public.profiles 
+      SET avatar_url = split_part(avatar_url, '?', 1) || '?width=400&quality=80'
+      WHERE avatar_url IS NOT NULL 
+        AND avatar_url != '' 
+        AND avatar_url NOT LIKE '%width=400&quality=80%'
+      RETURNING 1
+  ) SELECT count(*) INTO optimized_images FROM upd;
+  
+  RETURN COALESCE(optimized_images, 0);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+
 -- 3. NATTLIG UNDERHÅLLSRUTIN (03:00)
 -- -------------------------------------------------------------------------
 
@@ -160,8 +182,8 @@ DECLARE
     admin_id uuid;
     log_msg text;
 BEGIN
-    -- Hämta Root Admin ID för loggning
-    SELECT id INTO admin_id FROM public.profiles WHERE auth_email = 'apersson508@gmail.com' LIMIT 1;
+    -- Hämta Root Admin ID för loggning (Använder nu is_root flaggan)
+    SELECT id INTO admin_id FROM public.profiles WHERE is_root = true LIMIT 1;
 
     -- Kör alla lagningar
     links_fixed := public.fix_dead_links();
@@ -174,8 +196,8 @@ BEGIN
     DELETE FROM public.notifications WHERE created_at < NOW() - INTERVAL '30 days';
     GET DIAGNOSTICS notifs_cleaned = ROW_COUNT;
     
-    -- Skapa loggmeddelandet
-    log_msg := format('SYSTEM: Nattlig städning klar. Raderade %s herrelösa bilder, fixade %s döda länkar, lade till %s saknade profiler och rensade %s gamla notiser.', 
+    -- Skapa loggmeddelandet (Sätt prefix till Vårdcentralen: för att synas i admin)
+    log_msg := format('Vårdcentralen: Nattlig städning klar. Raderade %s herrelösa bilder, fixade %s döda länkar, lade till %s saknade profiler och rensade %s gamla notiser.', 
         images_cleaned, links_fixed, profiles_fixed, notifs_cleaned);
     
     -- Logga resultatet i admin_logs om admin_id hittades

@@ -94,8 +94,20 @@ export default function Whiteboard() {
       })
       .subscribe()
 
-    return () => { supabase.removeChannel(channel) }
-  }, [userLoading, supabase])
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData(0, true);
+      }
+    };
+    window.addEventListener('focus', handleWakeUp);
+    document.addEventListener('visibilitychange', handleWakeUp);
+
+    return () => {
+      window.removeEventListener('focus', handleWakeUp);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      supabase.removeChannel(channel);
+    };
+  }, [userLoading, supabase]);
 
 
 

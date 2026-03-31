@@ -57,12 +57,22 @@ export default function ForumThreadPage({ params }: { params: Promise<{ id: stri
     const handleResize = () => setWindowWidth(window.innerWidth);
     window.addEventListener('resize', handleResize);
 
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        fetchThread();
+      }
+    };
+    window.addEventListener('focus', handleWakeUp);
+    document.addEventListener('visibilitychange', handleWakeUp);
+
     return () => { 
+      window.removeEventListener('focus', handleWakeUp);
+      document.removeEventListener('visibilitychange', handleWakeUp);
       supabase.removeChannel(channel);
       supabase.removeChannel(blockChannel);
       window.removeEventListener('resize', handleResize);
     }
-  }, [id])
+  }, [id, supabase]);
 
   async function fetchThread() {
     const { data: { user } } = await supabase.auth.getUser()

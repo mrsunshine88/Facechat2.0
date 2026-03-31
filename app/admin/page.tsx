@@ -121,7 +121,17 @@ export default function AdminPanel() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'support_tickets' }, () => fetchUnread())
         .subscribe();
 
-      return () => { supabase.removeChannel(sub); };
+      const handleWakeUp = () => {
+        if (document.visibilityState === 'visible') fetchUnread();
+      };
+      window.addEventListener('focus', handleWakeUp);
+      document.addEventListener('visibilitychange', handleWakeUp);
+
+      return () => {
+        window.removeEventListener('focus', handleWakeUp);
+        document.removeEventListener('visibilitychange', handleWakeUp);
+        supabase.removeChannel(sub);
+      };
     }
   }, [userProfile]);
 
@@ -145,7 +155,17 @@ export default function AdminPanel() {
         .on('postgres_changes', { event: '*', schema: 'public', table: 'reports' }, () => fetchReportsCount())
         .subscribe();
 
-      return () => { supabase.removeChannel(sub); };
+      const handleWakeUp = () => {
+        if (document.visibilityState === 'visible') fetchReportsCount();
+      };
+      window.addEventListener('focus', handleWakeUp);
+      document.addEventListener('visibilitychange', handleWakeUp);
+
+      return () => {
+        window.removeEventListener('focus', handleWakeUp);
+        document.removeEventListener('visibilitychange', handleWakeUp);
+        supabase.removeChannel(sub);
+      };
     }
   }, [userProfile]);
 

@@ -202,7 +202,20 @@ function ChattrumContent() {
         }
       });
 
-    return () => { roomChannel.untrack().then(() => { supabase.removeChannel(roomChannel); }); };
+    // VAKEN-KONTROLL: När mobilen låses upp eller fliken får fokus igen, hämta ev. missade meddelanden.
+    const handleWakeUp = () => {
+      if (document.visibilityState === 'visible') {
+        fetchMessages(activeRoom.id);
+      }
+    };
+    window.addEventListener('focus', handleWakeUp);
+    document.addEventListener('visibilitychange', handleWakeUp);
+
+    return () => {
+      window.removeEventListener('focus', handleWakeUp);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      roomChannel.untrack().then(() => { supabase.removeChannel(roomChannel); });
+    };
   }, [activeRoom, currentUser, supabase]);
 
   async function fetchMessages(roomId: string) {
@@ -510,7 +523,8 @@ function ChattrumContent() {
                     backgroundColor: activeRoom?.id === room.id ? 'var(--theme-chat)' : '#f1f5f9', 
                     color: activeRoom?.id === room.id ? 'white' : 'var(--text-main)', 
                     border: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    fontWeight: '600', fontSize: '1.1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)'
+                    fontWeight: '600', fontSize: '1.1rem', boxShadow: '0 2px 4px rgba(0,0,0,0.05)',
+                    marginBottom: '0.5rem'
                   }}
                >
                   <span style={{ display: 'flex', alignItems: 'center', gap: '0.8rem' }}>
@@ -519,8 +533,22 @@ function ChattrumContent() {
                   {room.password && <Lock size={16} />}
                </button>
             ))}
+
+            <button 
+              onClick={() => { setShowCreateModal(true); setMobileDropdownOpen(false); }}
+              style={{ 
+                width: '100%', padding: '1.2rem', borderRadius: '16px', 
+                border: '2px dashed var(--theme-chat)', color: 'var(--theme-chat)', 
+                fontWeight: 'bold', backgroundColor: 'transparent', marginTop: '1rem',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.8rem',
+                fontSize: '1.1rem'
+              }}
+            >
+              <PlusCircle size={20} /> Skapa nytt rum
+            </button>
+            
             <div style={{ marginTop: 'auto', padding: '1rem 0', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
-               Använd plus-knappen nere i hörnet för att skapa nya rum.
+               Tryck på knappen ovan för att starta ett nytt privat chattrum.
             </div>
           </div>
         )}
@@ -566,10 +594,7 @@ function ChattrumContent() {
          ))}
       </div>
 
-      {/* Floating Plus Mobile */}
-      <div className="mobile-only-block" style={{ position: 'fixed', bottom: '80px', left: '20px', zIndex: 60 }}>
-         <button onClick={() => setShowCreateModal(true)} style={{ width: '56px', height: '56px', borderRadius: '50%', backgroundColor: 'var(--theme-chat)', color: 'white', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><Plus size={28}/></button>
-      </div>
+
 
       {/* MODALS */}
       {showReportModal && (
