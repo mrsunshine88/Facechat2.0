@@ -21,11 +21,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
   const router = useRouter();
-  const pathname = usePathname();
-  const isSecurityInit = useRef(false);
-
-  const syncingRef = useRef<string | null>(null);
-
   const fetchUserAndProfile = async () => {
     try {
       setLoading(true);
@@ -59,77 +54,71 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const syncProfileData = async (userId: string, attempt = 1): Promise<void> => {
-    // Förhindra att flera synkar körs samtidigt för samma användare
-    if (syncingRef.current === userId && attempt === 1) return;
-    syncingRef.current = userId;
+  const syncProfileData = async (userId: string): Promise<void> => {
+    const localSessKey = localStorage.getItem('facechat_session_key');
+    let profData: any = null;
+    let success = false;
 
-    try {
-      let { data: profData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-      const localSessKey = localStorage.getItem('facechat_session_key');
+    // --- AGGRESSIV DB-SYNK (Loop 3 försök) ---
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const waitTime = (attempt - 1) * 1000; // 0s, 1s, 2s
+      if (waitTime > 0) await new Promise(resolve => setTimeout(resolve, waitTime));
 
-      // --- AGGRESSIV DB-SYNK (Upp till 3 försök) ---
-      const needsRetry = !profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey);
+      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
-      if (needsRetry && attempt <= 3) {
-          const waitTime = attempt * 800; // 800ms, 1600ms, 2400ms
-          console.log(`[UserContext] Retry ${attempt}/3 för ${userId}. Väntar ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-          return await syncProfileData(userId, attempt + 1);
+      // Validera: Finns profilen? Matcha även sessions-nyckeln om den finns
+      const isMismatch = data?.session_key && localSessKey && data.session_key !== localSessKey;
+      
+      if (data && !isMismatch) {
+          profData = data;
+          success = true;
+          break;
+      }
+      console.log(`[UserContext] Synk-försök ${attempt} misslyckades för ${userId}. Retrying...`);
+    }
+
+    if (success && profData) {
+      // Special-check för Root - Tappa ALDRIG bort Root-status!
+      const isRoot = profData.auth_email === 'apersson508@gmail.com' || profData.is_root === true;
+      
+      if (profData.is_banned && !isRoot) {
+        await supabase.auth.signOut();
+        window.location.href = '/login?error=Bannad';
+        return;
       }
 
-      if (profData) {
-        // Special-check för Root (A. Persson) - Tappa aldrig bort Root-status!
-        const isRootEmail = profData.auth_email === 'apersson508@gmail.com' || userId === '66e138a2-f81d-4886-987a-b50a04910cfb'; // Exempel-ID för Root
-        
-        if (profData.is_banned && !isRootEmail) {
-          await supabase.auth.signOut();
-          window.location.href = '/login?error=Bannad';
-          return;
-        }
-
-        // Sessions-kontroll (Bara om det verkligen inte matchar efter alla retries)
-        if (profData.session_key && localSessKey && profData.session_key !== localSessKey && !isRootEmail) {
-          console.warn('[UserContext] Session mismatch.');
-          await supabase.auth.signOut();
-          window.location.href = '/login?error=session_conflict';
-          return;
-        }
-
-        setProfile(profData);
-      } else {
-        setProfile(null);
+      // Sessions-kontroll (Sista utvägen om nyckeln fortfarande diffar efter alla retries)
+      if (profData.session_key && localSessKey && profData.session_key !== localSessKey && !isRoot) {
+        console.warn('[UserContext] Allvarlig sessions-krock.');
+        await supabase.auth.signOut();
+        window.location.href = '/login?error=session_conflict';
+        return;
       }
-    } catch (err) {
-      console.error('[UserContext] Sync error:', err);
-    } finally {
-      if (attempt >= 3 || !syncingRef.current) {
-         syncingRef.current = null;
-      }
+
+      setProfile(profData);
+    } else {
+      // Om vi INTE hittade profilen efter 3 försök, men vi har ett user-objekt...
+      // Detta händer nästan bara för helt nya konton som inte hunnit skriva sin profil än.
+      setProfile(null);
     }
   };
 
   useEffect(() => {
-    // Initial laddning
     fetchUserAndProfile();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('[UserContext] Auth Event:', event);
       const currentUser = session?.user || null;
       
-      // Om användaren loggar ut, rensa direkt och avbryt allt annat
       if (event === 'SIGNED_OUT' || !currentUser) {
         setUser(null);
         setProfile(null);
         setLoading(false);
-        syncingRef.current = null;
         localStorage.removeItem('facechat_persistent_session');
         return;
       }
 
       setUser(currentUser);
       
-      // Vid inloggning eller sessionsförnyelse, synka profilen
       if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         setLoading(true);
         await syncProfileData(currentUser.id);
