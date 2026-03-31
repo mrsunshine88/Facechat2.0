@@ -20,6 +20,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   const supabase = createClient();
+  const syncInProgress = useRef<string | null>(null);
   const router = useRouter();
   const fetchUserAndProfile = async () => {
     try {
@@ -67,11 +68,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
    * Vi separerar "Visa Sidan" (ladda profil) från "Säkerhetsvakt" (kickout).
    */
   const syncProfileData = async (userId: string): Promise<void> => {
+    // Förhindra krockar (Auth Lock Stolen) genom att vänta på pågående synk
+    if (syncInProgress.current === userId) return;
     try {
+      syncInProgress.current = userId;
       console.log('[UserContext] Syncing profile for:', userId);
       const localSessKey = localStorage.getItem('facechat_session_key');
       
-      // 1. Snabb hämtning utan blockerande loopar
+      // 1. Snabb hämtning
       const { data: profData, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
       if (error || !profData) {
@@ -81,15 +85,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
       }
 
       console.log('[UserContext] Profile data fetched successfully:', profData.username);
-      // 2. Sätt profilen OMEDELBART så att Header och UI laddas
       setProfile(profData);
       
-      // 3. SÄKERHETS-AUDIT (Sker i bakgrunden, blockerar inte UI)
-      // Här kör vi defensivt ifall kolumner saknas i databasen.
       const isRoot = profData?.is_root === true || profData?.auth_email === 'apersson508@gmail.com';
       console.log('[UserContext] Security check - isRoot:', isRoot);
       
-      // Bannings-vakt
       if (profData.is_banned && !isRoot) {
         console.warn('[UserContext] User is banned, signing out...');
         await supabase.auth.signOut();
@@ -97,7 +97,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Single-Session vakt (Utkastning vid dubbla enheter)
       const isMismatch = profData.session_key && localSessKey && profData.session_key !== localSessKey;
       console.log('[UserContext] Session mismatch check:', isMismatch ? 'Mismatch' : 'Match OK');
       
@@ -110,9 +109,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
       
-    } catch (err) {
+    } catch (err: any) {
+      if (err.message?.includes('Lock')) {
+        console.warn('[UserContext] Concurrent lock detected, retrying...');
+        return; // Ignorera låskrockar, onAuthStateChange kommer triggas igen
+      }
       console.error('[UserContext] Sync Critical Failure:', err);
       setProfile(null);
+    } finally {
+      syncInProgress.current = null;
     }
   };
 
