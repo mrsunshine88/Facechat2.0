@@ -138,9 +138,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
           
           if (payload.new.is_banned) {
             supabase.auth.signOut().then(() => {
+                localStorage.removeItem('facechat_persistent_session');
+                localStorage.removeItem('facechat_session_key');
                 window.location.href = '/login?error=Ditt konto har blivit avstängt.';
             });
             return;
+          }
+
+          // 2. REAL-TIME SESSION ENFORCEMENT
+          // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart.
+          const localSessKey = localStorage.getItem('facechat_session_key');
+          if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey) {
+             console.warn('[UserContext] Real-time session mismatch detected - Logging out.');
+             supabase.auth.signOut().then(() => {
+                localStorage.removeItem('facechat_persistent_session');
+                localStorage.removeItem('facechat_session_key');
+                window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
+             });
           }
 
 
