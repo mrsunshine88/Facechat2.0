@@ -23,24 +23,32 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const fetchUserAndProfile = async () => {
     try {
+      console.log('[UserContext] Starting fetchUserAndProfile...');
       setLoading(true);
       const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
       
-      // 1. VIKTIGT: Använd getUser() istället för getSession() för att tvinga fram server-validering!
-      // Detta eliminerar "stale sessions" som orsakar vita skärmar pga RLS-blockering.
+      console.log('[UserContext] Fetching auth user...');
       const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
       
-      if (authError && hasPersistentHint) {
-         console.log('[UserContext] Förväntad session saknas. Försöker återhämta (2s)...');
-         await new Promise(resolve => setTimeout(resolve, 2000));
-         const secondTry = await supabase.auth.getUser();
-         setUser(secondTry.data.user || null);
-         if (secondTry.data.user) await syncProfileData(secondTry.data.user.id);
+      if (authError) {
+         console.warn('[UserContext] Auth error:', authError.message);
+         if (hasPersistentHint) {
+            console.log('[UserContext] Persistent hint found, retry in 2s...');
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const secondTry = await supabase.auth.getUser();
+            console.log('[UserContext] Second try result:', secondTry.data.user ? 'User Found' : 'User Still Missing');
+            setUser(secondTry.data.user || null);
+            if (secondTry.data.user) await syncProfileData(secondTry.data.user.id);
+         } else {
+            setUser(null);
+         }
       } else {
+         console.log('[UserContext] User found:', currentUser?.id);
          setUser(currentUser);
          if (currentUser) {
             await syncProfileData(currentUser.id);
          } else {
+            console.log('[UserContext] No user in auth session.');
             setProfile(null);
             if (hasPersistentHint) localStorage.removeItem('facechat_persistent_session');
          }
@@ -49,6 +57,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.error('[UserContext] Auth Initialization Error:', error);
       setProfile(null);
     } finally {
+      console.log('[UserContext] fetchUserAndProfile finished, loading = false');
       setLoading(false);
     }
   };
@@ -59,6 +68,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
    */
   const syncProfileData = async (userId: string): Promise<void> => {
     try {
+      console.log('[UserContext] Syncing profile for:', userId);
       const localSessKey = localStorage.getItem('facechat_session_key');
       
       // 1. Snabb hämtning utan blockerande loopar
@@ -70,15 +80,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
 
+      console.log('[UserContext] Profile data fetched successfully:', profData.username);
       // 2. Sätt profilen OMEDELBART så att Header och UI laddas
       setProfile(profData);
       
       // 3. SÄKERHETS-AUDIT (Sker i bakgrunden, blockerar inte UI)
       // Här kör vi defensivt ifall kolumner saknas i databasen.
       const isRoot = profData?.is_root === true || profData?.auth_email === 'apersson508@gmail.com';
+      console.log('[UserContext] Security check - isRoot:', isRoot);
       
       // Bannings-vakt
       if (profData.is_banned && !isRoot) {
+        console.warn('[UserContext] User is banned, signing out...');
         await supabase.auth.signOut();
         window.location.href = '/login?error=Bannad';
         return;
@@ -86,6 +99,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       // Single-Session vakt (Utkastning vid dubbla enheter)
       const isMismatch = profData.session_key && localSessKey && profData.session_key !== localSessKey;
+      console.log('[UserContext] Session mismatch check:', isMismatch ? 'Mismatch' : 'Match OK');
       
       if (isMismatch && !isRoot) {
         console.warn('[UserContext] Session mismatch detected - Enforcing single session policy.');
