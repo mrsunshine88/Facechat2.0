@@ -76,8 +76,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.log('[UserContext] Syncing profile for:', userId);
       const localSessKey = localStorage.getItem('facechat_session_key');
       
-      // 1. Stabil hämtning (Ingen silvertejp/timeout)
-      const { data: profData, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      // 1. Diagnostisk Hämtning: Hämta endast baskonfiguration för att se var det hänger sig.
+      // (Bypass för att utesluta data-korruption i tunga fält som custom_style)
+      const { data: profData, error } = await supabase.from('profiles')
+        .select('id, username, avatar_url, is_admin, is_root, auth_email, is_banned, session_key')
+        .eq('id', userId)
+        .single();
       
       if (error || !profData) {
         console.warn('[UserContext] Profil kunde inte laddas:', error?.message);
