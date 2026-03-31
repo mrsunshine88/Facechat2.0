@@ -26,28 +26,27 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setLoading(true);
       const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
       
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      if (sessionError) throw sessionError;
-
-      let finalSession = session;
-      if (!session && hasPersistentHint) {
-         console.log('[UserContext] Väntar på mobil-disk (2s)...');
+      // 1. VIKTIGT: Använd getUser() istället för getSession() för att tvinga fram server-validering!
+      // Detta eliminerar "stale sessions" som orsakar vita skärmar pga RLS-blockering.
+      const { data: { user: currentUser }, error: authError } = await supabase.auth.getUser();
+      
+      if (authError && hasPersistentHint) {
+         console.log('[UserContext] Förväntad session saknas. Försöker återhämta (2s)...');
          await new Promise(resolve => setTimeout(resolve, 2000));
-         const secondTry = await supabase.auth.getSession();
-         finalSession = secondTry.data.session;
-      }
-
-      const currentUser = finalSession?.user || null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        await syncProfileData(currentUser.id);
+         const secondTry = await supabase.auth.getUser();
+         setUser(secondTry.data.user || null);
+         if (secondTry.data.user) await syncProfileData(secondTry.data.user.id);
       } else {
-        setProfile(null);
-        if (hasPersistentHint) localStorage.removeItem('facechat_persistent_session');
+         setUser(currentUser);
+         if (currentUser) {
+            await syncProfileData(currentUser.id);
+         } else {
+            setProfile(null);
+            if (hasPersistentHint) localStorage.removeItem('facechat_persistent_session');
+         }
       }
     } catch (error: any) {
-      console.error('[UserContext] Fetch error:', error);
+      console.error('[UserContext] Auth Initialization Error:', error);
       setProfile(null);
     } finally {
       setLoading(false);
@@ -64,8 +63,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       const waitTime = (attempt - 1) * 1000; // 0s, 1s, 2s
       if (waitTime > 0) await new Promise(resolve => setTimeout(resolve, waitTime));
 
-      const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
+      if (error) {
+         console.warn(`[UserContext] Profilfel (försök ${attempt}):`, error.message);
+      }
+
       // Validera: Finns profilen? Matcha även sessions-nyckeln om den finns
       const isMismatch = data?.session_key && localSessKey && data.session_key !== localSessKey;
       
@@ -74,11 +77,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
           success = true;
           break;
       }
-      console.log(`[UserContext] Synk-försök ${attempt} misslyckades för ${userId}. Retrying...`);
     }
 
     if (success && profData) {
-      // Special-check för Root - Tappa ALDRIG bort Root-status!
       const isRoot = profData.auth_email === 'apersson508@gmail.com' || profData.is_root === true;
       
       if (profData.is_banned && !isRoot) {
@@ -87,9 +88,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Sessions-kontroll (Sista utvägen om nyckeln fortfarande diffar efter alla retries)
       if (profData.session_key && localSessKey && profData.session_key !== localSessKey && !isRoot) {
-        console.warn('[UserContext] Allvarlig sessions-krock.');
+        console.warn('[UserContext] Session mismatch persist - Signing out.');
         await supabase.auth.signOut();
         window.location.href = '/login?error=session_conflict';
         return;
@@ -97,8 +97,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       setProfile(profData);
     } else {
-      // Om vi INTE hittade profilen efter 3 försök, men vi har ett user-objekt...
-      // Detta händer nästan bara för helt nya konton som inte hunnit skriva sin profil än.
       setProfile(null);
     }
   };
@@ -107,6 +105,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     fetchUserAndProfile();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[UserContext] Auth Change Triggered:', event);
       const currentUser = session?.user || null;
       
       if (event === 'SIGNED_OUT' || !currentUser) {
@@ -119,7 +118,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
       setUser(currentUser);
       
-      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
+      if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setLoading(true);
         await syncProfileData(currentUser.id);
         setLoading(false);
