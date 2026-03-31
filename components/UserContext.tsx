@@ -125,7 +125,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
         setUser(null);
         setProfile(null);
         setLoading(false);
+        // NUCLEAR LOGOUT: Rensa allt för att undvika "Stale Session" hängningar
         localStorage.removeItem('facechat_persistent_session');
+        localStorage.removeItem('facechat_session_key');
         return;
       }
 
