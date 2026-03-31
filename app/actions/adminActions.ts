@@ -62,7 +62,9 @@ export async function toggleBlockUser(userId: string, newStatus: boolean) {
     // Root Protection (Baserat på is_root flaggan)
     const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
     if (targetProfile?.is_root) {
-      await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte BLOCKERA Root-användaren (${targetProfile.username})`, userId);
+      if (!isRoot) {
+        await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte BLOCKERA Root-användaren (${targetProfile.username})`, userId);
+      }
       throw new Error('Säkerhetsspärr: Root-administratören kan aldrig bannlysas.');
     }
 
@@ -225,12 +227,14 @@ export async function adminRemoveSecretUserFromRoom(roomId: string, targetUserId
 
 export async function adminUpdatePermissions(userId: string, payload: any) {
   try {
-    const { userId: executorId } = await verifyAdminPermission('perm_roles');
+    const { userId: executorId, isRoot } = await verifyAdminPermission('perm_roles');
 
     // Root Protection (Baserat på is_root flaggan)
     const { data: targetProfile } = await getAdminClient().from('profiles').select('username, is_root').eq('id', userId).single();
     if (targetProfile?.is_root) {
-      await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte ÄNDRA BEHÖRIGHET på Root-användaren (${targetProfile.username})`, userId);
+      if (!isRoot) {
+        await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte ÄNDRA BEHÖRIGHET på Root-användaren (${targetProfile.username})`, userId);
+      }
       throw new Error('Säkerhetsspärr: Root-administratörens roller kan aldrig ändras.');
     }
 
@@ -298,7 +302,7 @@ export async function adminResetAvatar(targetUserId: string) {
     
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
-    if (target?.is_root) {
+    if (target?.is_root && !isRoot) {
        await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte RADERA PROFILBILDEN på Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens bild kan inte nollställas här.');
     }
@@ -319,7 +323,7 @@ export async function adminResetPresentation(targetUserId: string) {
     
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
-    if (target?.is_root) {
+    if (target?.is_root && !isRoot) {
        await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte RENSA BIO/KRYPIN för Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens bio kan inte nollställas här.');
     }
@@ -336,11 +340,11 @@ export async function adminResetPresentation(targetUserId: string) {
 
 export async function adminResetTheme(targetUserId: string) {
   try {
-    await verifyAdminPermission('perm_content');
+    const { isRoot } = await verifyAdminPermission('perm_content');
     
     // Root-skydd (Baserat på is_root flaggan)
     const { data: target } = await getAdminClient().from('profiles').select('username, is_root').eq('id', targetUserId).single();
-    if (target?.is_root) {
+    if (target?.is_root && !isRoot) {
        await adminLogAction(`🚨 ALLVARLIGT: Misslyckat angrepp! Administratör försökte NOLLSTÄLLA CSS för Root-användaren (${target.username})`, targetUserId);
        throw new Error('Säkerhetsspärr: Root-administratörens tema kan inte nollställas här.');
     }
