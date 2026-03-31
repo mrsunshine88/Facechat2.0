@@ -58,19 +58,27 @@ export default function Header() {
   // BACKGROUND SECURITY HEARTBEAT (Runs once on mount + every 60s)
   // Fixar "0 inloggade" felet i Admin genom att faktiskt uppdatera databasen!
   useEffect(() => {
-    if (!user || isBlockedRoute || isLoginRoute) return;
+    if (!user || isBlockedRoute || isLoginRoute || userLoading) return;
     
     const sendHeartbeat = async () => {
       try {
-        await syncUserHeartbeatAction(user.id);
+        // Kontrollera sessionens giltighet (Nyckel A vs Nyckel B) var 60:e sekund
+        const res = await syncUserHeartbeatAction(user.id);
+        
+        // Om sessionen inte matchar (t.ex. mobilen loggat in), kasta ut datorn lugnt och fint.
+        const isRoot = profile?.is_root || profile?.auth_email === 'apersson508@gmail.com';
+        if (res?.error === 'Inaktiv session' && !isRoot) {
+           console.warn('[Heartbeat] Session mismatch detected. Safety logout triggered.');
+           handleLogout();
+        }
       } catch (err) {}
     };
 
-    sendHeartbeat(); // Direkt vid start
+    sendHeartbeat(); // Direkt vid start (när profile laddat)
     const interval = setInterval(sendHeartbeat, 60000); // Varje minut
     
     return () => clearInterval(interval);
-  }, [user?.id, isBlockedRoute, isLoginRoute, supabase]);
+  }, [user?.id, isBlockedRoute, isLoginRoute, userLoading, profile?.id]);
 
   // Notiser (Kopplat till Supabase)
   const [notifications, setNotifications] = useState<any[]>([])

@@ -1,9 +1,15 @@
 "use client"
 
 import { useEffect } from 'react'
+import { useUser } from './UserContext'
 
 export default function PushManager() {
+  const { loading } = useUser()
+
   useEffect(() => {
+    // Vi fördröjer registreringen tills profilen är helt laddad för att undvika "Auth Lock Stolen"
+    if (loading) return;
+
     if ('serviceWorker' in navigator && window.location.protocol === 'https:') {
       navigator.serviceWorker.register('/sw.js?v=3').then(
         function (registration) {
@@ -14,7 +20,7 @@ export default function PushManager() {
         }
       ).catch(err => console.log(err))
     }
-  }, [])
+  }, [loading])
   
   return null
 }

@@ -532,6 +532,28 @@ export async function getUserBlocksAction() {
     return { data: [], error: err.message };
   }
 }
+/**
+ * RECOVERY ACTION: Hämtar en profil direkt via Server Action (Service Role).
+ * Används när den vanliga klient-sidans hämtning hänger sig pga RLS eller låsningar.
+ */
+export async function getProfileRecoveryAction(userId: string) {
+  try {
+    const supabaseAdmin = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      { auth: { autoRefreshToken: false, persistSession: false } }
+    );
 
+    const { data: profile, error } = await supabaseAdmin
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
 
-
+    if (error) throw error;
+    return { data: profile };
+  } catch (err: any) {
+    console.error("[Recovery] Misslyckades att hämta profil:", err.message);
+    return { error: err.message };
+  }
+}

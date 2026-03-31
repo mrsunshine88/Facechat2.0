@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import { useRouter, usePathname } from 'next/navigation';
+import { getSoundUrl } from '@/utils/sounds';
 
 
 
@@ -68,14 +69,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
    * Vi separerar "Visa Sidan" (ladda profil) från "Säkerhetsvakt" (kickout).
    */
   const syncProfileData = async (userId: string): Promise<void> => {
-    // Förhindra krockar (Auth Lock Stolen) genom att vänta på pågående synk
+    // Förhindra dubbla synkar (Auth Lock Guard)
     if (syncInProgress.current === userId) return;
     try {
       syncInProgress.current = userId;
       console.log('[UserContext] Syncing profile for:', userId);
       const localSessKey = localStorage.getItem('facechat_session_key');
       
-      // 1. Snabb hämtning
+      // 1. Stabil hämtning (Ingen silvertejp/timeout)
       const { data: profData, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
       if (error || !profData) {
@@ -84,37 +85,25 @@ export function UserProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      console.log('[UserContext] Profile data fetched successfully:', profData.username);
+      console.log('[UserContext] Profile fetched for:', profData.username);
       setProfile(profData);
       
       const isRoot = profData?.is_root === true || profData?.auth_email === 'apersson508@gmail.com';
-      console.log('[UserContext] Security check - isRoot:', isRoot);
       
+      // 2. Säkerhetskontroll vid laddning (Banning)
       if (profData.is_banned && !isRoot) {
-        console.warn('[UserContext] User is banned, signing out...');
+        console.warn('[UserContext] User is banned. Signing out...');
         await supabase.auth.signOut();
         window.location.href = '/login?error=Bannad';
         return;
       }
 
-      const isMismatch = profData.session_key && localSessKey && profData.session_key !== localSessKey;
-      console.log('[UserContext] Session mismatch check:', isMismatch ? 'Mismatch' : 'Match OK');
-      
-      if (isMismatch && !isRoot) {
-        console.warn('[UserContext] Session mismatch detected - Enforcing single session policy.');
-        await supabase.auth.signOut();
-        localStorage.removeItem('facechat_persistent_session');
-        localStorage.removeItem('facechat_session_key');
-        window.location.href = '/login?error=session_conflict';
-        return;
-      }
+      // NOTE: Session-key mismatch hanteras nu av Header.tsx hjärtslag (var 60:e sek)
+      // för att hindra låskrockar under inloggningsfönstret.
       
     } catch (err: any) {
-      if (err.message?.includes('Lock')) {
-        console.warn('[UserContext] Concurrent lock detected, retrying...');
-        return; // Ignorera låskrockar, onAuthStateChange kommer triggas igen
-      }
-      console.error('[UserContext] Sync Critical Failure:', err);
+      if (err.message?.includes('Lock')) return; // Ignorera låskrockar, onAuthStateChange fixar det nästa gång
+      console.error('[UserContext] Sync Failure:', err);
       setProfile(null);
     } finally {
       syncInProgress.current = null;
@@ -149,54 +138,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
-
-  // MASTER SECURITY GUARD (Banniing & Upplåsning!)
-  useEffect(() => {
-    if (loading || !user?.id) return;
-
-    let securityChannel: any;
-
-    securityChannel = supabase.channel('profile_security_blixt')
-        .on('postgres_changes', { 
-            event: 'UPDATE', 
-            schema: 'public', 
-            table: 'profiles', 
-            filter: `id=eq.${user.id}` 
-        }, (payload: any) => {
-          if (!payload.new) return;
-          setProfile(payload.new);
-          
-          if (payload.new.is_banned) {
-            supabase.auth.signOut().then(() => {
-                localStorage.removeItem('facechat_persistent_session');
-                localStorage.removeItem('facechat_session_key');
-                window.location.href = '/login?error=Ditt konto har blivit avstängt.';
-            });
-            return;
-          }
-
-          // 2. REAL-TIME SESSION ENFORCEMENT
-          // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart (om det inte är Root).
-          const isRoot = payload.new?.is_root === true || payload.new?.auth_email === 'apersson508@gmail.com';
-          const localSessKey = localStorage.getItem('facechat_session_key');
-          
-          if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey && !isRoot) {
-             console.warn('[UserContext] Real-time session mismatch detected - Logging out.');
-             supabase.auth.signOut().then(() => {
-                localStorage.removeItem('facechat_persistent_session');
-                localStorage.removeItem('facechat_session_key');
-                window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
-             });
-          }
-
-
-        })
-        .subscribe();
-
-    return () => {
-       if (securityChannel) supabase.removeChannel(securityChannel);
-    };
-  }, [user?.id, loading]);
 
   return (
     <UserContext.Provider value={{ user, profile, loading, refreshProfile: fetchUserAndProfile }}>
