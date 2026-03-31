@@ -24,19 +24,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const isSecurityInit = useRef(false);
 
+  const syncingRef = useRef<string | null>(null);
+
   const fetchUserAndProfile = async () => {
     try {
       setLoading(true);
-      // 1. Snabbkoll: Förväntar vi oss en session? (Hint från localStorage)
       const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
       
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       if (sessionError) throw sessionError;
 
-      // 2. MOBIL-OPTIMERING: Vänta på disk-laddning om vi förväntar oss en session
       let finalSession = session;
       if (!session && hasPersistentHint) {
-         console.log('[UserContext] PWA-läge detekterat. Väntar 2s...');
+         console.log('[UserContext] Väntar på mobil-disk (2s)...');
          await new Promise(resolve => setTimeout(resolve, 2000));
          const secondTry = await supabase.auth.getSession();
          finalSession = secondTry.data.session;
@@ -52,65 +52,88 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (hasPersistentHint) localStorage.removeItem('facechat_persistent_session');
       }
     } catch (error: any) {
-      console.error('Error fetching user/profile:', error);
+      console.error('[UserContext] Fetch error:', error);
       setProfile(null);
     } finally {
       setLoading(false);
     }
   };
 
-  const syncProfileData = async (userId: string) => {
-    // Försök hämta profilen
-    let { data: profData } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    const localSessKey = localStorage.getItem('facechat_session_key');
+  const syncProfileData = async (userId: string, attempt = 1): Promise<void> => {
+    // Förhindra att flera synkar körs samtidigt för samma användare
+    if (syncingRef.current === userId && attempt === 1) return;
+    syncingRef.current = userId;
 
-    // --- ROBUST RACE CONDITION FIX ---
-    // Om profilen saknas eller har fel nyckel (t.ex. vid inloggning pågår), vänta 800ms och försök igen.
-    if (!profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey)) {
-        console.log('[UserContext] Väntar på DB-synk (800ms)...');
-        await new Promise(resolve => setTimeout(resolve, 800));
-        const retry = await supabase.from('profiles').select('*').eq('id', userId).single();
-        if (retry.data) profData = retry.data;
-    }
+    try {
+      let { data: profData } = await supabase.from('profiles').select('*').eq('id', userId).single();
+      const localSessKey = localStorage.getItem('facechat_session_key');
 
-    if (profData) {
-      if (profData.is_banned) {
-        await supabase.auth.signOut();
-        localStorage.removeItem('facechat_persistent_session');
-        localStorage.removeItem('facechat_session_key');
-        window.location.href = '/login?error=Ditt konto är avstängt.';
-        return;
+      // --- AGGRESSIV DB-SYNK (Upp till 3 försök) ---
+      const needsRetry = !profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey);
+      
+      if (needsRetry && attempt <= 3) {
+          const waitTime = attempt * 800; // 800ms, 1600ms, 2400ms
+          console.log(`[UserContext] Retry ${attempt}/3 för ${userId}. Väntar ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          return await syncProfileData(userId, attempt + 1);
       }
 
-      // Single Session Enforcement (om nyckeln fortfarande diffar efter retry)
-      if (profData.session_key && localSessKey && profData.session_key !== localSessKey) {
-        console.warn('[UserContext] Mismatch - Kicking out.');
-        await supabase.auth.signOut();
-        window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet.');
-        return;
-      }
+      if (profData) {
+        // Special-check för Root (A. Persson) - Tappa aldrig bort Root-status!
+        const isRootEmail = profData.auth_email === 'apersson508@gmail.com' || userId === '66e138a2-f81d-4886-987a-b50a04910cfb'; // Exempel-ID för Root
+        
+        if (profData.is_banned && !isRootEmail) {
+          await supabase.auth.signOut();
+          window.location.href = '/login?error=Bannad';
+          return;
+        }
 
-      setProfile(profData);
-    } else {
-      setProfile(null);
+        // Sessions-kontroll (Bara om det verkligen inte matchar efter alla retries)
+        if (profData.session_key && localSessKey && profData.session_key !== localSessKey && !isRootEmail) {
+          console.warn('[UserContext] Session mismatch.');
+          await supabase.auth.signOut();
+          window.location.href = '/login?error=session_conflict';
+          return;
+        }
+
+        setProfile(profData);
+      } else {
+        setProfile(null);
+      }
+    } catch (err) {
+      console.error('[UserContext] Sync error:', err);
+    } finally {
+      if (attempt >= 3 || !syncingRef.current) {
+         syncingRef.current = null;
+      }
     }
   };
 
   useEffect(() => {
+    // Initial laddning
     fetchUserAndProfile();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log('[UserContext] Auth Event:', event);
       const currentUser = session?.user || null;
+      
+      // Om användaren loggar ut, rensa direkt och avbryt allt annat
+      if (event === 'SIGNED_OUT' || !currentUser) {
+        setUser(null);
+        setProfile(null);
+        setLoading(false);
+        syncingRef.current = null;
+        localStorage.removeItem('facechat_persistent_session');
+        return;
+      }
+
       setUser(currentUser);
       
-      if (currentUser) {
+      // Vid inloggning eller sessionsförnyelse, synka profilen
+      if (event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         setLoading(true);
         await syncProfileData(currentUser.id);
         setLoading(false);
-      } else {
-        setProfile(null);
-        setLoading(false);
-        localStorage.removeItem('facechat_persistent_session');
       }
     });
 
