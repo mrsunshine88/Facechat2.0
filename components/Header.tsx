@@ -43,7 +43,9 @@ export default function Header() {
     // UI UPDATES ONLY (Runs on page change)
     async function syncHeaderUI() {
        setIsAndroid(/android/i.test(navigator.userAgent));
-       setUserProfile({ ...profile, auth_email: user?.email });
+       if (profile && profile.id) {
+          setUserProfile({ ...profile, auth_email: user?.email });
+       }
        
        // Hämta olästa support-ärenden (Bara vid sidbyte för att hålla siffran aktuell)
        getUnreadSupportCountAction().then(res => {
@@ -187,6 +189,8 @@ export default function Header() {
          refreshCount();
       }).subscribe();
     // 5. Lyssna på Online Presence
+    if (!userProfile?.id) return;
+    
     const presenceChannel = supabase.channel('online-presence');
     presenceChannel
       .on('presence', { event: 'sync' }, async () => {
@@ -209,7 +213,7 @@ export default function Header() {
         }
       })
       .subscribe(async (status) => {
-        if (status === 'SUBSCRIBED') {
+        if (status === 'SUBSCRIBED' && userProfile?.id) {
           await presenceChannel.track({ user: userProfile.id });
         }
       });
@@ -227,6 +231,8 @@ export default function Header() {
       }).subscribe();
       
     // 7. Lyssna på profil-ändringar (Realtime Admin Status)
+    if (!userProfile?.id) return;
+    
     const profileChannel = supabase.channel('header-profile-updates-' + userProfile.id)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userProfile.id}` }, async (payload: any) => {
          if (payload.new.is_banned) {
