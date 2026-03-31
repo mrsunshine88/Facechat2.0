@@ -76,12 +76,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
       console.log('[UserContext] Syncing profile for:', userId);
       const localSessKey = localStorage.getItem('facechat_session_key');
       
-      // 1. Diagnostisk Hämtning: Hämta endast baskonfiguration för att se var det hänger sig.
-      // (Bypass för att utesluta data-korruption i tunga fält som custom_style)
-      const { data: profData, error } = await supabase.from('profiles')
-        .select('id, username, avatar_url, is_admin, is_root, auth_email, is_banned, session_key')
-        .eq('id', userId)
-        .single();
+      // 1. Diagnostisk Hämtning med Retry-logik för "Auth Lock Stolen"
+      let profData = null;
+      let error = null;
+      let retries = 0;
+      const maxRetries = 3;
+
+      while (retries < maxRetries) {
+        const response = await supabase.from('profiles')
+          .select('id, username, avatar_url, is_admin, is_root, auth_email, is_banned, session_key')
+          .eq('id', userId)
+          .single();
+        
+        profData = response.data;
+        error = response.error;
+
+        // Om vi får det fruktade "lock stolen" felet, vänta och försök igen.
+        if (error?.message?.includes('lock') || error?.message?.includes('stole')) {
+          console.warn(`[UserContext] Auth lock stolen (försök ${retries + 1}). Väntar på tur...`);
+          retries++;
+          await new Promise(res => setTimeout(res, 500 * retries)); // Vänta lite längre för varje försök
+          continue;
+        }
+        break; // Lyckades eller fick ett riktigt fel
+      }
       
       if (error || !profData) {
         console.warn('[UserContext] Profil kunde inte laddas:', error?.message);
