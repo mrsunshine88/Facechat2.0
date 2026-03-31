@@ -158,7 +158,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
       
       if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'USER_UPDATED') {
         setLoading(true);
-        await syncProfileData(currentUser.id);
+        try {
+          await syncProfileData(currentUser.id);
+        } finally {
+          setLoading(false);
+        }
+      } else {
         setLoading(false);
       }
     });
