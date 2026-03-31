@@ -74,7 +74,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       setProfile(profData);
       
       // 3. SÄKERHETS-AUDIT (Sker i bakgrunden, blockerar inte UI)
-      const isRoot = profData.auth_email === 'apersson508@gmail.com' || profData.is_root === true;
+      // Här kör vi defensivt ifall kolumner saknas i databasen.
+      const isRoot = profData?.is_root === true || profData?.auth_email === 'apersson508@gmail.com';
       
       // Bannings-vakt
       if (profData.is_banned && !isRoot) {
@@ -157,7 +158,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
           // 2. REAL-TIME SESSION ENFORCEMENT
           // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart (om det inte är Root).
-          const isRoot = payload.new.auth_email === 'apersson508@gmail.com' || payload.new.is_root === true;
+          const isRoot = payload.new?.is_root === true || payload.new?.auth_email === 'apersson508@gmail.com';
           const localSessKey = localStorage.getItem('facechat_session_key');
           
           if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey && !isRoot) {
