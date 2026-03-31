@@ -71,24 +71,24 @@ export async function deleteUserAccount(userId: string) {
   }
 
   try {
-    // 1. Hämta profil-info för att kunna rensa lagring (t.ex. avatar)
+    // 1. Hämta profil-info för att veta vem vi raderar
     const { data: profile } = await supabaseAdmin.from('profiles').select('avatar_url, is_admin, username').eq('id', userId).maybeSingle();
 
-    // 2. FÖRSÖK RADERA AUTH-KONTOT (BÖRJA HÄR)
-    // Om användaren redan är borta från Auth (User not found), ignorerar vi det och fortsätter städa DB.
+    // 2. FÖRSÖK RADERA AUTH-KONTOT (Om det finns kvar)
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(userId);
     if (authError && authError.message !== 'User not found') {
-       console.error("Allvarligt fel vid radering av auth-konto:", authError);
-       return { error: 'Kunde inte radera inloggningskonto: ' + authError.message };
+       console.error("Fel vid auth-radering:", authError);
+       return { error: 'Kunde inte radera login: ' + authError.message };
     }
 
-    // 3. Radera all användardata från olika tabeller (GDPR - "No Trace")
+    // 3. NUCLEAR CLEANUP: Lista på alla tabeller med kopplingar
     const tables = [
       { name: 'forum_posts', col: 'author_id' },
       { name: 'forum_threads', col: 'author_id' },
       { name: 'chat_messages', col: 'author_id' },
       { name: 'whiteboard', col: 'author_id' },
       { name: 'whiteboard_comments', col: 'author_id' },
+      { name: 'whiteboard_likes', col: 'user_id' },
       { name: 'guestbook', col: 'sender_id' },
       { name: 'guestbook', col: 'receiver_id' },
       { name: 'private_messages', col: 'sender_id' },
@@ -101,50 +101,47 @@ export async function deleteUserAccount(userId: string) {
       { name: 'user_blocks', col: 'blocked_id' },
       { name: 'snake_scores', col: 'user_id' },
       { name: 'user_secrets', col: 'user_id' },
+      { name: 'push_subscriptions', col: 'user_id' },
       { name: 'reports', col: 'reporter_id' },
       { name: 'reports', col: 'reported_user_id' },
-      { name: 'support_tickets', col: 'user_id' },
-      { name: 'whiteboard_likes', col: 'user_id' },
-      { name: 'push_subscriptions', col: 'user_id' }
+      { name: 'support_tickets', col: 'user_id' }
     ];
 
     for (const t of tables) {
       await supabaseAdmin.from(t.name).delete().eq(t.col, userId);
     }
 
-    // 4. Rensa special-referenser (t.ex. arrayer i rums-listor)
+    // 4. Rensning av JSON-arrayer (Chatt-rum tillåtna användare)
+    await supabaseAdmin.rpc('remove_user_from_all_rooms', { user_to_remove: userId });
+    // Fallback om RPC saknas (Sök & uppdatera)
     const { data: rooms } = await supabaseAdmin.from('chat_rooms').select('id, allowed_users').filter('allowed_users', 'cs', `["${userId}"]`);
-    if (rooms && rooms.length > 0) {
+    if (rooms) {
       for (const room of rooms) {
         const newAllowed = (room.allowed_users as string[]).filter(id => id !== userId);
         await supabaseAdmin.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', room.id);
       }
     }
 
-    // Om personen var admin, radera även deras loggar för "No Trace"
-    if (profile?.is_admin) {
-      await supabaseAdmin.from('admin_logs').delete().eq('admin_id', userId);
+    // 5. Admin Loggar (Alltid bäst att rensa om de fanns)
+    await supabaseAdmin.from('admin_logs').delete().eq('admin_id', userId);
+
+    // 6. RADERA PROFIL-RADEN (Sista steget i DB)
+    const { error: profileError } = await supabaseAdmin.from('profiles').delete().eq('id', userId);
+    if (profileError) {
+      console.error("Fel vid profil-radering:", profileError);
+      return { error: 'Inloggning borta, men kunde inte radera профиl-datan: ' + profileError.message };
     }
 
-    // 5. RADERA SJÄLVA PROFILEN (VIKTIGT!)
-    const { error: profileDeleteError } = await supabaseAdmin.from('profiles').delete().eq('id', userId);
-    if (profileDeleteError) {
-       console.error("Fel vid radering av profil-rad:", profileDeleteError);
-       return { error: 'Inloggning raderad, men profil-data kunde inte slutföras: ' + profileDeleteError.message };
-    }
-    
-    // 6. RADERA PROFILBILD FRÅN STORAGE (GDPR)
+    // 7. Storage (Avatar)
     if (profile?.avatar_url && profile.avatar_url.includes('/avatars/')) {
       const fileName = profile.avatar_url.split('/').pop()?.split('?')[0];
-      if (fileName) {
-        await supabaseAdmin.storage.from('avatars').remove([fileName]);
-      }
+      if (fileName) await supabaseAdmin.storage.from('avatars').remove([fileName]);
     }
-    
+
     return { success: true };
   } catch (err: any) {
     console.error("Crash under radering:", err);
-    return { error: err.message || 'Ett oväntat fel uppstod.' };
+    return { error: err.message || 'Ett oväntat fel uppstod vid radering.' };
   }
 }
 

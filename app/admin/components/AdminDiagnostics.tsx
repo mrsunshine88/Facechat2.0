@@ -122,6 +122,7 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
     { id: 'reports', title: 'Gamla Anmälningar', status: 'idle', message: 'Väntar...' },
     { id: 'avatars', title: 'Profilbilder', status: 'idle', message: 'Väntar...' },
     { id: 'friendships', title: 'Social Hälsa', status: 'idle', message: 'Väntar...' },
+    { id: 'ghost_profiles', title: 'Spökkonton', status: 'idle', message: 'Väntar...' },
     { id: 'logs', title: 'Log-städning', status: 'idle', message: 'Väntar...' },
   ]);
 
@@ -193,14 +194,25 @@ const AdminDiagnostics = ({ supabase, currentUser }: { supabase: any, currentUse
       updateOne('avatars', { status: 'ok', message: '✅ Fixade trasiga länkar.' });
 
       const scanRes = await adminRunDeepScan();
-      if (scanRes?.issues && scanRes.issues.length > 0) {
-         fixesCount++;
-         for (const issue of scanRes.issues) {
-            await adminFixDeepScanIssue(issue.id);
+      if (scanRes?.issues) {
+         // Vi loopar igenom alla typer av problem vi känner till i UI:t
+         const scanSummary = scanRes.issues.reduce((acc: any, issue: any) => {
+            acc[issue.id] = issue;
+            return acc;
+         }, {});
+
+         // Uppdatera de specifika raderna i UI:t
+         const trackedIssueIds = ['friendships', 'ghost_profiles'];
+         for (const id of trackedIssueIds) {
+            const issue = scanSummary[id];
+            if (issue) {
+               fixesCount++;
+               await adminFixDeepScanIssue(id);
+               updateOne(id, { status: 'ok', message: '✅ Lagat.' });
+            } else {
+               updateOne(id, { status: 'ok', message: '✅ Allt grönt.' });
+            }
          }
-         updateOne('friendships', { status: 'ok', message: '✅ Lagat.' });
-      } else {
-         updateOne('friendships', { status: 'ok', message: '✅ Allt grönt.' });
       }
 
       const { data: optImg } = await supabase.rpc('optimize_uploaded_images');

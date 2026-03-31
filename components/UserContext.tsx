@@ -26,72 +26,30 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const fetchUserAndProfile = async () => {
     try {
+      setLoading(true);
       // 1. Snabbkoll: Förväntar vi oss en session? (Hint från localStorage)
       const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
       
       const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
       if (sessionError) throw sessionError;
 
-      // 2. MOBIL-OPTIMERING (Grace Period): Om vi förväntar oss en session men getSession returnerar null 
-      // direkt vid kallstart, väntar vi några sekunder och försöker igen. 
-      // PWA-appar på mobil kan vara extra långsamma med att ladda kakor från disk.
+      // 2. MOBIL-OPTIMERING: Vänta på disk-laddning om vi förväntar oss en session
       let finalSession = session;
       if (!session && hasPersistentHint) {
-         console.log('[UserContext] PWA-läge detekterat. Väntar på att mobilen ska ladda kakor (2s)...');
+         console.log('[UserContext] PWA-läge detekterat. Väntar 2s...');
          await new Promise(resolve => setTimeout(resolve, 2000));
          const secondTry = await supabase.auth.getSession();
          finalSession = secondTry.data.session;
-         if (finalSession) console.log('[UserContext] Session återställd efter väntetid! 🎉');
       }
 
       const currentUser = finalSession?.user || null;
       setUser(currentUser);
 
       if (currentUser) {
-        let { data: profData, error: profError } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', currentUser.id)
-          .single();
-        
-        // --- RACE CONDITION FIX ---
-        // Om profilen inte hittas (eller om nyckeln inte matchar än), 
-        // vänta en kort stund och försök igen. Det kan ta några millisekunder 
-        // för auth-skrivningen att propagera till profiles-tabellen vid login.
-        const localSessKey = localStorage.getItem('facechat_session_key');
-        if (!profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey)) {
-           console.log('[UserContext] Profil ej redo (Race condition?). Väntar 800ms...');
-           await new Promise(resolve => setTimeout(resolve, 800));
-           const retry = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
-           if (retry.data) profData = retry.data;
-        }
-
-        if (profData?.is_banned) {
-           await supabase.auth.signOut();
-           localStorage.removeItem('facechat_persistent_session');
-           localStorage.removeItem('facechat_session_key');
-           window.location.href = '/login?error=Ditt konto är avstängt.';
-           return;
-        }
-
-        // --- SINGLE SESSION ENFORCEMENT ---
-        if (profData?.session_key && localSessKey && profData.session_key !== localSessKey) {
-           console.warn('[UserContext] Session mismatch - Kicking out.');
-           await supabase.auth.signOut();
-           localStorage.removeItem('facechat_persistent_session');
-           localStorage.removeItem('facechat_session_key');
-           window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
-           return;
-        }
-
-        setProfile(profData);
+        await syncProfileData(currentUser.id);
       } else {
         setProfile(null);
-        // Om vi definitivt inte har en session efter väntetiden, rensa hint-flaggan
-        if (hasPersistentHint) {
-           localStorage.removeItem('facechat_persistent_session');
-        }
+        if (hasPersistentHint) localStorage.removeItem('facechat_persistent_session');
       }
     } catch (error: any) {
       console.error('Error fetching user/profile:', error);
@@ -101,29 +59,58 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const syncProfileData = async (userId: string) => {
+    // Försök hämta profilen
+    let { data: profData } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    const localSessKey = localStorage.getItem('facechat_session_key');
+
+    // --- ROBUST RACE CONDITION FIX ---
+    // Om profilen saknas eller har fel nyckel (t.ex. vid inloggning pågår), vänta 800ms och försök igen.
+    if (!profData || (profData.session_key && localSessKey && profData.session_key !== localSessKey)) {
+        console.log('[UserContext] Väntar på DB-synk (800ms)...');
+        await new Promise(resolve => setTimeout(resolve, 800));
+        const retry = await supabase.from('profiles').select('*').eq('id', userId).single();
+        if (retry.data) profData = retry.data;
+    }
+
+    if (profData) {
+      if (profData.is_banned) {
+        await supabase.auth.signOut();
+        localStorage.removeItem('facechat_persistent_session');
+        localStorage.removeItem('facechat_session_key');
+        window.location.href = '/login?error=Ditt konto är avstängt.';
+        return;
+      }
+
+      // Single Session Enforcement (om nyckeln fortfarande diffar efter retry)
+      if (profData.session_key && localSessKey && profData.session_key !== localSessKey) {
+        console.warn('[UserContext] Mismatch - Kicking out.');
+        await supabase.auth.signOut();
+        window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet.');
+        return;
+      }
+
+      setProfile(profData);
+    } else {
+      setProfile(null);
+    }
+  };
 
   useEffect(() => {
     fetchUserAndProfile();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       const currentUser = session?.user || null;
       setUser(currentUser);
+      
       if (currentUser) {
-        // Om vi redan har sessionen här, använd den istället för att anropa getSession igen!
-        supabase.from('profiles').select('*').eq('id', currentUser.id).single().then(({data}) => {
-          if (data) {
-            if (data.is_banned) {
-               supabase.auth.signOut();
-               window.location.href = '/login?error=Ditt konto är avstängt.';
-            } else {
-               setProfile(data);
-            }
-          }
-          setLoading(false);
-        });
+        setLoading(true);
+        await syncProfileData(currentUser.id);
+        setLoading(false);
       } else {
         setProfile(null);
         setLoading(false);
+        localStorage.removeItem('facechat_persistent_session');
       }
     });
 

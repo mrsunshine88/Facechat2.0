@@ -3,7 +3,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createClient as createServerClient } from '@/utils/supabase/server';
 
-import { hasPermission } from './userActions';
+import { hasPermission, deleteUserAccount } from './userActions';
 
 // ROOT_EMAILS är nu utfasat till förmån för 'is_root' kolumnen i databasen.
 
@@ -462,6 +462,28 @@ export async function adminRunDeepScan() {
         }
       }
     } catch (e) {}
+    
+    // 10. Spökkonton (Profiler utan inloggning)
+    try {
+      const { data: profiles } = await getAdminClient().from('profiles').select('id, username, is_root');
+      const { data: { users } } = await getAdminClient().auth.admin.listUsers({ perPage: 1000 });
+      
+      if (profiles && users) {
+        const authIds = new Set(users.map((u: any) => u.id));
+        const ghosts = profiles.filter((p: any) => !authIds.has(p.id) && !p.is_root);
+        
+        if (ghosts.length > 0) {
+          issues.push({ 
+            id: 'cleanup_ghost_profiles', 
+            title: 'Spökkonton Hittade', 
+            status: 'warning', 
+            message: `Hittade ${ghosts.length} profiler (t.ex. ${ghosts[0].username}) som saknar inloggningskonto. De tar upp plats och blockerar namn.` 
+          });
+        }
+      }
+    } catch (e) {
+      console.error("Ghost check error:", e);
+    }
 
     return { success: true, issues };
   } catch (err: any) {
@@ -575,6 +597,25 @@ export async function adminFixDeepScanIssue(issueId: string) {
           fixedMsg = 'Inga herrelösa bilder hittades vid försök till fix.';
         }
       }
+    } else if (issueId === 'cleanup_ghost_profiles') {
+      const { data: profiles } = await getAdminClient().from('profiles').select('id, is_root');
+      const { data: { users } } = await getAdminClient().auth.admin.listUsers({ perPage: 1000 });
+      
+      let ghostCount = 0;
+      if (profiles && users) {
+        const authIds = new Set(users.map((u: any) => u.id));
+        const ghosts = profiles.filter((p: any) => !authIds.has(p.id) && !p.is_root);
+        
+        for (const ghost of ghosts) {
+          // Dubbelkolla en gång till direkt mot Auth API för att vara 100% säker innan radering
+          const { data: checkUser } = await getAdminClient().auth.admin.getUserById(ghost.id);
+          if (!checkUser?.user) {
+            await deleteUserAccount(ghost.id);
+            ghostCount++;
+          }
+        }
+      }
+      fixedMsg = `Rensade bort ${ghostCount} spökkonton från systemet.`;
     } else {
       throw new Error('Ogiltigt åtgärds-ID.');
     }

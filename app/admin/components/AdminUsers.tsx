@@ -138,13 +138,18 @@ const AdminUsers = ({ supabase, currentUser }: { supabase: any, currentUser: any
        return alert('Nix, du kan inte radera the creator!');
     }
     if (user.perm_roles && user.is_admin) return alert('Ett Root-Konto kan inte raderas.');
-    if (confirm(`VARNING: Detta tar bort ${user.username} och allt deras innehåll för alltid. Är du helt säker?`)) {
+    if (confirm(`Är du helt säker på att du vill radera ${user.username} (ID: ${user.id}) permanent? Detta går inte att ångra och städar även bort "spök-konton".`)) {
       const res = await deleteUserAccount(user.id);
+      
       if (res?.error) {
-        alert('Ett fel uppstod vid radering: ' + res.error);
+        alert('Radering misslyckades!\n\nFel: ' + res.error + '\n\nTips: Om det är ett "ghost"-konto, prova att radera igen eller kontakta support.');
         return;
       }
+      
+      alert(`Kontot för ${user.username} har raderats helt från både inloggning och databas.`);
       await adminLogAction(`Raderade kontot ${user.username} permanent från systemet`);
+      
+      // Tvinga uppdatering av listan
       fetchUsers(search);
     }
   };
