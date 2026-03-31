@@ -254,19 +254,29 @@ function ChattrumContent() {
        return;
     }
 
-    const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    const { data: participants } = await supabase.from('chat_messages').select('author_id').eq('room_id', activeRoom.id).gt('created_at', fortyEightHoursAgo).limit(200);
-    if (participants) {
-       const uniqueIds = Array.from(new Set(participants.map(p => p.author_id))).filter(id => id !== currentUser.id && !blockedIdsRef.current.includes(id));
-       if (uniqueIds.length > 0) {
-          let preview = txt;
-          if (preview.length > 20) preview = preview.substring(0, 20) + '...';
-          const payloads = uniqueIds.map(uid => ({ receiver_id: uid, actor_id: currentUser.id, type: 'chat', content: `skrev i "${activeRoom.name}": "${preview}"`, link: `/chattrum?room=${encodeURIComponent(activeRoom.name)}` }));
-          await supabase.from('notifications').insert(payloads);
-          uniqueIds.forEach(uid => {
-             fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: uid, title: `Facechat: Nytt i ${activeRoom.name}`, message: `${currentUser.username}: ${preview}`, url: `/chattrum?room=${encodeURIComponent(activeRoom.name)}` }), headers: { 'Content-Type': 'application/json' } }).catch(console.error);
-          });
+    // NOTIFIERINGAR: Specialregler för Admin-rummet
+    let uniqueIds: string[] = [];
+    if (activeRoom?.name === 'Admin') {
+       // För Admin-rummet: Notifiera ALLA som har admin-behörighet oavsett aktivitet
+       const { data: admins } = await supabase.from('profiles').select('id').or('is_admin.eq.true,perm_rooms.eq.true');
+       if (admins) uniqueIds = admins.map(a => a.id).filter(id => id !== currentUser.id && !blockedIdsRef.current.includes(id));
+    } else {
+       // För vanliga rum: Notifiera de som varit aktiva de senaste 48 timmarna
+       const fortyEightHoursAgo = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
+       const { data: participants } = await supabase.from('chat_messages').select('author_id').eq('room_id', activeRoom.id).gt('created_at', fortyEightHoursAgo).limit(200);
+       if (participants) {
+          uniqueIds = Array.from(new Set(participants.map(p => p.author_id))).filter(id => id !== currentUser.id && !blockedIdsRef.current.includes(id));
        }
+    }
+
+    if (uniqueIds.length > 0) {
+       let preview = txt;
+       if (preview.length > 20) preview = preview.substring(0, 20) + '...';
+       const payloads = uniqueIds.map(uid => ({ receiver_id: uid, actor_id: currentUser.id, type: 'chat', content: `skrev i "${activeRoom.name}": "${preview}"`, link: `/chattrum?room=${encodeURIComponent(activeRoom.name)}` }));
+       await supabase.from('notifications').insert(payloads);
+       uniqueIds.forEach(uid => {
+          fetch('/api/send-push', { method: 'POST', body: JSON.stringify({ userId: uid, title: `Facechat: Nytt i ${activeRoom.name}`, message: `${currentUser.username}: ${preview}`, url: `/chattrum?room=${encodeURIComponent(activeRoom.name)}` }), headers: { 'Content-Type': 'application/json' } }).catch(console.error);
+       });
     }
     await fetchMessages(activeRoom.id);
     if (channelRef.current) { channelRef.current.send({ type: 'broadcast', event: 'new_message', payload: {} }); }
