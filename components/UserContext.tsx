@@ -53,55 +53,50 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  /**
+   * CENTRAL SYNC ENGINE: Laddar profilen omedelbart och deterministiskt.
+   * Vi separerar "Visa Sidan" (ladda profil) från "Säkerhetsvakt" (kickout).
+   */
   const syncProfileData = async (userId: string): Promise<void> => {
-    const localSessKey = localStorage.getItem('facechat_session_key');
-    let profData: any = null;
-    let success = false;
-
-    // --- AGGRESSIV DB-SYNK (Loop 3 försök) ---
-    for (let attempt = 1; attempt <= 3; attempt++) {
-      const waitTime = (attempt - 1) * 1000; // 0s, 1s, 2s
-      if (waitTime > 0) {
-          console.log(`[UserContext] Profil saknas/mismatch för ${userId}. Försök ${attempt}/3. Väntar ${waitTime}ms...`);
-          await new Promise(resolve => setTimeout(resolve, waitTime));
-      }
-
-      const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    try {
+      const localSessKey = localStorage.getItem('facechat_session_key');
       
-      if (error) {
-         console.warn(`[UserContext] DB-svar (försök ${attempt}):`, error.message);
-      }
-
-      // Validera: Finns profilen? Matcha även sessions-nyckeln om den finns
-      const isMismatch = data?.session_key && localSessKey && data.session_key !== localSessKey;
-      const isRoot = data?.auth_email === 'apersson508@gmail.com' || data?.is_root === true;
+      // 1. Snabb hämtning utan blockerande loopar
+      const { data: profData, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
-      if (data && (!isMismatch || isRoot)) {
-          console.log(`[UserContext] ✅ Profil framgångsrikt hämtad för ${data.username} på försök ${attempt}.`);
-          profData = data;
-          success = true;
-          break;
+      if (error || !profData) {
+        console.warn('[UserContext] Profil kunde inte laddas:', error?.message);
+        setProfile(null);
+        return;
       }
-    }
 
-    if (success && profData) {
+      // 2. Sätt profilen OMEDELBART så att Header och UI laddas
+      setProfile(profData);
+      
+      // 3. SÄKERHETS-AUDIT (Sker i bakgrunden, blockerar inte UI)
       const isRoot = profData.auth_email === 'apersson508@gmail.com' || profData.is_root === true;
       
+      // Bannings-vakt
       if (profData.is_banned && !isRoot) {
         await supabase.auth.signOut();
         window.location.href = '/login?error=Bannad';
         return;
       }
 
-      if (profData.session_key && localSessKey && profData.session_key !== localSessKey && !isRoot) {
-        console.warn('[UserContext] Session mismatch persist - Signing out.');
+      // Single-Session vakt (Utkastning vid dubbla enheter)
+      const isMismatch = profData.session_key && localSessKey && profData.session_key !== localSessKey;
+      
+      if (isMismatch && !isRoot) {
+        console.warn('[UserContext] Session mismatch detected - Enforcing single session policy.');
         await supabase.auth.signOut();
+        localStorage.removeItem('facechat_persistent_session');
+        localStorage.removeItem('facechat_session_key');
         window.location.href = '/login?error=session_conflict';
         return;
       }
-
-      setProfile(profData);
-    } else {
+      
+    } catch (err) {
+      console.error('[UserContext] Sync Critical Failure:', err);
       setProfile(null);
     }
   };
