@@ -67,6 +67,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
            if (retry.data) profData = retry.data;
         }
 
+        // --- EMERGENCY FALLBACK: "THE EMPTY SHELL" FIX ---
+        // Om vi har en användare men ingen profil (efter retry), och vi TROR att vi är inloggade
+        // (pga localStorage-hints), då har sessionen blivit ogiltig eller undanputtad.
+        if (!profData) {
+           const persistentHint = localStorage.getItem('facechat_persistent_session');
+           const localSessKey = localStorage.getItem('facechat_session_key');
+           if (persistentHint || localSessKey) {
+              console.warn('[UserContext] Profile missing (Zombie state). Forcing logout.');
+              await supabase.auth.signOut();
+              localStorage.removeItem('facechat_persistent_session');
+              localStorage.removeItem('facechat_session_key');
+              window.location.href = '/login?error=' + encodeURIComponent('Din session har blivit ogiltig. Logga in igen.');
+              return;
+           }
+        }
+
         if (profData?.is_banned) {
            await supabase.auth.signOut();
            localStorage.removeItem('facechat_persistent_session');
