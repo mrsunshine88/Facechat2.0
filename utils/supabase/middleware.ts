@@ -22,13 +22,15 @@ export async function updateSession(request: NextRequest) {
           })
           
           supabaseResponse = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+            request,
           })
           
           cookiesToSet.forEach(({ name, value, options }) => {
-            supabaseResponse.cookies.set(name, value, options)
+            supabaseResponse.cookies.set(name, value, {
+              ...options,
+              maxAge: 60 * 60 * 24 * 30, // Force 30 days
+              path: '/',
+            })
           })
         },
       },

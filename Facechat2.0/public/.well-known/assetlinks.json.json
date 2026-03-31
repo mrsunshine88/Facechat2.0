@@ -1,0 +1,8 @@
+[{
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "se.facechat.twa",
+        "sha256_cert_fingerprints": ["7C:AD:BA:18:CC:06:8C:39:EE:9E:26:77:4D:BB:D2:82:A2:D6:62:1F:C1:39:5B:7A:E6:D8:11:43:89:E8:D2:4C"]
+      }
+    }]

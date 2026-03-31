@@ -1,8 +1,11 @@
 "use client"
 
 import React, { useState, useEffect } from 'react'
+import { X } from 'lucide-react'
+import { usePathname } from 'next/navigation'
 
 export default function InstallPrompt() {
+  const pathname = usePathname()
   const [showInstallPrompt, setShowInstallPrompt] = useState(false)
   const [isIOS, setIsIOS] = useState(false)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null)
@@ -22,6 +25,9 @@ export default function InstallPrompt() {
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
     if (typeof window !== 'undefined') {
+      const isDismissed = localStorage.getItem('pwa_prompt_dismissed') === 'true';
+      if (isDismissed) return;
+
       const iosDevice = /iPad|iPhone|iPod/.test(navigator.userAgent) && !(window as any).MSStream;
       setIsIOS(iosDevice);
 
@@ -49,15 +55,29 @@ export default function InstallPrompt() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setShowInstallPrompt(false);
+        localStorage.setItem('pwa_prompt_dismissed', 'true');
       }
       setDeferredPrompt(null);
     }
   }
 
-  if (!showInstallPrompt) return null;
+  const handleDismiss = () => {
+    setShowInstallPrompt(false);
+    localStorage.setItem('pwa_prompt_dismissed', 'true');
+  };
+
+  if (!showInstallPrompt || pathname === '/blocked') return null;
 
   return (
     <div className="hide-on-desktop" style={{ position: 'fixed', bottom: '1rem', left: '1rem', right: '1rem', backgroundColor: 'var(--bg-card)', padding: '1rem', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', zIndex: 99999, boxShadow: '0 4px 20px rgba(0,0,0,0.15)' }}>
+      <button 
+        onClick={handleDismiss} 
+        style={{ position: 'absolute', top: '-10px', right: '-10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', boxShadow: 'var(--shadow-sm)' }}
+        aria-label="Stäng"
+      >
+        <X size={14} />
+      </button>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
         <img src="/icon-192x192.png" alt="Facechat Logo" style={{ width: '48px', height: '48px', borderRadius: '12px', objectFit: 'cover' }} />
         <div>

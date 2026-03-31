@@ -2,34 +2,17 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
+import { useUser } from '@/components/UserContext'
 import { LayoutGrid, User, MessagesSquare, MessageSquare } from 'lucide-react'
 
 export default function Dashboard() {
   const router = useRouter()
-  const [nickname, setNickname] = useState('Användare')
-  const [loading, setLoading] = useState(true)
+  const { user, profile, loading } = useUser()
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  if (loading || !user || !profile) return null
 
-  useEffect(() => {
-    async function getUser() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) {
-        const { data: profile } = await supabase.from('profiles').select('username').eq('id', user.id).single()
-        if (profile?.username) {
-          setNickname(profile.username)
-        } else if (user.email) {
-          setNickname(user.email.split('@')[0])
-        }
-      }
-      setLoading(false)
-    }
-    getUser()
-  }, [])
+  const nickname = profile?.username || user?.user_metadata?.username || user?.email?.split('@')[0] || '';
 
   const shortcuts = [
     {

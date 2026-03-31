@@ -1,8 +1,8 @@
 "use client"
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
+import { createClient } from '@/utils/supabase/client'
 import { Shield } from 'lucide-react'
 
 export default function UpdatePassword() {
@@ -11,10 +11,19 @@ export default function UpdatePassword() {
   const [error, setError] = useState('')
   const router = useRouter()
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
+  
+  // Kontrollera att det finns en aktiv återställnings-session
+  useEffect(() => {
+    async function checkSession() {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        // Saknas session (ingen giltig länk användes) -> Skicka tillbaka till login
+        router.push('/login?error=Länken+är+inte+längre+giltig+eller+saknas.');
+      }
+    }
+    checkSession();
+  }, [supabase, router]);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault()

@@ -2,8 +2,11 @@
 
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { createBrowserClient } from '@supabase/ssr'
-import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users } from 'lucide-react'
+import { createClient } from '@/utils/supabase/client'
+import { LayoutGrid, User, MessagesSquare, Smartphone, Shield, Users, Gamepad2, MessageSquare, ShieldAlert } from 'lucide-react'
+
+import { prepareNewSignup, isUserConfirmed } from '@/app/actions/userActions'
+import { updateUserIP, completeLoginProcess } from '@/app/actions/securityActions'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -35,15 +38,15 @@ export default function Login() {
     }
   }, [])
   
-  const supabase = createBrowserClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-  )
+  const supabase = createClient()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
+    
+    // Städa bort gamla felmeddelanden från adressfältet omedelbart
+    router.replace('/login', { scroll: false });
 
     try {
       if (isRegistering) {
@@ -61,26 +64,65 @@ export default function Login() {
           return;
         }
 
+        // Rensa gamla obekräftade försök med samma mejl (GDPR/UX)
+        await prepareNewSignup(email);
+
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
           options: {
             data: {
               username: username.trim()
-            }
+            },
+            emailRedirectTo: 'https://facechat.se/auth/callback?next=/'
           }
         })
         if (signUpError) throw signUpError
-        setError("Registrering lyckades! Du kan nu logga in bäst du vill.")
+        setError("Registrering lyckades! VIKTIGT: Kolla din e-post och klicka på länken för att aktivera ditt konto innan du loggar in.")
         setIsRegistering(false)
         setUsername('')
         setPassword('')
       } else {
-        const { error: signInError } = await supabase.auth.signInWithPassword({
+        const { error: signInError, data: signInData } = await supabase.auth.signInWithPassword({
           email,
           password
         })
         if (signInError) throw signInError
+        
+        if (signInData?.user) {
+          if (!signInData.user.email_confirmed_at) {
+            await supabase.auth.signOut();
+            setError('Du måste bekräfta din e-postadress innan du kan logga in.');
+            setLoading(false);
+            return;
+          }
+          // "BANG"-inloggning: Uppdatera profil, sessionsnyckel och IP i EN ENDA snabb operation!
+          // Vi använder en fallback för randomUUID om det saknas (t.ex. gamla mobiler eller icke-HTTPS)
+          const newSessionKey = (typeof crypto !== 'undefined' && crypto.randomUUID) 
+            ? crypto.randomUUID() 
+            : Math.random().toString(36).substring(2) + Date.now().toString(36);
+            
+          const res = await completeLoginProcess(signInData.user.id, newSessionKey);
+          
+          if (res.error) {
+             console.error('Inloggningsfel:', res.error);
+             setError('Inloggningsäkerhet misslyckades: ' + res.error);
+             setLoading(false);
+             return;
+          }
+          const profile = res.profile;
+
+          if (profile?.is_banned) {
+            await supabase.auth.signOut();
+            setError('Blockerat');
+            setLoading(false);
+            return;
+          }
+
+          localStorage.setItem('facechat_session_key', newSessionKey);
+          // Spara hint för mobila enheter (Minskar risken för utloggning vid kallstart)
+          localStorage.setItem('facechat_persistent_session', 'true');
+        }
         
         if (rememberMe) {
           localStorage.setItem('facechat_saved_email', email)
@@ -88,8 +130,9 @@ export default function Login() {
           localStorage.removeItem('facechat_saved_email')
         }
         
-        router.push('/')
-        router.refresh()
+        // "BANG"-inloggning: Skicka vidare direkt med en HÅRD redirect för att säkerställa 
+        // att mobila webbläsare hinner spara alla kakor innan Middleware anropas.
+        window.location.href = '/';
       }
     } catch (err: any) {
       if (err.message === 'Invalid login credentials') {
@@ -97,7 +140,9 @@ export default function Login() {
       } else if (err.message?.includes('Email not confirmed')) {
         setError('Du måste bekräfta din e-postadress först.')
       } else {
-        setError(err.message || 'Ett fel uppstod vid inloggningen')
+        // Ensure error is a string so it doesn't render as {}
+        const errorMsg = typeof err === 'string' ? err : (err?.message || String(err));
+        setError(errorMsg || 'Ett oväntat fel uppstod vid inloggningen');
       }
     } finally {
       setLoading(false)
@@ -109,8 +154,16 @@ export default function Login() {
     setLoading(true)
     setError('')
     try {
+      // SÄKERHETSKONTROLL: Blockera återställning om kontot inte är aktiverat
+      const active = await isUserConfirmed(email);
+      if (!active) {
+        setError('Ditt konto är ej aktiverat. Vänligen aktivera det via ditt välkomstmejl först, eller registrera dig på nytt.');
+        setLoading(false);
+        return;
+      }
+
       const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
-        redirectTo: `${window.location.origin}/update-password`,
+        redirectTo: 'https://facechat.se/update-password',
       })
       if (resetError) throw resetError
       setError("En återställningslänk har skickats till din e-post! (Kolla även skräpposten)")
@@ -124,13 +177,21 @@ export default function Login() {
 
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f1f3f6', padding: '3rem 1rem' }}>
+    <div style={{ 
+      minHeight: '100vh', 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      backgroundColor: 'var(--bg-color)', 
+      padding: '3rem 1rem' 
+    }}>
       
       {/* Header & Slogan */}
-      <div style={{ marginBottom: '3rem', textAlign: 'center', maxWidth: '800px' }}>
-        <h1 style={{ fontSize: '4rem', fontWeight: '900', color: '#43619c', textShadow: '2px 2px 0px rgba(0,0,0,0.1)', margin: '0 0 0.5rem 0', letterSpacing: '-0.02em' }}>Facechat</h1>
-        <h2 style={{ fontSize: '1.5rem', color: '#475569', fontWeight: '600', margin: '0' }}>
-          Sveriges skönaste community - Här möts vänner för att dela livet.
+      <div style={{ marginBottom: '3rem', textAlign: 'center', maxWidth: '800px', padding: '0 1rem' }}>
+        <h1 style={{ fontSize: '4rem', fontWeight: '900', color: '#1e3a8a', textShadow: '2px 2px 0px rgba(0,0,0,0.05)', margin: '0 0 0.5rem 0', letterSpacing: '-0.03em' }}>Facechat</h1>
+        <h2 style={{ fontSize: '1.25rem', color: '#475569', fontWeight: '500', margin: '0', lineHeight: '1.5' }}>
+          Sveriges skönaste community – Nostalgi, gemenskap och underhållning på ett och samma ställe.
         </h2>
       </div>
 
@@ -144,8 +205,38 @@ export default function Login() {
         </h2>
 
         {error && (
-          <div style={{ padding: '0.75rem', backgroundColor: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#d1fae5' : '#fee2e2', color: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#059669' : '#b91c1c', borderRadius: '8px', marginBottom: '1rem', fontSize: '0.875rem', textAlign: 'center' }}>
-            {error}
+          <div style={{ 
+            padding: '1.25rem', 
+            backgroundColor: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#ecfdf5' : '#fee2e2', 
+            color: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '#065f46' : '#b91c1c', 
+            borderRadius: '12px', 
+            marginBottom: '1.5rem', 
+            fontSize: '1rem', 
+            textAlign: 'center', 
+            border: (error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) ? '2px solid #10b981' : '1px solid #fca5a5', 
+            boxShadow: '0 4px 6px rgba(0,0,0,0.05)',
+            transition: 'all 0.3s ease'
+          }}>
+            {error === 'session_conflict' ? (
+               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
+                  <ShieldAlert size={32} color="#b91c1c" strokeWidth={2.5} />
+                  <strong style={{ fontSize: '1.1rem', color: '#991b1b' }}>Säkerhetskontroll</strong>
+                  <p style={{ margin: 0, fontSize: '0.9rem', lineHeight: '1.4' }}>
+                    Någon annan loggade precis in på ditt konto. För din säkerhet har du loggats ut från denna enhet.
+                  </p>
+               </div>
+            ) : error === 'blocked' || error === 'Blockerat' ? (
+               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.2rem' }}>
+                  <span style={{ fontSize: '2rem' }}>🚫</span>
+                  <strong style={{ fontSize: '1.4rem', letterSpacing: '0.05em', fontWeight: '900' }}>BLOCKERAT</strong>
+               </div>
+            ) : (
+               <>
+                 {(error.includes('lyckades') || error.includes('ändrats') || error.includes('skickats')) && <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📧</div>}
+                 <strong style={{ display: 'block', marginBottom: '0.25rem' }}>{error.includes('lyckades') ? 'Registrering Lyckades!' : ''}</strong>
+                 {error}
+               </>
+            )}
           </div>
         )}
 
@@ -237,6 +328,7 @@ export default function Login() {
 
               {isRegistering && (
                 <div style={{ marginTop: '0.5rem', padding: '0.75rem', backgroundColor: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: '8px' }}>
+                  <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.85rem', color: '#166534', fontWeight: '700' }}>ℹ️ Du kommer få ett bekräftelse-mejl som måste aktiveras.</p>
                   <label style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', cursor: 'pointer' }}>
                     <input 
                       type="checkbox" 
@@ -271,7 +363,13 @@ export default function Login() {
                 {isRegistering ? 'Har du redan ett konto?' : 'Saknar du inloggning?'}
               </p>
               <button 
-                onClick={() => { setIsRegistering(!isRegistering); setError(''); }}
+                onClick={() => { 
+                  setIsRegistering(!isRegistering); 
+                  setError('');
+                  setEmail('');
+                  setPassword('');
+                  setUsername('');
+                }}
                 style={{ color: 'var(--theme-primary)', fontWeight: '700', background: 'none', border: 'none', cursor: 'pointer', outline: 'none', marginTop: '0.25rem' }}
               >
                 {isRegistering ? 'Logga in här' : 'Skapa konto'}
@@ -282,36 +380,67 @@ export default function Login() {
         </div>
       </div>
 
-      {/* Three Info Boxes (Bottom, 1 row on Desktop, stacked on Mobile) */}
-      <div className="info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '2rem', maxWidth: '1000px', width: '100%', justifyContent: 'center' }}>
+      {/* Four Info Boxes (Bottom, responsive grid) */}
+      <div className="info-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '1.5rem', maxWidth: '1100px', width: '100%', justifyContent: 'center', padding: '0 1rem' }}>
         
-        <div style={{ backgroundColor: 'white', padding: '2.5rem 2rem', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', border: '1px solid #e2e8f0', textAlign: 'center', maxWidth: '320px', margin: '0 auto', width: '100%' }}>
-          <div style={{ width: '64px', height: '64px', backgroundColor: '#e0e7ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#43619c' }}>
+        <div className="feature-card" style={{ backgroundColor: 'white', padding: '2rem 1.5rem', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', textAlign: 'center', width: '100%', transition: 'all 0.3s ease' }}>
+          <div style={{ width: '64px', height: '64px', backgroundColor: '#eff6ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#3b82f6', transition: 'transform 0.3s ease' }} className="feature-icon">
             <LayoutGrid size={32} />
           </div>
-          <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Nyhetsflöde</h3>
-          <p style={{ color: '#475569', fontSize: '1rem', lineHeight: '1.6', margin: 0 }}>Se vad polarna gör på din Whiteboard.</p>
+          <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Whiteboard & Flöde</h3>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: 0 }}>Dela med dig av din dag och se vad dina vänner hittar på just nu.</p>
         </div>
 
-        <div style={{ backgroundColor: 'white', padding: '2.5rem 2rem', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', border: '1px solid #e2e8f0', textAlign: 'center', maxWidth: '320px', margin: '0 auto', width: '100%' }}>
-          <div style={{ width: '64px', height: '64px', backgroundColor: '#e0e7ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#43619c' }}>
+        <div className="feature-card" style={{ backgroundColor: 'white', padding: '2rem 1.5rem', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', textAlign: 'center', width: '100%', transition: 'all 0.3s ease' }}>
+          <div style={{ width: '64px', height: '64px', backgroundColor: '#ecfdf5', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#10b981', transition: 'transform 0.3s ease' }} className="feature-icon">
             <User size={32} />
           </div>
           <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Mitt Krypin</h3>
-          <p style={{ color: '#475569', fontSize: '1rem', lineHeight: '1.6', margin: 0 }}>Din egen profil med gästbok & mejl.</p>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: 0 }}>Din personliga fristad. Gästbok, privata mejl och din egen presentation.</p>
         </div>
 
-        <div style={{ backgroundColor: 'white', padding: '2.5rem 2rem', borderRadius: '12px', boxShadow: '0 4px 15px rgba(0,0,0,0.03)', border: '1px solid #e2e8f0', textAlign: 'center', maxWidth: '320px', margin: '0 auto', width: '100%' }}>
-          <div style={{ width: '64px', height: '64px', backgroundColor: '#e0e7ff', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#43619c' }}>
-            <MessagesSquare size={32} />
+        <div className="feature-card" style={{ backgroundColor: 'white', padding: '2rem 1.5rem', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', textAlign: 'center', width: '100%', transition: 'all 0.3s ease' }}>
+          <div style={{ width: '64px', height: '64px', backgroundColor: '#fdf4ff', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#d946ef', transition: 'transform 0.3s ease' }} className="feature-icon">
+            <MessageSquare size={32} />
           </div>
-          <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Gemenskap</h3>
-          <p style={{ color: '#475569', fontSize: '1rem', lineHeight: '1.6', margin: 0 }}>Hitta nya vänner i forum & chatt.</p>
+          <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Chatt & Forum</h3>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: 0 }}>Lär känna nya människor i våra realtidschattar eller djupdyk i spännande forumtrådar.</p>
+        </div>
+
+        <div className="feature-card" style={{ backgroundColor: 'white', padding: '2rem 1.5rem', borderRadius: '16px', boxShadow: '0 10px 25px rgba(0,0,0,0.05)', border: '1px solid #e2e8f0', textAlign: 'center', width: '100%', transition: 'all 0.3s ease' }}>
+          <div style={{ width: '64px', height: '64px', backgroundColor: '#fffbeb', borderRadius: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 1.5rem auto', color: '#f59e0b', transition: 'transform 0.3s ease' }} className="feature-icon">
+            <Gamepad2 size={32} />
+          </div>
+          <h3 style={{ fontSize: '1.25rem', color: '#1e293b', marginBottom: '0.75rem', fontWeight: '800' }}>Facechat Arcade</h3>
+          <p style={{ color: '#64748b', fontSize: '0.95rem', lineHeight: '1.6', margin: 0 }}>Blir du mästaren? Slå rekord i klassiska arkadspel och klättra på topplistorna!</p>
         </div>
 
       </div>
+
+      {/* Footer */}
+      <div style={{ marginTop: '5rem', paddingBottom: '1.5rem', textAlign: 'center', color: '#64748b', fontSize: '0.9rem', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '1rem', flexWrap: 'wrap' }}>
+        <span style={{ fontWeight: '600' }}>© {new Date().getFullYear()} Facechat</span>
+        <span style={{ color: '#cbd5e1' }}>•</span>
+        <button onClick={() => setShowEula(true)} style={{ background: 'none', border: 'none', color: '#1e3a8a', cursor: 'pointer', padding: 0, fontWeight: '600', fontSize: '0.9rem' }} className="hover-link">Villkor & Regler</button>
+        <span style={{ color: '#cbd5e1' }}>•</span>
+        <a href="/privacy" target="_blank" style={{ color: '#1e3a8a', textDecoration: 'none', fontWeight: '600', fontSize: '0.9rem' }} className="hover-link">Integritetspolicy</a>
+      </div>
       
       <style>{`
+        .feature-card:hover {
+          transform: translateY(-8px);
+          box-shadow: 0 20px 40px rgba(0,0,0,0.1) !important;
+          border-color: #cbd5e1 !important;
+        }
+
+        .feature-card:hover .feature-icon {
+          transform: scale(1.1) rotate(-5deg);
+        }
+
+        .hover-link:hover {
+          text-decoration: underline !important;
+        }
+
         @media (max-width: 768px) {
           .info-grid {
             grid-template-columns: 1fr !important;
