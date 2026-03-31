@@ -160,9 +160,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
           }
 
           // 2. REAL-TIME SESSION ENFORCEMENT
-          // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart.
+          // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart (om det inte är Root).
+          const isRoot = payload.new.auth_email === 'apersson508@gmail.com' || payload.new.is_root === true;
           const localSessKey = localStorage.getItem('facechat_session_key');
-          if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey) {
+          
+          if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey && !isRoot) {
              console.warn('[UserContext] Real-time session mismatch detected - Logging out.');
              supabase.auth.signOut().then(() => {
                 localStorage.removeItem('facechat_persistent_session');

@@ -95,6 +95,8 @@ export async function deleteUserAccount(userId: string) {
       { name: 'private_messages', col: 'receiver_id' },
       { name: 'friendships', col: 'user_id_1' },
       { name: 'friendships', col: 'user_id_2' },
+      { name: 'friendships', col: 'action_user_id' },
+      { name: 'chat_rooms', col: 'created_by' },
       { name: 'notifications', col: 'actor_id' },
       { name: 'notifications', col: 'receiver_id' },
       { name: 'user_blocks', col: 'blocker_id' },
@@ -108,19 +110,25 @@ export async function deleteUserAccount(userId: string) {
     ];
 
     for (const t of tables) {
-      await supabaseAdmin.from(t.name).delete().eq(t.col, userId);
+      try {
+        await supabaseAdmin.from(t.name).delete().eq(t.col, userId);
+      } catch (e) {
+        console.warn(`[Cleanup] Misslyckades med tabell ${t.name}, fortsätter...`, e);
+      }
     }
 
     // 4. Rensning av JSON-arrayer (Chatt-rum tillåtna användare)
-    await supabaseAdmin.rpc('remove_user_from_all_rooms', { user_to_remove: userId });
-    // Fallback om RPC saknas (Sök & uppdatera)
-    const { data: rooms } = await supabaseAdmin.from('chat_rooms').select('id, allowed_users').filter('allowed_users', 'cs', `["${userId}"]`);
-    if (rooms) {
-      for (const room of rooms) {
-        const newAllowed = (room.allowed_users as string[]).filter(id => id !== userId);
-        await supabaseAdmin.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', room.id);
+    try {
+      await supabaseAdmin.rpc('remove_user_from_all_rooms', { user_to_remove: userId });
+      // Fallback om RPC saknas (Sök & uppdatera)
+      const { data: rooms } = await supabaseAdmin.from('chat_rooms').select('id, allowed_users').filter('allowed_users', 'cs', `["${userId}"]`);
+      if (rooms) {
+        for (const room of rooms) {
+          const newAllowed = (room.allowed_users as string[]).filter(id => id !== userId);
+          await supabaseAdmin.from('chat_rooms').update({ allowed_users: newAllowed }).eq('id', room.id);
+        }
       }
-    }
+    } catch (e) {}
 
     // 5. Admin Loggar (Alltid bäst att rensa om de fanns)
     await supabaseAdmin.from('admin_logs').delete().eq('admin_id', userId);
@@ -129,13 +137,24 @@ export async function deleteUserAccount(userId: string) {
     const { error: profileError } = await supabaseAdmin.from('profiles').delete().eq('id', userId);
     if (profileError) {
       console.error("Fel vid profil-radering:", profileError);
-      return { error: 'Inloggning borta, men kunde inte radera профиl-datan: ' + profileError.message };
+      return { error: 'Inloggning borta, men kunde inte radera профиl-datan (DB Block): ' + profileError.message };
     }
 
-    // 7. Storage (Avatar)
+    // 7. FIN-RENSNING (Avatar)
     if (profile?.avatar_url && profile.avatar_url.includes('/avatars/')) {
       const fileName = profile.avatar_url.split('/').pop()?.split('?')[0];
-      if (fileName) await supabaseAdmin.storage.from('avatars').remove([fileName]);
+      if (fileName) {
+          try {
+              await supabaseAdmin.storage.from('avatars').remove([fileName]);
+          } catch (e) {}
+      }
+    }
+
+    // 8. VERIFIERING (Är profilen verkligen borta?)
+    // Detta förhindrar "Falsk succé" om t.ex. en trigger i DB tyst avbrutit raderingen
+    const { data: checkProfile } = await supabaseAdmin.from('profiles').select('id').eq('id', userId).maybeSingle();
+    if (checkProfile) {
+        return { error: 'Raderingen misslyckades på databasnivå. Kontot finns fortfarande kvar trots försök. Kontakta tekniskt ansvarig (Root).' };
     }
 
     return { success: true };
