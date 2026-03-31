@@ -61,18 +61,22 @@ export function UserProvider({ children }: { children: ReactNode }) {
     // --- AGGRESSIV DB-SYNK (Loop 3 försök) ---
     for (let attempt = 1; attempt <= 3; attempt++) {
       const waitTime = (attempt - 1) * 1000; // 0s, 1s, 2s
-      if (waitTime > 0) await new Promise(resolve => setTimeout(resolve, waitTime));
+      if (waitTime > 0) {
+          console.log(`[UserContext] Profil saknas/mismatch för ${userId}. Försök ${attempt}/3. Väntar ${waitTime}ms...`);
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+      }
 
       const { data, error } = await supabase.from('profiles').select('*').eq('id', userId).single();
       
       if (error) {
-         console.warn(`[UserContext] Profilfel (försök ${attempt}):`, error.message);
+         console.warn(`[UserContext] DB-svar (försök ${attempt}):`, error.message);
       }
 
       // Validera: Finns profilen? Matcha även sessions-nyckeln om den finns
       const isMismatch = data?.session_key && localSessKey && data.session_key !== localSessKey;
       
       if (data && !isMismatch) {
+          console.log(`[UserContext] ✅ Profil framgångsrikt hämtad för ${data.username} på försök ${attempt}.`);
           profData = data;
           success = true;
           break;

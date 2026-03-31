@@ -254,8 +254,10 @@ export default function Header() {
     
     async function setupRealtimeGuard() {
       try {
+        if (!user?.id) return; // FIX: Fråga ALDRIG efter "guest" i ett UUID-fält!
+        
         // Vi hämtar IP:n en gång vid start för att veta vad vi ska lyssna efter
-        const res = await supabase.from('profiles').select('last_ip').eq('id', user?.id || 'guest').maybeSingle();
+        const res = await supabase.from('profiles').select('last_ip').eq('id', user.id).maybeSingle();
         const myIp = res?.data?.last_ip;
         if (!myIp) return;
 
