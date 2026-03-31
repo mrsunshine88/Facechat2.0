@@ -104,7 +104,8 @@ export async function deleteUserAccount(userId: string) {
       { name: 'reports', col: 'reporter_id' },
       { name: 'reports', col: 'reported_user_id' },
       { name: 'support_tickets', col: 'user_id' },
-      { name: 'whiteboard_likes', col: 'user_id' }
+      { name: 'whiteboard_likes', col: 'user_id' },
+      { name: 'push_subscriptions', col: 'user_id' }
     ];
 
     for (const t of tables) {
