@@ -173,16 +173,20 @@ export function UserProvider({ children }: { children: ReactNode }) {
             return;
           }
 
-          // 2. REAL-TIME SESSION ENFORCEMENT
-          // Om nyckeln ändras på en annan enhet, logga ut denna omedelbart.
+          // 2. REAL-TIME SESSION ENFORCEMENT (Soft Switch: Vänta 3s för att låta enheten synka!)
           const localSessKey = localStorage.getItem('facechat_session_key');
           if (payload.new.session_key && localSessKey && payload.new.session_key !== localSessKey) {
-             console.warn('[UserContext] Real-time session mismatch detected - Logging out.');
-             supabase.auth.signOut().then(() => {
-                localStorage.removeItem('facechat_persistent_session');
-                localStorage.removeItem('facechat_session_key');
-                window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
-             });
+             console.warn('[UserContext] Potential session mismatch. Waiting 3s for sync...');
+             setTimeout(async () => {
+                const latestLocalKey = localStorage.getItem('facechat_session_key');
+                if (payload.new.session_key !== latestLocalKey) {
+                   console.warn('[UserContext] Mismatch confirmed after grace period - Logging out.');
+                   await supabase.auth.signOut();
+                   localStorage.removeItem('facechat_persistent_session');
+                   localStorage.removeItem('facechat_session_key');
+                   window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
+                }
+             }, 3000);
           }
 
 
