@@ -29,13 +29,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
       // 1. Snabbkoll: Förväntar vi oss en session? (Hint från localStorage)
       const hasPersistentHint = localStorage.getItem('facechat_persistent_session') === 'true';
       
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) throw sessionError;
+      const { data: { user: currentUser }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !currentUser) {
+        // Om vi får 400/401 är sessionen ogiltig på servern (Zombie session).
+        if (userError?.status === 400 || userError?.status === 401) {
+          console.error('[UserContext] Zombie session detected (400/401). Cleaning up local state.');
+          await supabase.auth.signOut({ scope: 'local' });
+          localStorage.removeItem('facechat_persistent_session');
+          localStorage.removeItem('facechat_session_key');
+          setProfile(null);
+          setLoading(false);
+          return;
+        }
+        setProfile(null);
+        setLoading(false);
+        return;
+      }
 
       // 2. MOBIL-OPTIMERING (Grace Period): Om vi förväntar oss en session men getSession returnerar null 
       // direkt vid kallstart, väntar vi några sekunder och försöker igen. 
       // PWA-appar på mobil kan vara extra långsamma med att ladda kakor från disk.
+      const { data: { session } } = await supabase.auth.getSession();
       let finalSession = session;
       if (!session && hasPersistentHint) {
          console.log('[UserContext] PWA-läge detekterat. Väntar på att mobilen ska ladda kakor (2s)...');
@@ -45,7 +60,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
          if (finalSession) console.log('[UserContext] Session återställd efter väntetid! 🎉');
       }
 
-      const currentUser = finalSession?.user || null;
       setUser(currentUser);
 
       if (currentUser) {
@@ -80,8 +94,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
               if (lastChance.data) {
                  profData = lastChance.data;
               } else {
-                 console.warn('[UserContext] Profile still missing (Zombie state). Forcing logout.');
-                 await supabase.auth.signOut();
+                 console.warn('[UserContext] Profile still missing (Zombie state). Forcing output.');
+                 await supabase.auth.signOut({ scope: 'local' });
                  localStorage.removeItem('facechat_persistent_session');
                  localStorage.removeItem('facechat_session_key');
                  window.location.href = '/login?error=' + encodeURIComponent('Din session har blivit ogiltig. Logga in igen.');
@@ -91,10 +105,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
         }
 
         if (profData?.is_banned) {
-           await supabase.auth.signOut();
+           await supabase.auth.signOut({ scope: 'local' });
            localStorage.removeItem('facechat_persistent_session');
            localStorage.removeItem('facechat_session_key');
-           window.location.href = '/login?error=Ditt konto är avstängt.';
+           window.location.href = '/bannad';
            return;
         }
 
@@ -188,7 +202,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
                 const latestLocalKey = localStorage.getItem('facechat_session_key');
                 if (payload.new.session_key !== latestLocalKey) {
                    console.warn('[UserContext] Mismatch confirmed after grace period - Logging out.');
-                   await supabase.auth.signOut();
+                   await supabase.auth.signOut({ scope: 'local' });
                    localStorage.removeItem('facechat_persistent_session');
                    localStorage.removeItem('facechat_session_key');
                    window.location.href = '/login?error=' + encodeURIComponent('Du har loggat in på en annan enhet. Denna session har avslutats.');
