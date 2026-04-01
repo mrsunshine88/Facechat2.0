@@ -74,12 +74,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
            const persistentHint = localStorage.getItem('facechat_persistent_session');
            const localSessKey = localStorage.getItem('facechat_session_key');
            if (persistentHint || localSessKey) {
-              console.warn('[UserContext] Profile missing (Zombie state). Forcing logout.');
-              await supabase.auth.signOut();
-              localStorage.removeItem('facechat_persistent_session');
-              localStorage.removeItem('facechat_session_key');
-              window.location.href = '/login?error=' + encodeURIComponent('Din session har blivit ogiltig. Logga in igen.');
-              return;
+              // --- SURGICAL CHANGE: Vänta 3 sekunder till för att vara 1000% säkra vid uppstart ---
+              await new Promise(r => setTimeout(r, 3000));
+              const lastChance = await supabase.from('profiles').select('*').eq('id', currentUser.id).single();
+              if (lastChance.data) {
+                 profData = lastChance.data;
+              } else {
+                 console.warn('[UserContext] Profile still missing (Zombie state). Forcing logout.');
+                 await supabase.auth.signOut();
+                 localStorage.removeItem('facechat_persistent_session');
+                 localStorage.removeItem('facechat_session_key');
+                 window.location.href = '/login?error=' + encodeURIComponent('Din session har blivit ogiltig. Logga in igen.');
+                 return;
+              }
            }
         }
 
